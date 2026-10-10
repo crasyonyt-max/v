@@ -2,6 +2,10 @@
 
 *Future, Reimagined*
 
+> **Not open source.** © 2026 Nova Systems LLC. All rights reserved. The apps, name and logo
+> are proprietary. You may download and use the apps, but not copy, modify or redistribute them.
+> See [LICENSE](LICENSE).
+
 - `downloads/` — app installers (.apk and .exe) linked from the website's download buttons.
 - `assets/nova-logo.png` — company logo.
 - `wordpress/homepage.html` — the homepage, in WordPress block format.
