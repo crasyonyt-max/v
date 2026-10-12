@@ -7,6 +7,7 @@
 > See [LICENSE](LICENSE).
 
 - `downloads/` — app installers (.apk and .exe) linked from the website's download buttons.
+- `apps/bruh/` — source of `downloads/bruh.apk`, a one-screen app that only shows a picture. Build with `TOOLS=<dir> apps/bruh/build.sh`.
 - `assets/nova-logo.png` — company logo.
 - `wordpress/homepage.html` — the homepage, in WordPress block format.
 
