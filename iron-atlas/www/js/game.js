@@ -1,10 +1,42 @@
-/* Iron Atlas — Conquest of Europe */
+/* Iron Atlas — Conquest of Europe
+ * Territory is a raster grid laid over the satellite map. Players draw loops with their finger:
+ * when founding a nation the land inside becomes theirs, in war it becomes an offensive that
+ * pushes the front line across the drawn area. */
 (function () {
   'use strict';
 
-  // ------------------------------------------------------------------ data
+  // ------------------------------------------------------------------ static data
   const D = window.IA_DATA;
+  const W = D.w, H = D.h, BB = D.bbox;
   const RAD = Math.PI / 180;
+  const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * RAD) / 2));
+  const MT = mercY(BB[3]), MB = mercY(BB[1]);
+  const latOfY = (y) => (2 * Math.atan(Math.exp(MT - (y / H) * (MT - MB))) - Math.PI / 2) / RAD;
+  const lonOfX = (x) => BB[0] + (x / W) * (BB[2] - BB[0]);
+  const xOfLon = (lon) => ((lon - BB[0]) / (BB[2] - BB[0])) * W;
+  const yOfLat = (lat) => ((MT - mercY(lat)) / (MT - MB)) * H;
+
+  // province raster: value = province id + 1, 0 = sea
+  const PROV = new Uint16Array(W * H);
+  (function decode() {
+    const bin = atob(D.rle);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const runs = new Uint16Array(u8.buffer);
+    let o = 0;
+    for (let i = 0; i < runs.length; i += 2) { PROV.fill(runs[i], o, o + runs[i + 1]); o += runs[i + 1]; }
+  })();
+
+  const P = D.provinces.map((p, id) => ({
+    id, c: p.c, name: p.n, cap: !!p.cap, area: p.a, cells: p.k, lon: p.l[0], lat: p.l[1],
+    val: Math.round((Math.min(3.5, 0.8 + p.a / 45000) + (p.cap ? 2 : 0)) * 10) / 10,
+  }));
+  // per-cell weights: economic value and area in km²
+  const CELL_VAL = P.map((p) => (p.cells ? p.val / p.cells : 0));
+  const CELL_KM2 = P.map((p) => (p.cells ? p.area / p.cells : 0));
+  let LAND = 0;
+  for (let i = 0; i < PROV.length; i++) if (PROV[i]) LAND++;
+
   const ISO2 = {
     ALB: 'AL', ARM: 'AM', AUT: 'AT', AZE: 'AZ', BLR: 'BY', BEL: 'BE', BIH: 'BA', BGR: 'BG', HRV: 'HR', CYP: 'CY', CZE: 'CZ',
     DNK: 'DK', EST: 'EE', FIN: 'FI', FRA: 'FR', GEO: 'GE', DEU: 'DE', GRC: 'GR', HUN: 'HU', ISL: 'IS', IRL: 'IE', ITA: 'IT',
@@ -21,172 +53,512 @@
   };
   const flagOf = (code) => (ISO2[code] ? String.fromCodePoint(...[...ISO2[code]].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '🏴');
 
-  const P = D.provinces.map((p) => ({
-    id: p.id, c: p.c, name: p.n, cap: !!p.cap, area: p.a, coast: !!p.coast,
-    lat: p.l[1], lon: p.l[0], g: p.g,
-    adj: p.adj.map((a) => ({ id: Math.abs(a) - 1, sea: a < 0 })),
-    val: Math.round((Math.min(3.5, 0.8 + p.a / 45000) + (p.cap ? 2 : 0)) * 10) / 10,
-  }));
-  const COUNTRY = {};
-  D.countries.forEach((c) => { COUNTRY[c.code] = c; });
-
-  function pointInRing(pt, r) {
-    let inside = false;
-    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-      const [xi, yi] = r[i], [xj, yj] = r[j];
-      if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  }
-  const provinceAt = (lon, lat) => P.find((p) => p.g.some((poly) => pointInRing([lon, lat], poly[0]) && !poly.slice(1).some((h) => pointInRing([lon, lat], h))));
-  const distKm = (a, b) => Math.hypot((a.lon - b.lon) * Math.cos(((a.lat + b.lat) / 2) * RAD) * 111.32, (a.lat - b.lat) * 111.32);
+  // ------------------------------------------------------------------ tuning
+  const DAY_MS = 1500;
+  const RECRUIT_COST = 2; // gold per 1k troops
+  const BASE_SPEED = 90; // cells per day at even odds
+  const LOCAL_CELLS = 3500; // how much of the defender's land density counts as the local garrison
 
   // ------------------------------------------------------------------ state
-  const RECRUIT_COST = 2; // gold per 1k troops
-  const DAY_MS = 1500;
-  let S = null; // game state
-  const ui = { sel: null, sendFrac: 0.75, mode: 'title', zooming: false, effects: [], pickCode: null, custom: null, lastPanel: 0 };
+  let S = null;
+  let OWN = new Uint8Array(W * H); // nation index per cell (0 = none)
+  let OFF = []; // active offensives (runtime only)
+  const ui = { mode: 'title', zooming: false, commit: 0.5, draw: false, path: null, info: null, pickIdx: 0, custom: null, effects: [], lastPanel: 0, modalOpen: false };
   const settings = loadSettings();
 
   function loadSettings() {
-    const def = { labels: true, satellite: true, autoFront: true, autoRecruit: true, autoAttack: false };
+    const def = { labels: true, satellite: true, autoRecruit: true };
     try { return Object.assign(def, JSON.parse(localStorage.getItem('ia_settings') || '{}')); } catch (e) { return def; }
   }
   function saveSettings() { try { localStorage.setItem('ia_settings', JSON.stringify(settings)); } catch (e) { /* ignore */ } }
 
   function newGame(opts) {
-    S = {
-      v: 1, day: 0, speed: 1, player: null, aggr: opts.aggr, nations: {}, prov: [], armies: [], wars: [], truces: [], news: [],
-      nextArmy: 1, over: false, won: false,
-    };
+    OFF.forEach((o) => o.layer && map.removeLayer(o.layer));
+    OFF = [];
+    S = { v: 2, day: 0, speed: 1, player: 0, aggr: opts.aggr, scenario: opts.scenario, sandbox: opts.scenario === 'sandbox',
+      N: [null], wars: [], truces: [], news: [], over: false, won: false, nextOff: 1 };
+    const byCode = {};
     for (const c of D.countries) {
-      S.nations[c.code] = {
-        code: c.code, name: c.name, color: BASE_COLORS[c.code] || '#888', flag: flagOf(c.code), power: c.power,
-        gold: 60, alive: true, start: 0, capital: null, lost: 0,
-      };
+      const n = { idx: S.N.length, code: c.code, name: c.name, color: BASE_COLORS[c.code] || '#888', flag: flagOf(c.code), power: c.power,
+        t: 0, gold: 60, alive: true, cells: 0, val: 0, km: 0, start: 0, cap: -1, cx: 0, cy: 0 };
+      S.N.push(n); byCode[c.code] = n;
     }
     for (const p of P) {
-      const n = S.nations[p.c];
-      n.start++;
-      if (p.cap) n.capital = p.id;
-      S.prov.push({ o: p.c, t: Math.round((3 + p.val * 3.2) * n.power * (p.cap ? 1.5 : 1) * 10) / 10, f: p.cap ? 1 : 0 });
+      const n = byCode[p.c];
+      n.t += (3 + p.val * 3.2) * n.power * (p.cap ? 1.5 : 1);
+      if (p.cap) n.cap = cellAt(p.lat, p.lon, p.id);
+    }
+    for (let i = 0; i < PROV.length; i++) {
+      const pv = PROV[i];
+      if (!pv) { OWN[i] = 0; continue; }
+      OWN[i] = byCode[P[pv - 1].c].idx;
     }
     if (opts.scenario === 'present') {
-      const crimea = provinceAt(34.1, 44.95);
-      const occupied = [crimea, P.find((p) => p.name === 'Donetsk'), P.find((p) => p.name === 'Luhansk')];
-      occupied.forEach((p) => { if (p && S.prov[p.id].o === 'UKR') { S.prov[p.id].o = 'RUS'; S.nations.UKR.start--; S.nations.RUS.start++; } });
-      S.wars.push({ a: 'RUS', b: 'UKR', start: -900, lostA: 0, lostB: 0 });
-      // an entrenched front line
-      P.forEach((p) => {
-        if (S.prov[p.id].o === 'UKR' && p.adj.some((a) => !a.sea && S.prov[a.id].o === 'RUS')) { S.prov[p.id].f = 2; S.prov[p.id].t *= 1.6; }
-      });
+      const occ = new Set(P.filter((p) => ['Simferopol', 'Donetsk', 'Luhansk'].includes(p.name) && p.c === 'UKR').map((p) => p.id + 1));
+      for (let i = 0; i < PROV.length; i++) if (occ.has(PROV[i])) OWN[i] = byCode.RUS.idx;
+      S.wars.push({ a: byCode.RUS.idx, b: byCode.UKR.idx, start: 0, lostA: 0, lostB: 0 });
+      byCode.UKR.t *= 1.3;
     }
+    recount();
+    S.N.forEach((n) => { if (n) { n.start = n.cells; n.t = Math.round(n.t); } });
+    paintAll();
+  }
+
+  // cell of a lat/lon; falls back to any cell of the given province
+  function cellAt(lat, lon, provId) {
+    const x = Math.floor(xOfLon(lon)), y = Math.floor(yOfLat(lat));
+    if (x >= 0 && y >= 0 && x < W && y < H && (provId == null || PROV[y * W + x] === provId + 1)) return y * W + x;
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < PROV.length; i++) {
+      if (PROV[i] !== provId + 1) continue;
+      const d = (i % W - x) ** 2 + (Math.floor(i / W) - y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
+  // full recount of cells, value, centroids and borders
+  let BORDERS = new Map(); // key a*256+b -> sample of b-owned cells touching a
+  function recount() {
+    const N = S.N;
+    N.forEach((n) => { if (n) { n.cells = 0; n.val = 0; n.km = 0; n.sx = 0; n.sy = 0; } });
+    const counts = new Map();
+    const samples = new Map();
+    for (let i = 0; i < OWN.length; i++) {
+      const o = OWN[i];
+      if (!o) continue;
+      const n = N[o];
+      n.cells++; n.val += CELL_VAL[PROV[i] - 1]; n.km += CELL_KM2[PROV[i] - 1];
+      const x = i % W, y = (i - x) / W;
+      n.sx += x; n.sy += y;
+      if (x + 1 < W) border(i, i + 1); if (y + 1 < H) border(i, i + W);
+    }
+    function border(i, j) {
+      const a = OWN[i], b = OWN[j];
+      if (!b || a === b) return;
+      add(a, b, j); add(b, a, i);
+    }
+    function add(a, b, cell) {
+      const k = a * 256 + b;
+      const c = (counts.get(k) || 0) + 1;
+      counts.set(k, c);
+      let arr = samples.get(k);
+      if (!arr) samples.set(k, (arr = []));
+      if (arr.length < 48) arr.push(cell);
+      else if (Math.random() < 48 / c) arr[(Math.random() * 48) | 0] = cell;
+    }
+    BORDERS = samples;
+    N.forEach((n) => {
+      if (!n) return;
+      if (n.cells) { n.cx = n.sx / n.cells; n.cy = n.sy / n.cells; }
+      if (n.alive && n.cells === 0) n.alive = false;
+    });
   }
 
   // ------------------------------------------------------------------ helpers
-  const N = (code) => S.nations[code];
-  const owner = (id) => S.prov[id].o;
-  const isPlayer = (code) => S && code === S.player;
+  const N = (i) => S.N[i];
+  const isPlayer = (i) => S && i === S.player;
   const atWar = (a, b) => a !== b && S.wars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
   const warOf = (a, b) => S.wars.find((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
   const truceOf = (a, b) => S.truces.find((t) => ((t.a === a && t.b === b) || (t.a === b && t.b === a)) && t.until > S.day);
-  const provsOf = (code) => S.prov.reduce((arr, p, i) => (p.o === code && arr.push(i), arr), []);
-  const strength = (code) => S.prov.reduce((s, p) => s + (p.o === code ? p.t : 0), 0) + S.armies.reduce((s, a) => s + (a.o === code ? a.t : 0), 0);
-  const armyLimit = (code) => {
-    const n = S.nations[code];
-    return 40 + S.prov.reduce((s, p, i) => s + (p.o === code ? P[i].val : 0), 0) * 8 * n.power;
-  };
-  const enemiesOf = (code) => S.wars.filter((w) => w.a === code || w.b === code).map((w) => (w.a === code ? w.b : w.a));
-  const defense = (id) => {
-    const p = S.prov[id];
-    return p.t * (1.4 + 0.3 * p.f) * (P[id].cap ? 1.2 : 1) * (P[id].c === p.o ? 1.15 : 1);
-  };
+  const enemiesOf = (i) => S.wars.filter((w) => w.a === i || w.b === i).map((w) => (w.a === i ? w.b : w.a));
+  const committed = (i) => OFF.reduce((s, o) => s + (o.a === i ? o.t : 0), 0);
+  const strength = (i) => N(i).t + committed(i);
+  const armyLimit = (i) => 40 + N(i).val * 8 * N(i).power;
+  const neighborsOf = (i) => { const s = new Set(); BORDERS.forEach((_, k) => { if ((k >> 8) === i) s.add(k & 255); }); return s; };
+  const kmOf = (c) => CELL_KM2[PROV[c] - 1];
   function fmtT(t) {
     if (t >= 1000) return (t / 1000).toFixed(1) + 'M';
     if (t >= 10) return Math.round(t) + 'k';
-    return (Math.round(t * 10) / 10) + 'k';
+    return Math.max(0, Math.round(t * 10) / 10) + 'k';
   }
+  function fmtKm(k) { return k >= 10000 ? Math.round(k / 1000) + 'k km²' : Math.round(k).toLocaleString('en') + ' km²'; }
   function dateStr(day) {
     const d = new Date(Date.UTC(2026, 9, 16) + day * 86400000);
     return String(d.getUTCDate()).padStart(2, '0') + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + d.getUTCFullYear();
   }
-  function darken(hex, f) {
-    const n = parseInt(hex.slice(1), 16);
-    const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
-  }
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (id) => document.getElementById(id);
+  const hexRgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const cellLatLng = (c) => [latOfY(Math.floor(c / W) + 0.5), lonOfX((c % W) + 0.5)];
 
   // ------------------------------------------------------------------ map
   const map = L.map('map', {
-    zoomControl: false, preferCanvas: true, minZoom: 3, maxZoom: 10, zoomSnap: 0.25, wheelPxPerZoomLevel: 90,
-    maxBounds: [[22, -45], [80, 70]], maxBoundsViscosity: 0.8, attributionControl: true,
+    zoomControl: false, minZoom: 3, maxZoom: 10, zoomSnap: 0.25, wheelPxPerZoomLevel: 90,
+    maxBounds: [[22, -45], [80, 70]], maxBoundsViscosity: 0.8,
   });
   map.attributionControl.setPrefix(false);
-  const renderer = L.canvas({ padding: 0.4, tolerance: 3 });
+  map.attributionControl.addAttribution('Borders © Natural Earth');
   const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 18, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics', crossOrigin: false,
-  });
-  const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 18, attribution: 'Labels © Esri, HERE, Garmin', pane: 'overlayPane', opacity: 0.9,
+    maxZoom: 18, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
   });
   map.createPane('labels');
   map.getPane('labels').style.zIndex = 420;
   map.getPane('labels').style.pointerEvents = 'none';
-  labelLayer.options.pane = 'labels';
+  const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 18, attribution: 'Labels © Esri, HERE, Garmin', pane: 'labels', opacity: 0.85,
+  });
   if (settings.satellite) satLayer.addTo(map);
   if (settings.labels) labelLayer.addTo(map);
-  L.control.attribution({ prefix: false }).addAttribution('Borders © Natural Earth');
   map.fitBounds([[40, -8], [62, 35]]);
-
-  const polys = P.map((p) => {
-    const latlngs = p.g.map((poly) => poly.map((ring) => ring.map(([x, y]) => [y, x])));
-    const layer = L.polygon(latlngs, { renderer, weight: 0.8, fillOpacity: 0.42, smoothFactor: 0.6 });
-    layer.on('click', (e) => { L.DomEvent.stopPropagation(e); onProvinceTap(p.id); });
-    layer.addTo(map);
-    return layer;
-  });
-  map.on('click', () => { if (ui.mode === 'game') select(null); });
   map.on('zoomstart', () => { ui.zooming = true; });
   map.on('zoomend', () => { ui.zooming = false; });
 
-  function baseStyle(id) {
-    if (!S) return { color: 'rgba(255,255,255,0.35)', weight: 0.6, fillColor: '#ffffff', fillOpacity: 0.05, dashArray: null };
-    const n = N(owner(id));
-    const mine = isPlayer(n.code);
-    return { color: darken(n.color, 0.55), weight: mine ? 1 : 0.7, fillColor: n.color, fillOpacity: mine ? 0.5 : 0.4, dashArray: null, opacity: 0.85 };
-  }
-  function restyleAll() {
-    P.forEach((p) => polys[p.id].setStyle(baseStyle(p.id)));
-    applyHighlights();
-  }
-  let highlighted = [];
-  function applyHighlights() {
-    highlighted.forEach((id) => polys[id].setStyle(baseStyle(id)));
-    highlighted = [];
-    const hl = (id, style) => { polys[id].setStyle(style); polys[id].bringToFront(); highlighted.push(id); };
-    if (ui.mode === 'pick' && ui.pickCode) {
-      P.forEach((p) => { if (S && owner(p.id) === ui.pickCode) hl(p.id, { color: '#ffffff', weight: 2, fillOpacity: 0.65 }); });
+  // territory canvas as an image overlay (the grid is in Web Mercator rows, so it lines up exactly)
+  const terr = document.createElement('canvas');
+  terr.width = W; terr.height = H;
+  terr.className = 'terr';
+  const tctx = terr.getContext('2d');
+  const img = tctx.createImageData(W, H);
+  const PIX = new Uint32Array(img.data.buffer);
+  const CanvasOverlay = L.ImageOverlay.extend({
+    _initImage() {
+      const el = (this._image = terr);
+      L.DomUtil.addClass(el, 'leaflet-image-layer');
+      if (this._zoomAnimated) L.DomUtil.addClass(el, 'leaflet-zoom-animated');
+      el.onselectstart = L.Util.falseFn;
+      el.onmousemove = L.Util.falseFn;
+    },
+  });
+  new CanvasOverlay('', [[BB[1], BB[0]], [BB[3], BB[2]]], { opacity: 1, interactive: false }).addTo(map);
+
+  // colours as packed little-endian RGBA
+  let FILL = [], EDGE = [];
+  function buildPalette() {
+    FILL = [0]; EDGE = [0];
+    for (let i = 1; i < S.N.length; i++) {
+      const n = S.N[i];
+      const [r, g, b] = hexRgb(n.color);
+      const focus = ui.mode === 'pick' && ui.pickIdx === i;
+      const dim = ui.mode === 'pick' && ui.pickIdx && !focus;
+      const a = focus ? 190 : dim ? 70 : isPlayer(i) ? 135 : 112;
+      FILL[i] = ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
+      const ea = focus ? 255 : 225;
+      const k = focus ? 1 : 0.55;
+      EDGE[i] = ((ea << 24) | (((b * k) | 0) << 16) | (((g * k) | 0) << 8) | ((r * k) | 0)) >>> 0;
     }
-    if (ui.mode === 'pickCustom' && ui.custom && ui.custom.claim) {
-      ui.custom.claim.forEach((id) => hl(id, { color: '#ffffff', weight: 2.5, fillColor: ui.custom.color, fillOpacity: 0.75 }));
-    }
-    if (ui.mode === 'game' && ui.sel != null) {
-      const me = S.player;
-      if (owner(ui.sel) === me) {
-        for (const a of P[ui.sel].adj) {
-          const o = owner(a.id);
-          if (o === me) hl(a.id, { color: '#34c759', weight: 2.5, dashArray: a.sea ? '6 5' : null });
-          else if (atWar(me, o)) hl(a.id, { color: '#ff3b30', weight: 3, dashArray: a.sea ? '6 5' : null });
-          else hl(a.id, { color: '#ffcc00', weight: 1.5, dashArray: '3 5' });
-        }
+  }
+  function pixelOf(i) {
+    const o = OWN[i];
+    if (!o) return 0;
+    const x = i % W;
+    if ((x > 0 && OWN[i - 1] !== o && PROV[i - 1]) || (x < W - 1 && OWN[i + 1] !== o && PROV[i + 1]) ||
+        (i >= W && OWN[i - W] !== o && PROV[i - W]) || (i < W * (H - 1) && OWN[i + W] !== o && PROV[i + W])) return EDGE[o];
+    return FILL[o];
+  }
+  let dirty = null;
+  function paintAll() {
+    buildPalette();
+    for (let i = 0; i < OWN.length; i++) PIX[i] = PROV[i] ? pixelOf(i) : 0;
+    tctx.putImageData(img, 0, 0);
+    dirty = null;
+  }
+  function markDirty(i) {
+    const x = i % W, y = (i - x) / W;
+    PIX[i] = pixelOf(i);
+    if (x > 0) PIX[i - 1] = pixelOf(i - 1);
+    if (x < W - 1) PIX[i + 1] = pixelOf(i + 1);
+    if (y > 0) PIX[i - W] = pixelOf(i - W);
+    if (y < H - 1) PIX[i + W] = pixelOf(i + W);
+    if (!dirty) dirty = [x, y, x, y];
+    else { if (x < dirty[0]) dirty[0] = x; if (y < dirty[1]) dirty[1] = y; if (x > dirty[2]) dirty[2] = x; if (y > dirty[3]) dirty[3] = y; }
+  }
+  function flush() {
+    if (!dirty) return;
+    const x0 = Math.max(0, dirty[0] - 1), y0 = Math.max(0, dirty[1] - 1);
+    tctx.putImageData(img, 0, 0, x0, y0, Math.min(W, dirty[2] + 2) - x0, Math.min(H, dirty[3] + 2) - y0);
+    dirty = null;
+  }
+
+  // ------------------------------------------------------------------ ownership changes
+  function setOwner(i, a) {
+    const old = OWN[i];
+    if (old === a) return;
+    const v = CELL_VAL[PROV[i] - 1], km = CELL_KM2[PROV[i] - 1];
+    if (old) { const o = S.N[old]; o.cells--; o.val -= v; o.km -= km; }
+    const n = S.N[a]; n.cells++; n.val += v; n.km += km;
+    OWN[i] = a;
+    markDirty(i);
+  }
+
+  function capitulate(loser, winner) {
+    for (let i = 0; i < OWN.length; i++) if (OWN[i] === loser) setOwner(i, winner);
+    N(winner).t += N(loser).t * 0.3;
+    news(`🏳️ ${N(loser).flag} ${N(loser).name} has capitulated to ${N(winner).flag} ${N(winner).name}!`, 'war');
+    eliminate(loser);
+  }
+  function eliminate(i) {
+    const n = N(i);
+    if (!n.alive) return;
+    n.alive = false; n.t = 0;
+    S.wars = S.wars.filter((w) => w.a !== i && w.b !== i);
+    OFF.filter((o) => o.a === i).forEach((o) => endOffensive(o, true));
+    if (isPlayer(i)) gameOver();
+  }
+  // checks after territory changed hands
+  function afterCaptures(attacker, losers) {
+    for (const l of losers) {
+      const n = N(l);
+      if (!n.alive) continue;
+      if (n.cells < 25) {
+        if (n.cells) capitulate(l, attacker);
+        else { news(`☠️ ${n.flag} ${n.name} has been wiped off the map.`, 'war'); eliminate(l); }
+        continue;
       }
-      hl(ui.sel, { color: '#ffffff', weight: 3.5, dashArray: null });
+      if (S.sandbox) continue;
+      if (n.cap >= 0 && OWN[n.cap] !== l) {
+        if (!n.capLost) {
+          n.capLost = true;
+          news(`${N(OWN[n.cap]).flag} ${N(OWN[n.cap]).name} has taken the capital of ${n.flag} ${n.name}!`, 'war');
+          n.t *= 0.8;
+        }
+        if (n.cells < n.start * 0.5) capitulate(l, OWN[n.cap]);
+      } else n.capLost = false;
     }
   }
 
-  // ------------------------------------------------------------------ overlay canvas (labels, armies, battles)
+  // ------------------------------------------------------------------ lasso → cells
+  // poly: array of [gridX, gridY]; returns land cells inside (even-odd)
+  function cellsInPolygon(poly) {
+    const out = [];
+    let y0 = Infinity, y1 = -Infinity;
+    poly.forEach((p) => { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+    for (let r = Math.max(0, Math.floor(y0)); r <= Math.min(H - 1, Math.ceil(y1)); r++) {
+      const yc = r + 0.5, xs = [];
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[j], b = poly[i];
+        if ((a[1] <= yc) !== (b[1] <= yc)) xs.push(a[0] + ((yc - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      }
+      xs.sort((m, n) => m - n);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const c0 = Math.max(0, Math.ceil(xs[k] - 0.5)), c1 = Math.min(W - 1, Math.floor(xs[k + 1] - 0.5));
+        for (let c = c0; c <= c1; c++) { const i = r * W + c; if (PROV[i]) out.push(i); }
+      }
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ offensives
+  function launchOffensive(a, cells, latlngs, troops) {
+    const target = new Set();
+    for (const c of cells) if (OWN[c] !== a && atWar(a, OWN[c])) target.add(c);
+    if (!target.size || troops < 0.5) return null;
+    N(a).t -= troops;
+    const o = { id: S.nextOff++, a, t: troops, t0: troops, target, total: target.size, taken: 0, km: 0, queue: [], latlngs, naval: false, born: S.day };
+    seedFrontier(o);
+    if (!o.queue.length) {
+      // nothing touches our land: amphibious landing at the target cell closest to our capital/centre
+      const n = N(a);
+      const cx = n.cap >= 0 && OWN[n.cap] === a ? n.cap % W : n.cx, cy = n.cap >= 0 && OWN[n.cap] === a ? Math.floor(n.cap / W) : n.cy;
+      let best = -1, bd = Infinity;
+      target.forEach((c) => { const d = (c % W - cx) ** 2 + (Math.floor(c / W) - cy) ** 2; if (d < bd) { bd = d; best = c; } });
+      o.queue.push(best);
+      o.naval = true;
+    }
+    o.layer = L.polygon(latlngs, { color: N(a).color, weight: isPlayer(a) ? 3 : 2, opacity: 0.95, fill: false, dashArray: isPlayer(a) ? null : '6 6', interactive: false, smoothFactor: 1.5 }).addTo(map);
+    OFF.push(o);
+    return o;
+  }
+  function seedFrontier(o) {
+    o.queue = [];
+    o.target.forEach((c) => {
+      if (OWN[c] === o.a) { o.target.delete(c); return; }
+      const x = c % W;
+      if ((x > 0 && OWN[c - 1] === o.a) || (x < W - 1 && OWN[c + 1] === o.a) || OWN[c - W] === o.a || OWN[c + W] === o.a) o.queue.push(c);
+    });
+  }
+  function endOffensive(o, silent) {
+    OFF = OFF.filter((x) => x !== o);
+    if (o.layer) map.removeLayer(o.layer);
+    if (N(o.a).alive) N(o.a).t += Math.max(0, o.t);
+    if (!silent && isPlayer(o.a)) {
+      const pct = Math.round((o.taken / o.total) * 100);
+      toast(pct >= 99 ? `✅ Offensive complete: ${fmtKm(o.km)} taken.` : `Offensive ended at ${pct}% — troops returned to reserve.`, pct >= 99 ? 'peace' : '');
+    }
+  }
+
+  function stepOffensive(o) {
+    if (!N(o.a).alive) return endOffensive(o, true);
+    if (!o.queue.length) { seedFrontier(o); if (!o.queue.length) return endOffensive(o); }
+    // who are we mostly fighting right now?
+    const probe = o.queue[(Math.random() * o.queue.length) | 0];
+    const def = OWN[probe];
+    let k;
+    if (S.sandbox) k = 1e9;
+    else {
+      if (!atWar(o.a, def)) { o.queue = o.queue.filter((c) => atWar(o.a, OWN[c])); if (!o.queue.length) return endOffensive(o); return; }
+      const dn = N(def);
+      const dens = Math.max(0.0006, dn.t / Math.max(1, dn.cells));
+      const capBonus = P[PROV[probe] - 1].cap && P[PROV[probe] - 1].c === dn.code ? 1.6 : 1;
+      const ratio = o.t / (dens * LOCAL_CELLS * 1.3 * capBonus);
+      if (ratio < 0.2) { o.t *= 0.93; if (o.t < 1) endOffensive(o); return; }
+      k = Math.round(BASE_SPEED * Math.pow(Math.min(ratio, 4), 0.8) * (0.75 + Math.random() * 0.5) * (o.naval && o.taken < 200 ? 0.4 : 1));
+    }
+    const losers = new Set();
+    let n = 0;
+    const lostBy = {};
+    while (n < k && o.queue.length) {
+      const qi = (Math.random() * o.queue.length) | 0;
+      const c = o.queue[qi];
+      o.queue[qi] = o.queue[o.queue.length - 1]; o.queue.pop();
+      const d = OWN[c];
+      if (d === o.a || !o.target.has(c)) continue;
+      if (!S.sandbox && !atWar(o.a, d)) continue;
+      if (!S.sandbox) {
+        const dn = N(d);
+        const dens = Math.max(0.0006, dn.t / Math.max(1, dn.cells));
+        o.t -= dens * 4;
+        dn.t = Math.max(0, dn.t - dens * 2.5);
+      }
+      setOwner(c, o.a);
+      o.target.delete(c);
+      o.taken++; n++; o.km += kmOf(c);
+      losers.add(d);
+      lostBy[d] = (lostBy[d] || 0) + 1;
+      const x = c % W;
+      if (x > 0 && o.target.has(c - 1)) o.queue.push(c - 1);
+      if (x < W - 1 && o.target.has(c + 1)) o.queue.push(c + 1);
+      if (o.target.has(c - W)) o.queue.push(c - W);
+      if (o.target.has(c + W)) o.queue.push(c + W);
+      if (o.t <= 0.3) break;
+    }
+    for (const d in lostBy) { const w = warOf(o.a, +d); if (w) { if (w.a === +d) w.lostA += lostBy[d]; else w.lostB += lostBy[d]; } }
+    afterCaptures(o.a, losers);
+    if (!o.target.size || o.t <= 0.3) endOffensive(o);
+  }
+
+  // ------------------------------------------------------------------ AI
+  function aiOffensive(a, e) {
+    const samples = BORDERS.get(a * 256 + e);
+    if (!samples || !samples.length) return;
+    const n = N(a), en = N(e);
+    const avail = n.t * (0.45 + Math.random() * 0.25);
+    if (avail < 4) return;
+    const c = samples[(Math.random() * samples.length) | 0];
+    const x = c % W, y = Math.floor(c / W);
+    let dx = en.cx - x, dy = en.cy - y;
+    const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const r = 14 + Math.random() * 22 + Math.min(30, avail / 20);
+    const cx = x + dx * r * 0.7, cy = y + dy * r * 0.7;
+    const poly = [];
+    const sides = 14;
+    for (let s = 0; s < sides; s++) {
+      const ang = (s / sides) * Math.PI * 2, rr = r * (0.75 + Math.random() * 0.4);
+      poly.push([cx + Math.cos(ang) * rr * 1.3, cy + Math.sin(ang) * rr]);
+    }
+    const cells = cellsInPolygon(poly);
+    launchOffensive(a, cells, poly.map(([gx, gy]) => [latOfY(gy), lonOfX(gx)]), avail);
+  }
+
+  function spendGold(i, reserve) {
+    const n = N(i);
+    if (n.gold < reserve + 10) return;
+    const space = armyLimit(i) - strength(i);
+    if (space <= 1) return;
+    const budget = Math.min((n.gold - reserve) * 0.8, space * RECRUIT_COST);
+    n.gold -= budget;
+    n.t += budget / RECRUIT_COST;
+  }
+
+  function aiTurn(i) {
+    const n = N(i);
+    if ((S.day + i) % 3 === 0) spendGold(i, 10);
+    const enemies = enemiesOf(i);
+    if (!enemies.length || (S.day + i) % 2) return;
+    const mine = OFF.filter((o) => o.a === i).length;
+    const maxOff = 1 + Math.min(3, Math.floor(n.t / 250));
+    if (mine >= maxOff) return;
+    // attack the weakest bordering enemy, sometimes a random one
+    const bordering = enemies.filter((e) => BORDERS.has(i * 256 + e));
+    if (!bordering.length) return;
+    bordering.sort((x, y) => strength(x) - strength(y));
+    const e = Math.random() < 0.7 ? bordering[0] : bordering[(Math.random() * bordering.length) | 0];
+    if (n.t > N(e).t * 0.25 * (2 / S.aggr) || Math.random() < 0.15) aiOffensive(i, e);
+  }
+
+  function acceptsPeace(i, other) {
+    const w = warOf(i, other);
+    if (!w) return false;
+    const lostMe = w.a === i ? w.lostA : w.lostB, lostThem = w.a === i ? w.lostB : w.lostA;
+    const days = S.day - w.start;
+    if (days < 45) return false;
+    const ratio = strength(i) / Math.max(1, strength(other));
+    if (lostMe > lostThem * 1.5 + 300) return true; // losing badly
+    if (ratio < 0.5 && lostMe > lostThem) return true;
+    if (days > 150 && Math.abs(lostMe - lostThem) < 500 && Math.random() < 0.4) return true; // stalemate
+    if (days > 300 && Math.random() < 0.2) return true; // war weariness
+    return false;
+  }
+
+  function aiDiplomacy() {
+    for (let i = 1; i < S.N.length; i++) {
+      const n = S.N[i];
+      if (!n.alive || isPlayer(i)) continue;
+      const enemies = enemiesOf(i);
+      for (const e of enemies) {
+        const w = warOf(i, e);
+        if (S.day - w.start < 30 || Math.random() > 0.25) continue;
+        if (isPlayer(e)) { if (acceptsPeace(i, e) && Math.random() < 0.15 && !ui.modalOpen) offerPeaceToPlayer(i); }
+        else if (acceptsPeace(i, e) && (acceptsPeace(e, i) || (S.day - w.start > 90 && Math.random() < 0.15))) makePeace(i, e);
+      }
+      if (enemies.length >= 2 || Math.random() > 0.012 * S.aggr) continue;
+      const my = strength(i);
+      let best = 0, bestScore = 0;
+      for (const o of neighborsOf(i)) {
+        if (atWar(i, o) || truceOf(i, o) || !N(o).alive) continue;
+        let score = my / Math.max(1, strength(o) * (1 - 0.1 * enemiesOf(o).length));
+        if (N(o).cells > LAND * 0.2) score *= 1.6;
+        if (isPlayer(o)) score *= 1.1;
+        if (score > bestScore) { bestScore = score; best = o; }
+      }
+      if (best && bestScore > (enemies.length ? 3 : 1.9) / Math.sqrt(S.aggr)) declareWar(i, best);
+    }
+  }
+
+  function declareWar(a, b, quiet) {
+    if (atWar(a, b) || a === b || !N(a).alive || !N(b).alive) return false;
+    S.truces = S.truces.filter((t) => !((t.a === a && t.b === b) || (t.a === b && t.b === a)));
+    S.wars.push({ a, b, start: S.day, lostA: 0, lostB: 0 });
+    if (!quiet) news(`⚔️ ${N(a).flag} ${N(a).name} declared war on ${N(b).flag} ${N(b).name}!`, 'war');
+    if (isPlayer(a) || isPlayer(b)) renderPanel();
+    return true;
+  }
+  function makePeace(a, b) {
+    if (!warOf(a, b)) return;
+    S.wars = S.wars.filter((w) => w !== warOf(a, b));
+    S.truces.push({ a, b, until: S.day + 120 });
+    OFF.filter((o) => (o.a === a || o.a === b)).forEach((o) => {
+      o.target.forEach((c) => { if (OWN[c] === (o.a === a ? b : a)) o.target.delete(c); });
+      if (!o.target.size) endOffensive(o, true);
+    });
+    news(`🕊️ ${N(a).flag} ${N(a).name} and ${N(b).flag} ${N(b).name} signed a peace treaty.`, 'peace');
+    if (isPlayer(a) || isPlayer(b)) renderPanel();
+  }
+
+  // ------------------------------------------------------------------ daily tick
+  function tickDay() {
+    S.day++;
+    for (let i = 1; i < S.N.length; i++) {
+      const n = S.N[i];
+      if (!n.alive) continue;
+      n.gold += n.val * 0.55;
+      if (strength(i) < armyLimit(i) * 0.75) n.t += 0.04 * n.val * n.power;
+    }
+    OFF.slice().forEach(stepOffensive);
+    if (S.day % 4 === 0) recount();
+    if (!S.sandbox) {
+      for (let i = 1; i < S.N.length; i++) {
+        if (!S.N[i].alive) continue;
+        if (isPlayer(i)) { if (settings.autoRecruit && S.day % 3 === 0) spendGold(i, 100); }
+        else aiTurn(i);
+      }
+      if (S.day % 3 === 0) aiDiplomacy();
+    }
+    if (!S.won && N(S.player).cells >= LAND * 0.7) { S.won = true; victory(); }
+    if (S.day % 15 === 0) save();
+  }
+
+  // ------------------------------------------------------------------ overlay canvas (labels, drawing)
   const fx = $('fx');
   const ctx = fx.getContext('2d');
   let dpr = 1;
@@ -198,391 +570,228 @@
   }
   window.addEventListener('resize', resize);
 
-  const pxSize = P.map(() => 0);
-  function computeSizes() {
-    const z = map.getZoom();
-    const scale = 256 * Math.pow(2, z) / 360; // px per degree lon at equator
-    P.forEach((p) => { pxSize[p.id] = Math.sqrt(p.area) / 111.32 * scale * 0.9; });
-  }
-  map.on('zoomend', computeSizes);
-
-  function drawPill(x, y, text, color, bold) {
-    ctx.font = (bold ? '800 ' : '700 ') + '11px system-ui, sans-serif';
-    const w = ctx.measureText(text).width + 10;
-    ctx.fillStyle = 'rgba(8,14,22,0.78)';
-    roundRect(x - w / 2, y - 8, w, 16, 8); ctx.fill();
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x, y + 0.5);
-  }
   function roundRect(x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
+  function pill(x, y, text, color, size) {
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    const w = ctx.measureText(text).width + 12, h = size + 8;
+    ctx.fillStyle = 'rgba(8,14,22,0.8)';
+    roundRect(x - w / 2, y - h / 2, w, h, h / 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 0.5);
+  }
+  const gridToPt = (gx, gy) => map.latLngToContainerPoint([latOfY(gy), lonOfX(gx)]);
 
   function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, innerWidth, innerHeight);
-    if (!S || ui.zooming) return;
-    const W = innerWidth, H = innerHeight;
-    const pt = (p) => map.latLngToContainerPoint([p.lat, p.lon]);
-    const near = new Set();
-    if (ui.sel != null) { near.add(ui.sel); P[ui.sel].adj.forEach((a) => near.add(a.id)); }
-    // capitals
-    for (const code in S.nations) {
-      const n = S.nations[code];
-      if (!n.alive || n.capital == null) continue;
-      const c = pt(P[n.capital]);
-      if (c.x < -20 || c.y < -20 || c.x > W + 20 || c.y > H + 20) continue;
-      ctx.font = '13px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffd34d'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3;
-      ctx.strokeText('★', c.x, c.y - 14); ctx.fillText('★', c.x, c.y - 14);
-    }
-    // troop labels
-    if (ui.mode === 'game' || ui.mode === 'pick' || ui.mode === 'pickCustom') {
-      for (const p of P) {
-        const o = owner(p.id);
-        const show = near.has(p.id) || pxSize[p.id] > 26 || (isPlayer(o) && pxSize[p.id] > 16);
-        if (!show) continue;
-        const c = pt(p);
-        if (c.x < -30 || c.y < -20 || c.x > W + 30 || c.y > H + 20) continue;
-        const sp = S.prov[p.id];
-        drawPill(c.x, c.y, (sp.f ? '🛡' : '') + fmtT(sp.t), N(o).color, isPlayer(o));
+    if (S && !ui.zooming && ui.mode !== 'title') {
+      const z = map.getZoom();
+      const pxPerCell = (256 * Math.pow(2, z)) / 360 * ((BB[2] - BB[0]) / W);
+      // capitals
+      for (let i = 1; i < S.N.length; i++) {
+        const n = S.N[i];
+        if (!n.alive || n.cap < 0) continue;
+        const c = gridToPt(n.cap % W + 0.5, Math.floor(n.cap / W) + 0.5);
+        ctx.font = '14px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = OWN[n.cap] === i ? '#ffd34d' : '#999'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3;
+        ctx.strokeText('★', c.x, c.y); ctx.fillText('★', c.x, c.y);
+      }
+      // nation labels
+      for (let i = 1; i < S.N.length; i++) {
+        const n = S.N[i];
+        if (!n.alive || !n.cells) continue;
+        const size = Math.sqrt(n.cells) * pxPerCell;
+        if (size < 46 && !isPlayer(i) && !(ui.mode === 'pick' && ui.pickIdx === i)) continue;
+        const c = gridToPt(n.cx, n.cy);
+        if (c.x < -60 || c.y < -20 || c.x > innerWidth + 60 || c.y > innerHeight + 20) continue;
+        const fs = Math.max(10, Math.min(15, size / 9));
+        pill(c.x, c.y + 14, `${n.flag} ${size > 110 ? n.name + ' ' : ''}${fmtT(n.t)}`, n.color, fs);
+      }
+      // offensives progress
+      for (const o of OFF) {
+        if (!isPlayer(o.a) && !enemiesOf(S.player).includes(o.a)) continue;
+        const ll = o.latlngs;
+        let la = 0, lo = 0;
+        ll.forEach((p) => { la += p[0]; lo += p[1]; });
+        const c = map.latLngToContainerPoint([la / ll.length, lo / ll.length]);
+        pill(c.x, c.y, `⚔️ ${Math.round((o.taken / o.total) * 100)}% · ${fmtT(o.t)}`, N(o.a).color, 11);
       }
     }
-    // armies
-    const now = performance.now();
-    for (const a of S.armies) {
-      const A = pt(P[a.from]), B = pt(P[a.to]);
-      const col = N(a.o).color;
-      ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.setLineDash(a.sea ? [6, 5] : []);
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
-      ctx.setLineDash([]);
-      // arrow head
-      const ang = Math.atan2(B.y - A.y, B.x - A.x);
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.moveTo(B.x, B.y);
-      ctx.lineTo(B.x - 11 * Math.cos(ang - 0.45), B.y - 11 * Math.sin(ang - 0.45));
-      ctx.lineTo(B.x - 11 * Math.cos(ang + 0.45), B.y - 11 * Math.sin(ang + 0.45));
+    // live drawing
+    if (ui.path && ui.path.length > 1) {
+      const col = drawColor();
+      ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.strokeStyle = col; ctx.fillStyle = col + '33';
+      ctx.beginPath();
+      ui.path.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1;
-      const x = A.x + (B.x - A.x) * a.p, y = A.y + (B.y - A.y) * a.p;
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
-      if (isPlayer(a.o) || near.has(a.to) || near.has(a.from)) drawPill(x, y - 15, fmtT(a.t), col, true);
-    }
-    // effects
-    ui.effects = ui.effects.filter((e) => now - e.t0 < e.dur);
-    for (const e of ui.effects) {
-      const c = pt(P[e.id]);
-      const k = (now - e.t0) / e.dur;
-      ctx.globalAlpha = 1 - k;
-      ctx.beginPath(); ctx.arc(c.x, c.y, 8 + k * 30, 0, 7);
-      ctx.strokeStyle = e.color; ctx.lineWidth = 3; ctx.stroke();
-      ctx.font = (18 + k * 6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(e.icon, c.x, c.y - 4 - k * 10);
-      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ui.path.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.setLineDash([5, 6]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(ui.path[ui.path.length - 1].x, ui.path[ui.path.length - 1].y); ctx.lineTo(ui.path[0].x, ui.path[0].y); ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
-
-  // ------------------------------------------------------------------ simulation
-  function sendArmy(from, to, frac, code) {
-    const sp = S.prov[from];
-    const o = code || sp.o;
-    if (sp.o !== o) return false;
-    const link = P[from].adj.find((a) => a.id === to);
-    if (!link) return false;
-    const t = Math.floor(sp.t * frac * 10) / 10;
-    if (t < 0.5) return false;
-    const target = owner(to);
-    if (target !== o && !atWar(o, target)) return false;
-    if (target !== o && (sp.r || 0) > S.day) return false; // troops still regrouping after a battle
-    sp.t = Math.round((sp.t - t) * 10) / 10;
-    const dur = 1.2 + distKm(P[from], P[to]) / 160 + (link.sea ? 1.5 : 0);
-    S.armies.push({ id: S.nextArmy++, o, from, to, t, p: 0, dur, sea: link.sea });
-    return true;
+  function drawColor() {
+    if (ui.mode === 'found') return ui.custom.color;
+    return S && S.player ? '#ff3b30' : '#ff3b30';
   }
 
-  function advanceArmies(days) {
-    const arrived = [];
-    for (const a of S.armies) {
-      a.p += days / a.dur;
-      if (a.p >= 1) arrived.push(a);
+  // ------------------------------------------------------------------ drawing input
+  const drawLayer = $('draw-layer');
+  function setDraw(on) {
+    ui.draw = on;
+    drawLayer.classList.toggle('hidden', !on);
+    $('btn-draw').classList.toggle('on', on);
+    $('draw-banner').classList.toggle('hidden', !on || ui.mode !== 'game');
+    $('draw-banner').textContent = S && S.sandbox ? '✏️ Draw a loop — the land inside becomes yours' : '✏️ Draw a loop around enemy land to invade it';
+    if (on) { map.dragging.disable(); } else { map.dragging.enable(); }
+  }
+  let pinch = false;
+  drawLayer.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary) { pinch = true; ui.path = null; return; }
+    pinch = false;
+    drawLayer.setPointerCapture(e.pointerId);
+    ui.path = [{ x: e.clientX, y: e.clientY }];
+  });
+  drawLayer.addEventListener('pointermove', (e) => {
+    if (!ui.path || !e.isPrimary || pinch) return;
+    const last = ui.path[ui.path.length - 1];
+    if (Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 4) ui.path.push({ x: e.clientX, y: e.clientY });
+  });
+  const finish = (e) => {
+    if (!e.isPrimary) return;
+    const path = ui.path;
+    ui.path = null;
+    if (!path || pinch || path.length < 6) return;
+    const latlngs = path.map((p) => map.containerPointToLatLng([p.x, p.y]));
+    const poly = latlngs.map((ll) => [xOfLon(ll.lng), yOfLat(ll.lat)]);
+    const cells = cellsInPolygon(poly);
+    const lls = latlngs.map((ll) => [ll.lat, ll.lng]);
+    if (ui.mode === 'found') claimForNation(cells);
+    else if (ui.mode === 'game') proposeOffensive(cells, lls);
+  };
+  drawLayer.addEventListener('pointerup', finish);
+  drawLayer.addEventListener('pointercancel', () => { ui.path = null; });
+  // two-finger pinch still zooms while in draw mode
+  drawLayer.addEventListener('wheel', (e) => { e.preventDefault(); map.setZoom(map.getZoom() + (e.deltaY < 0 ? 0.5 : -0.5)); }, { passive: false });
+  let pinchStart = null;
+  drawLayer.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      const [a, b] = e.touches;
+      pinchStart = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z: map.getZoom(), c: map.getCenter(), mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2 };
     }
-    if (!arrived.length) return;
-    S.armies = S.armies.filter((a) => a.p < 1);
-    arrived.forEach(resolveArrival);
-  }
+  }, { passive: true });
+  drawLayer.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2 || !pinchStart) return;
+    const [a, b] = e.touches;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const mx = (a.clientX + b.clientX) / 2, my = (a.clientY + b.clientY) / 2;
+    const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), pinchStart.z + Math.log2(d / pinchStart.d)));
+    map.setZoomAround([pinchStart.mx, pinchStart.my], z, { animate: false });
+    map.panBy([pinchStart.mx - mx, pinchStart.my - my], { animate: false });
+    pinchStart.mx = mx; pinchStart.my = my; pinchStart.z = z; pinchStart.d = d;
+  }, { passive: true });
+  drawLayer.addEventListener('touchend', () => { pinchStart = null; }, { passive: true });
 
-  function resolveArrival(a) {
-    const tp = S.prov[a.to];
-    if (!N(a.o).alive) return;
-    if (tp.o === a.o) { tp.t += a.t; return; }
-    if (!atWar(a.o, tp.o)) {
-      // war ended while marching: return home if possible
-      if (S.prov[a.from].o === a.o) S.prov[a.from].t += a.t;
+  // ------------------------------------------------------------------ player: offensives
+  let pending = null;
+  function proposeOffensive(cells, latlngs) {
+    const me = S.player;
+    const by = {}, km = {};
+    for (const c of cells) if (OWN[c] !== me) { by[OWN[c]] = (by[OWN[c]] || 0) + 1; km[OWN[c]] = (km[OWN[c]] || 0) + kmOf(c); }
+    const ids = Object.keys(by).map(Number).sort((a, b) => by[b] - by[a]);
+    if (!ids.length) { toast('That loop has no foreign land inside. Draw around land you want to take.'); return; }
+    if (S.sandbox) {
+      const losers = new Set(ids);
+      for (const c of cells) if (OWN[c] !== me) setOwner(c, me);
+      afterCaptures(me, losers);
+      recount(); updateHud(); renderPanel();
       return;
     }
-    const r = () => 0.85 + Math.random() * 0.3;
-    const att = a.t * r() * (a.sea ? 0.75 : 1);
-    const def = defense(a.to) * r();
-    const visible = isPlayer(a.o) || isPlayer(tp.o);
-    if (att > def) {
-      const survivors = Math.max(0.3, a.t * (1 - 0.75 * (def / att)));
-      capture(a.to, a.o, survivors);
-      if (visible || inView(a.to)) ui.effects.push({ id: a.to, t0: performance.now(), dur: 1300, color: N(a.o).color, icon: '🚩' });
-    } else {
-      const ratio = att / Math.max(def, 0.01);
-      tp.t = Math.max(0.2, Math.round(tp.t * (1 - 0.5 * ratio) * 10) / 10);
-      if (visible || inView(a.to)) ui.effects.push({ id: a.to, t0: performance.now(), dur: 1100, color: '#ffffff', icon: '💥' });
-      if (isPlayer(a.o)) toast(`Attack on ${P[a.to].name} failed (${fmtT(a.t)} lost)`, 'war');
+    pending = { cells, latlngs, by, km, ids };
+    const draft = L.polygon(latlngs, { color: '#ff3b30', weight: 3, fill: true, fillOpacity: 0.12, interactive: false }).addTo(map);
+    pending.draft = draft;
+    renderLaunch();
+  }
+  function renderLaunch() {
+    const me = S.player, p = pending;
+    const rows = p.ids.slice(0, 4).map((i) => `<div class="p-sub" style="margin:2px 0">${N(i).flag} ${esc(N(i).name)} · ${fmtKm(p.km[i])}
+      ${atWar(me, i) ? '<span class="tag war" style="padding:1px 5px;border-radius:4px;font-size:10px">AT WAR</span>' : truceOf(me, i) ? '— truce' : '— will declare war'}</div>`).join('');
+    const blocked = p.ids.every((i) => truceOf(me, i));
+    const newWars = p.ids.filter((i) => !atWar(me, i) && !truceOf(me, i));
+    const troops = N(me).t * ui.commit;
+    $('panel').innerHTML = `<div class="p-head"><span class="flag">⚔️</span><div><div class="p-title">New offensive</div>${rows}</div>
+      <button class="icon-btn p-close" data-act="cancel">✕</button></div>
+      <div class="hint" style="margin:8px 0 6px">Commit troops from your reserve (${fmtT(N(me).t)}):</div>
+      <div class="seg">${[0.25, 0.5, 0.75, 1].map((f) => `<button data-commit="${f}" class="${ui.commit === f ? 'on' : ''}">${f === 1 ? 'All' : f * 100 + '%'}</button>`).join('')}</div>
+      <div class="p-row"><button class="danger" data-act="launch" ${blocked || troops < 1 ? 'disabled' : ''}>${newWars.length ? '⚔️ Declare war & attack' : '⚔️ Launch'} with ${fmtT(troops)}</button></div>`;
+    showPanel();
+  }
+  function cancelPending() { if (pending && pending.draft) map.removeLayer(pending.draft); pending = null; renderPanel(); }
+
+  // ------------------------------------------------------------------ custom nation founding
+  function claimForNation(cells) {
+    const c = ui.custom;
+    const changed = [];
+    for (const i of cells) if (OWN[i] !== c.idx) { changed.push(i, OWN[i]); setOwner(i, c.idx); }
+    if (!changed.length) return;
+    c.history.push(changed);
+    flush();
+    renderFoundSheet();
+  }
+  function undoClaim() {
+    const ch = ui.custom.history.pop();
+    if (!ch) return;
+    for (let k = 0; k < ch.length; k += 2) setOwner(ch[k], ch[k + 1]);
+    renderFoundSheet();
+  }
+  function renderFoundSheet() {
+    const c = ui.custom, n = N(c.idx);
+    $('pick-confirm').innerHTML = `<div class="p-head"><span class="flag">${c.flag}</span><div><div class="p-title">${esc(c.name)}</div>
+      <div class="p-sub">${n.cells ? fmtKm(n.km) + ' of land' : 'Draw a loop on the map to claim land'}</div></div></div>
+      <div class="p-row" style="margin-top:12px"><button id="f-mode">${ui.draw ? '✋ Move map' : '✏️ Draw'}</button>
+      <button id="f-undo" ${c.history.length ? '' : 'disabled'}>↶ Undo</button>
+      <button class="primary" id="f-go" ${n.cells >= 30 ? '' : 'disabled'}>Found ${esc(c.name)} ›</button></div>`;
+    $('pick-confirm').classList.remove('hidden');
+    $('f-undo').onclick = undoClaim;
+    $('f-mode').onclick = () => { setDraw(!ui.draw); renderFoundSheet(); };
+    $('f-go').onclick = foundNation;
+  }
+  function foundNation() {
+    const c = ui.custom, me = c.idx, n = N(me);
+    // take a share of each donor's army, proportional to the land taken
+    recount();
+    const idxOf = {};
+    S.N.forEach((x) => { if (x && !x.custom) idxOf[x.code] = x.idx; });
+    const taken = {};
+    for (let i = 0; i < OWN.length; i++) if (OWN[i] === me) { const orig = idxOf[P[PROV[i] - 1].c]; taken[orig] = (taken[orig] || 0) + 1; }
+    let troops = 0;
+    for (const d in taken) {
+      const dn = N(+d);
+      if (!dn || +d === me) continue;
+      const share = taken[d] / (taken[d] + dn.cells);
+      troops += dn.t * share * 1.3;
+      dn.t *= 1 - share;
+      dn.start = Math.max(1, dn.start - taken[d]);
     }
-  }
-  function inView(id) { return map.getBounds().contains([P[id].lat, P[id].lon]); }
-
-  function capture(id, code, troops) {
-    const sp = S.prov[id];
-    const prev = sp.o;
-    sp.o = code; sp.t = Math.round(troops * 10) / 10; sp.f = Math.max(0, sp.f - 1); sp.r = S.day + 5;
-    const w = warOf(code, prev);
-    if (w) { if (w.a === prev) w.lostA++; else w.lostB++; }
-    N(prev).lost++;
-    polys[id].setStyle(baseStyle(id));
-    if (isPlayer(code)) toast(`${N(code).flag} We captured ${P[id].name}!`);
-    if (isPlayer(prev)) toast(`⚠️ ${N(code).flag} ${N(code).name} captured ${P[id].name}!`, 'war');
-    const loser = N(prev);
-    const left = provsOf(prev).length;
-    if (left === 0) { eliminate(prev, code); }
-    else if (loser.capital === id || (loser.capital != null && owner(loser.capital) !== prev)) {
-      if (left <= Math.max(1, loser.start * 0.4)) capitulate(prev, code);
-      else if (loser.capital === id) {
-        news(`${N(code).flag} ${N(code).name} has taken ${P[id].name}, the capital of ${loser.name}!`, 'war');
-        provsOf(prev).forEach((i) => { S.prov[i].t = Math.round(S.prov[i].t * 0.8 * 10) / 10; });
-      }
-    }
-    if (ui.sel != null) applyHighlights();
-  }
-
-  function capitulate(loser, winner) {
-    const ids = provsOf(loser);
-    ids.forEach((i) => { S.prov[i].o = winner; S.prov[i].t = Math.round(S.prov[i].t * 0.3 * 10) / 10; polys[i].setStyle(baseStyle(i)); });
-    news(`🏳️ ${N(loser).name} has capitulated to ${N(winner).flag} ${N(winner).name}!`, 'war');
-    eliminate(loser, winner, true);
-  }
-
-  function eliminate(code, by, quiet) {
-    const n = N(code);
-    if (!n.alive) return;
-    n.alive = false;
-    S.wars = S.wars.filter((w) => w.a !== code && w.b !== code);
-    S.armies = S.armies.filter((a) => a.o !== code);
-    if (!quiet) news(`☠️ ${n.flag} ${n.name} has been wiped off the map by ${N(by).name}.`, 'war');
-    if (isPlayer(code)) gameOver(false);
-  }
-
-  function declareWar(a, b, quiet) {
-    if (atWar(a, b) || a === b || !N(a).alive || !N(b).alive) return false;
-    S.truces = S.truces.filter((t) => !((t.a === a && t.b === b) || (t.a === b && t.b === a)));
-    S.wars.push({ a, b, start: S.day, lostA: 0, lostB: 0 });
-    if (!quiet) news(`⚔️ ${N(a).flag} ${N(a).name} declared war on ${N(b).flag} ${N(b).name}!`, 'war');
-    restyleIfInvolved(a, b);
-    return true;
-  }
-  function makePeace(a, b) {
-    const w = warOf(a, b);
-    if (!w) return;
-    S.wars = S.wars.filter((x) => x !== w);
-    S.truces.push({ a, b, until: S.day + 120 });
-    news(`🕊️ ${N(a).flag} ${N(a).name} and ${N(b).flag} ${N(b).name} signed a peace treaty.`, 'peace');
-    restyleIfInvolved(a, b);
-  }
-  function restyleIfInvolved(a, b) { if (isPlayer(a) || isPlayer(b)) { applyHighlights(); renderPanel(); } }
-
-  // Would `code` accept peace with `other`?
-  function acceptsPeace(code, other) {
-    const w = warOf(code, other);
-    if (!w) return false;
-    const lostMe = w.a === code ? w.lostA : w.lostB;
-    const lostThem = w.a === code ? w.lostB : w.lostA;
-    const days = S.day - w.start;
-    const ratio = strength(code) / Math.max(1, strength(other));
-    if (lostMe > lostThem && ratio < 1.2) return true;
-    if (ratio < 0.6) return true;
-    if (days > 90 && lostMe >= lostThem && Math.random() < 0.5) return true;
-    if (days > 200 && Math.random() < 0.3) return true;
-    return false;
-  }
-
-  function tickDay() {
-    S.day++;
-    // economy & natural recruitment (only while below the army limit)
-    const room = {};
-    for (const code in S.nations) if (S.nations[code].alive) room[code] = strength(code) < armyLimit(code) * 0.75;
-    for (let i = 0; i < S.prov.length; i++) {
-      const sp = S.prov[i], n = N(sp.o), v = P[i].val;
-      n.gold += v * 0.55;
-      if (room[sp.o]) sp.t = Math.round((sp.t + 0.04 * v * n.power) * 100) / 100;
-    }
-    for (const code in S.nations) {
-      const n = S.nations[code];
-      if (!n.alive) continue;
-      if (!isPlayer(code)) aiTurn(code);
-      else playerAutomation(code);
-    }
-    if (S.day % 3 === 0) aiDiplomacy();
-    checkVictory();
-    if (S.day % 15 === 0) save();
-  }
-
-  // distance (in steps) from each province of `code` to its front line
-  function frontDistance(code, enemies) {
-    const mine = provsOf(code);
-    const dist = new Map();
-    const q = [];
-    const hostile = (o) => (enemies.size ? enemies.has(o) : o !== code);
-    for (const id of mine) {
-      if (P[id].adj.some((a) => hostile(owner(a.id)))) { dist.set(id, 0); q.push(id); }
-    }
-    while (q.length) {
-      const u = q.shift();
-      for (const a of P[u].adj) {
-        if (owner(a.id) === code && !dist.has(a.id)) { dist.set(a.id, dist.get(u) + 1); q.push(a.id); }
-      }
-    }
-    return { mine, dist };
-  }
-
-  function moveTowardFront(code, enemies, frac) {
-    const { mine, dist } = frontDistance(code, enemies);
-    for (const id of mine) {
-      const d = dist.get(id);
-      if (!d) continue;
-      const sp = S.prov[id];
-      const keep = 1 + P[id].val;
-      if (sp.t < keep + 2) continue;
-      let best = null;
-      for (const a of P[id].adj) {
-        if (owner(a.id) !== code) continue;
-        const da = dist.get(a.id);
-        if (da != null && da < d && (!best || da < dist.get(best) || (da === dist.get(best) && S.prov[a.id].t < S.prov[best].t))) best = a.id;
-      }
-      if (best != null) sendArmy(id, best, Math.min(frac, (sp.t - keep) / sp.t), code);
-    }
-  }
-
-  function planAttacks(code, enemies, aggressiveness) {
-    const incoming = {};
-    S.armies.forEach((a) => { if (a.o === code) incoming[a.to] = (incoming[a.to] || 0) + a.t; });
-    const targets = new Map();
-    for (const id of provsOf(code)) {
-      for (const a of P[id].adj) {
-        const o = owner(a.id);
-        if (!enemies.has(o)) continue;
-        if (!targets.has(a.id)) targets.set(a.id, []);
-        targets.get(a.id).push({ from: id, sea: a.sea });
-      }
-    }
-    const order = [...targets.keys()].sort((x, y) => defense(x) - defense(y));
-    const used = new Set();
-    for (const tid of order) {
-      const need = defense(tid) * (1.25 / aggressiveness) - (incoming[tid] || 0) * 0.9;
-      if (need <= 0) continue;
-      const srcs = targets.get(tid).filter((s) => !used.has(s.from));
-      let total = 0;
-      srcs.forEach((s) => { total += S.prov[s.from].t * 0.8 * (s.sea ? 0.75 : 1); });
-      if (total > need && total > 1) {
-        srcs.forEach((s) => { if (sendArmy(s.from, tid, 0.8, code)) used.add(s.from); });
-      }
-    }
-  }
-
-  function spendGold(code, reserve) {
-    const n = N(code);
-    const isAI = !reserve;
-    reserve = reserve || 10;
-    if (n.gold < reserve + 10) return;
-    const enemies = new Set(enemiesOf(code));
-    const { mine, dist } = frontDistance(code, enemies);
-    const front = mine.filter((id) => dist.get(id) === 0);
-    const pool = front.length ? front : mine;
-    if (!pool.length) return;
-    // fortify the capital once in a while
-    if (isAI && n.capital != null && owner(n.capital) === code && S.prov[n.capital].f < 2 && n.gold > 150 && enemies.size) {
-      n.gold -= fortCost(n.capital); S.prov[n.capital].f++;
-    }
-    const space = armyLimit(code) - strength(code);
-    if (space <= 1) return;
-    const budget = Math.min((n.gold - reserve) * 0.8, space * RECRUIT_COST);
-    const troops = budget / RECRUIT_COST;
-    n.gold -= budget;
-    // weakest frontline provinces get reinforcements first
-    pool.sort((x, y) => S.prov[x].t - S.prov[y].t);
-    const k = Math.min(pool.length, 4);
-    for (let i = 0; i < k; i++) S.prov[pool[i]].t = Math.round((S.prov[pool[i]].t + troops / k) * 10) / 10;
-  }
-
-  function aiTurn(code) {
-    const enemies = new Set(enemiesOf(code));
-    if ((S.day + code.charCodeAt(0)) % 3 === 0) spendGold(code);
-    if (enemies.size) {
-      if ((S.day + code.charCodeAt(1)) % 3 === 0) planAttacks(code, enemies, Math.min(1.4, 0.8 + S.aggr * 0.25));
-      if ((S.day + code.charCodeAt(2)) % 2 === 0) moveTowardFront(code, enemies, 0.6);
-    } else if (S.day % 6 === code.charCodeAt(0) % 6) {
-      moveTowardFront(code, enemies, 0.3);
-    }
-  }
-
-  function playerAutomation(code) {
-    const enemies = new Set(enemiesOf(code));
-    if (settings.autoFront && S.day % 2 === 0) moveTowardFront(code, enemies, 0.5);
-    if (settings.autoRecruit && S.day % 3 === 0) spendGold(code, 100);
-    if (settings.autoAttack && enemies.size && S.day % 2 === 1) planAttacks(code, enemies, 1);
-  }
-
-  function neighborsOf(code) {
-    const set = new Set();
-    for (const id of provsOf(code)) for (const a of P[id].adj) { const o = owner(a.id); if (o !== code) set.add(o); }
-    return set;
-  }
-
-  function aiDiplomacy() {
-    const total = S.prov.length;
-    for (const code in S.nations) {
-      const n = S.nations[code];
-      if (!n.alive || isPlayer(code)) continue;
-      const enemies = enemiesOf(code);
-      // peace
-      for (const e of enemies) {
-        const w = warOf(code, e);
-        if (S.day - w.start < 30 || Math.random() > 0.25) continue;
-        if (isPlayer(e)) {
-          if (acceptsPeace(code, e) && Math.random() < 0.15 && !ui.modalOpen) offerPeaceToPlayer(code);
-        } else if (acceptsPeace(code, e) && acceptsPeace(e, code)) makePeace(code, e);
-        else if (acceptsPeace(code, e) && Math.random() < 0.3) makePeace(code, e);
-      }
-      // war
-      if (enemies.length >= 2) continue;
-      if (Math.random() > 0.012 * S.aggr) continue;
-      const my = strength(code);
-      let best = null, bestScore = 0;
-      for (const o of neighborsOf(code)) {
-        if (atWar(code, o) || truceOf(code, o) || !N(o).alive) continue;
-        const their = strength(o) + enemiesOf(o).length * -0.1 * strength(o);
-        let score = my / Math.max(1, their);
-        const size = provsOf(o).length / total;
-        if (size > 0.2) score *= 1.6; // everyone gangs up on a superpower
-        if (isPlayer(o)) score *= 1.1;
-        if (score > bestScore) { bestScore = score; best = o; }
-      }
-      const threshold = enemies.length ? 3 : 1.9;
-      if (best && bestScore > threshold / Math.sqrt(S.aggr)) declareWar(code, best);
-    }
-  }
-
-  function checkVictory() {
-    if (S.over) return;
-    const mine = provsOf(S.player).length;
-    if (!S.won && mine >= S.prov.length * 0.7) { S.won = true; victory(); }
+    n.t = Math.round(troops + 20);
+    n.start = n.cells;
+    n.alive = true;
+    // capital: the claimed cell closest to the centre of the new nation
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < OWN.length; i++) if (OWN[i] === me) { const d = (i % W - n.cx) ** 2 + (Math.floor(i / W) - n.cy) ** 2; if (d < bd) { bd = d; best = i; } }
+    n.cap = best;
+    S.N.forEach((x) => { if (x && x !== n && x.cap >= 0 && OWN[x.cap] === me) x.cap = -1; });
+    const donors = Object.keys(taken).map(Number).filter((d) => d !== me && N(d) && N(d).alive).sort((a, b) => taken[b] - taken[a]);
+    beginGame(me);
+    news(`${c.flag} ${c.name} has declared independence${donors.length ? ' from ' + donors.slice(0, 3).map((d) => N(d).name).join(', ') : ''}!`, c.war ? 'war' : '');
+    if (c.war && !S.sandbox) donors.filter((d) => taken[d] > n.cells * 0.15).forEach((d) => declareWar(d, me, true));
   }
 
   // ------------------------------------------------------------------ main loop
@@ -591,31 +800,29 @@
     const dt = Math.min(250, now - last);
     last = now;
     if (S && ui.mode === 'game' && S.speed > 0 && !ui.modalOpen && !S.over) {
-      const days = (dt * S.speed) / DAY_MS;
-      advanceArmies(days);
-      acc += days;
+      acc += (dt * S.speed) / DAY_MS;
       let n = 0;
-      while (acc >= 1 && n++ < 4) { acc -= 1; tickDay(); }
-      if (now - ui.lastPanel > 400) { ui.lastPanel = now; updateHud(); renderPanel(true); }
+      while (acc >= 1 && n++ < 3) { acc -= 1; tickDay(); }
+      if (now - ui.lastPanel > 500) { ui.lastPanel = now; updateHud(); if (!pending) renderPanel(true); }
     }
+    flush();
     render();
     requestAnimationFrame(frame);
   }
 
   // ------------------------------------------------------------------ HUD & panel
   function updateHud() {
-    if (!S) return;
+    if (!S || !S.player) return;
     const me = N(S.player);
     $('hud-flag').textContent = me.flag;
     $('hud-name').textContent = me.name;
     $('hud-gold').textContent = Math.floor(me.gold);
     $('hud-troops').textContent = fmtT(strength(S.player));
-    $('hud-prov').textContent = provsOf(S.player).length;
+    $('hud-prov').textContent = fmtKm(me.km).replace(' km²', '');
     $('hud-date').textContent = dateStr(S.day);
     document.querySelectorAll('.speed button').forEach((b) => b.classList.toggle('on', +b.dataset.speed === S.speed));
   }
 
-  let toastQ = 0;
   function toast(msg, kind) {
     const box = $('toasts');
     const el = document.createElement('div');
@@ -623,7 +830,6 @@
     el.textContent = msg;
     box.appendChild(el);
     while (box.children.length > 3) box.removeChild(box.firstChild);
-    toastQ++;
     setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 600); }, 3600);
   }
   function news(msg, kind) {
@@ -632,97 +838,89 @@
     if (ui.mode === 'game') toast(msg, kind);
   }
 
-  function select(id) {
-    ui.sel = id;
-    applyHighlights();
-    renderPanel();
-  }
-
-  function onProvinceTap(id) {
-    if (ui.mode === 'pick') return pickCountry(owner(id));
-    if (ui.mode === 'pickCustom') return pickCustomLand(id);
-    if (ui.mode !== 'game' || S.over && !S.spectate) return;
-    const me = S.player;
-    const sel = ui.sel;
-    if (sel != null && sel !== id && owner(sel) === me && P[sel].adj.some((a) => a.id === id)) {
-      const o = owner(id);
-      if (o === me || atWar(me, o)) {
-        if (sendArmy(sel, id, ui.sendFrac, me)) {
-          if (o !== me) ui.effects.push({ id, t0: performance.now(), dur: 700, color: '#ff3b30', icon: '⚔️' });
-          renderPanel();
-          updateHud();
-        } else if (o !== me && (S.prov[sel].r || 0) > S.day) toast(`Troops in ${P[sel].name} are regrouping (${S.prov[sel].r - S.day} days).`);
-        else toast('Not enough troops to send.');
-        return;
-      }
-    }
-    select(sel === id ? null : id);
-  }
-
-  function fortCost(id) { return 40 * (S.prov[id].f + 1); }
-
-  function renderPanel(soft) {
+  function showPanel() {
     const panel = $('panel');
-    if (!S || ui.mode !== 'game' || ui.sel == null) { panel.classList.add('hidden'); return; }
-    if (soft && panel.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
-    const id = ui.sel, p = P[id], sp = S.prov[id], n = N(sp.o), me = S.player, mine = sp.o === me;
-    const core = sp.o !== p.c && COUNTRY[p.c] ? `occupied ${COUNTRY[p.c].name}` : (p.cap && sp.o === p.c ? 'Capital' : n.name);
-    const incomeStr = (p.val * 0.55).toFixed(1);
-    let h = `<div class="p-head"><span class="flag">${n.flag}</span><div><div class="p-title">${esc(p.name)}${p.cap ? ' ★' : ''}</div>
-      <div class="p-sub"><span class="color-dot" style="background:${n.color}"></span>${esc(n.name)} · ${esc(core)}</div></div>
-      <button class="icon-btn p-close" data-act="close">✕</button></div>
-      <div class="p-stats"><div>Troops<b>${fmtT(sp.t)}</b></div><div>Fortress<b>${'🛡'.repeat(sp.f) || '—'}</b></div><div>Income<b>+${incomeStr}/d</b></div></div>`;
-    if (mine) h += `<div class="hint" style="margin:-4px 0 8px">Army ${fmtT(strength(me))} / limit ${fmtT(armyLimit(me))}</div>`;
-    const g = Math.floor(N(me).gold);
-    if (mine) {
-      h += `<div class="seg">${[0.25, 0.5, 0.75, 1].map((f) => `<button data-frac="${f}" class="${ui.sendFrac === f ? 'on' : ''}">${f === 1 ? 'All' : f * 100 + '%'}</button>`).join('')}</div>
-        <div class="p-row">
-          <button data-act="recruit" data-n="5" ${g < 5 * RECRUIT_COST ? 'disabled' : ''}>+5k 🪖 <small>(${5 * RECRUIT_COST}💰)</small></button>
-          <button data-act="recruit" data-n="25" ${g < 25 * RECRUIT_COST ? 'disabled' : ''}>+25k 🪖 <small>(${25 * RECRUIT_COST}💰)</small></button>
-          <button data-act="fort" ${sp.f >= 3 || g < fortCost(id) ? 'disabled' : ''}>Fortify <small>(${sp.f >= 3 ? 'max' : fortCost(id) + '💰'})</small></button>
-        </div>
-        <div class="hint">Tap a <b style="color:#ff3b30">red</b> neighbor to attack or a <b style="color:#34c759">green</b> one to move troops (dashed = by sea). <b style="color:#ffcc00">Yellow</b> neighbors need a war declaration first.</div>`;
-    } else if (atWar(me, sp.o)) {
-      const attackers = p.adj.filter((a) => owner(a.id) === me);
-      const avail = attackers.reduce((s, a) => s + S.prov[a.id].t * 0.75, 0);
-      h += `<div class="p-row"><button class="danger" data-act="allin" ${attackers.length ? '' : 'disabled'}>⚔️ Attack from all neighbors (${fmtT(avail)})</button>
-        <button data-act="peace">🕊️ Offer peace</button></div>
-        <div class="hint">Enemy defense: ~${fmtT(defense(id))} effective (forts & capitals defend better).</div>`;
-    } else {
-      const tr = truceOf(me, sp.o);
-      h += `<div class="p-row"><button class="danger" data-act="war" ${tr ? 'disabled' : ''}>⚔️ Declare war on ${esc(n.name)}</button></div>
-        <div class="hint">${tr ? `Truce in effect for ${tr.until - S.day} more days.` : `${esc(n.name)}: ${provsOf(sp.o).length} provinces, ${fmtT(strength(sp.o))} troops.`}</div>`;
-    }
-    panel.innerHTML = h;
     panel.classList.remove('hidden');
+    $('hud').classList.add('panel-open');
+    $('hud').style.setProperty('--panel-h', panel.offsetHeight + 8 + 'px');
+  }
+  function hidePanel() { $('panel').classList.add('hidden'); $('hud').classList.remove('panel-open'); }
+
+  // info panel: tapped nation (or your own nation with its offensives)
+  function renderPanel(soft) {
+    if (pending) return;
+    if (!S || ui.mode !== 'game' || ui.info == null) { hidePanel(); return; }
+    const i = ui.info, n = N(i), me = S.player;
+    if (!n.alive) { ui.info = null; hidePanel(); return; }
+    const region = ui.infoProv != null ? P[ui.infoProv].name + ' region · ' : '';
+    let h = `<div class="p-head"><span class="flag">${n.flag}</span><div><div class="p-title">${esc(n.name)}</div>
+      <div class="p-sub"><span class="color-dot" style="background:${n.color}"></span>${esc(region)}${fmtKm(n.km)}</div></div>
+      <button class="icon-btn p-close" data-act="close">✕</button></div>
+      <div class="p-stats"><div>Troops<b>${fmtT(strength(i))}</b></div><div>Income<b>+${(n.val * 0.55).toFixed(0)}/d</b></div><div>${isPlayer(i) ? 'Gold' : 'Wars'}<b>${isPlayer(i) ? Math.floor(n.gold) : enemiesOf(i).length}</b></div></div>`;
+    const g = Math.floor(N(me).gold);
+    if (isPlayer(i)) {
+      h += `<div class="hint" style="margin:-4px 0 6px">Reserve ${fmtT(n.t)} · army limit ${fmtT(armyLimit(me))}</div>
+        <div class="p-row"><button data-act="recruit" data-n="10" ${g < 10 * RECRUIT_COST ? 'disabled' : ''}>+10k 🪖 <small>(${10 * RECRUIT_COST}💰)</small></button>
+        <button data-act="recruit" data-n="50" ${g < 50 * RECRUIT_COST ? 'disabled' : ''}>+50k 🪖 <small>(${50 * RECRUIT_COST}💰)</small></button></div>`;
+      const mine = OFF.filter((o) => o.a === me);
+      h += mine.map((o) => `<div class="off-row">⚔️ <span>${fmtT(o.t)}</span><div class="bar"><i style="width:${Math.round((o.taken / o.total) * 100)}%"></i></div>
+        <span>${Math.round((o.taken / o.total) * 100)}%</span><button data-stop="${o.id}">Stop</button></div>`).join('');
+      if (!mine.length) h += `<div class="hint">Tap ✏️ and draw a loop around enemy land to launch an offensive.</div>`;
+    } else if (atWar(me, i)) {
+      h += `<div class="p-row"><button data-act="peace">🕊️ Offer peace</button></div>
+        <div class="hint">Tap ✏️ and draw around their land to attack.</div>`;
+    } else {
+      const tr = truceOf(me, i);
+      h += `<div class="p-row"><button class="danger" data-act="war" ${tr ? 'disabled' : ''}>⚔️ Declare war</button></div>
+        <div class="hint">${tr ? `Truce for ${tr.until - S.day} more days.` : 'Or just draw around their land — you\'ll be asked to declare war.'}</div>`;
+    }
+    if (soft && $('panel').innerHTML === h) return;
+    $('panel').innerHTML = h;
+    showPanel();
   }
 
   $('panel').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    const id = ui.sel, me = S.player;
-    if (b.dataset.frac) { ui.sendFrac = +b.dataset.frac; renderPanel(); return; }
+    const me = S.player;
+    if (b.dataset.commit) { ui.commit = +b.dataset.commit; renderLaunch(); return; }
+    if (b.dataset.stop) { const o = OFF.find((x) => x.id === +b.dataset.stop); if (o) endOffensive(o); renderPanel(); return; }
     switch (b.dataset.act) {
-      case 'close': select(null); break;
+      case 'close': ui.info = null; renderPanel(); break;
+      case 'cancel': cancelPending(); break;
+      case 'launch': {
+        const p = pending;
+        p.ids.filter((i) => !atWar(me, i) && !truceOf(me, i)).forEach((i) => declareWar(me, i));
+        const o = launchOffensive(me, p.cells, p.latlngs, N(me).t * ui.commit);
+        map.removeLayer(p.draft);
+        pending = null;
+        if (o) { toast(o.naval ? '⚓ Amphibious landing launched!' : '⚔️ Offensive launched!'); ui.info = me; }
+        else toast('Nothing to attack there.');
+        renderPanel(); updateHud();
+        if (S.speed === 0) toast('The game is paused — press 1× to start the clock.');
+        break;
+      }
       case 'recruit': {
         const k = +b.dataset.n, cost = k * RECRUIT_COST;
-        if (N(me).gold >= cost && strength(me) + k <= armyLimit(me)) { N(me).gold -= cost; S.prov[id].t += k; }
-        else if (N(me).gold >= cost) toast('Army limit reached — conquer more land to raise it.');
+        if (strength(me) + k > armyLimit(me)) toast('Army limit reached — conquer more land to raise it.');
+        else if (N(me).gold >= cost) { N(me).gold -= cost; N(me).t += k; }
+        renderPanel(); updateHud();
         break;
       }
-      case 'fort':
-        if (S.prov[id].f < 3 && N(me).gold >= fortCost(id)) { N(me).gold -= fortCost(id); S.prov[id].f++; }
-        break;
-      case 'war': confirmWar(owner(id)); return;
-      case 'peace': playerOffersPeace(owner(id)); return;
-      case 'allin': {
-        let sent = 0;
-        P[id].adj.forEach((a) => { if (owner(a.id) === me && sendArmy(a.id, id, 0.75, me)) sent++; });
-        if (sent) ui.effects.push({ id, t0: performance.now(), dur: 700, color: '#ff3b30', icon: '⚔️' });
-        break;
-      }
+      case 'war': confirmWar(ui.info); break;
+      case 'peace': playerOffersPeace(ui.info); break;
     }
-    updateHud(); renderPanel();
+  });
+
+  map.on('click', (e) => {
+    const x = Math.floor(xOfLon(e.latlng.lng)), y = Math.floor(yOfLat(e.latlng.lat));
+    const c = x >= 0 && y >= 0 && x < W && y < H ? y * W + x : -1;
+    const o = c >= 0 ? OWN[c] : 0;
+    if (ui.mode === 'pick') { if (o) pickCountry(o); return; }
+    if (ui.mode !== 'game' || pending) return;
+    ui.info = o || null;
+    ui.infoProv = o ? PROV[c] - 1 : null;
+    renderPanel();
   });
 
   // ------------------------------------------------------------------ modals
@@ -738,68 +936,58 @@
   }
   function closeModal() { ui.modalOpen = false; $('modal').classList.add('hidden'); $('modal').onclick = null; }
 
-  function confirmWar(code) {
-    const n = N(code);
-    openModal(`<h2>⚔️ Declare war?</h2><p>${n.flag} <b>${esc(n.name)}</b> has ${provsOf(code).length} provinces and about <b>${fmtT(strength(code))}</b> troops.
-      You have ${fmtT(strength(S.player))}.</p>
+  function confirmWar(i) {
+    const n = N(i);
+    openModal(`<h2>⚔️ Declare war?</h2><p>${n.flag} <b>${esc(n.name)}</b> has about <b>${fmtT(strength(i))}</b> troops. You have ${fmtT(strength(S.player))}.</p>
       <div class="row"><button class="big ghost" data-a="no">Cancel</button><button class="big primary" data-a="yes">Declare war</button></div>`, (b) => {
-      if (b.dataset.a === 'yes') declareWar(S.player, code);
+      if (b.dataset.a === 'yes') declareWar(S.player, i);
       closeModal(); renderPanel();
     });
   }
-
-  function playerOffersPeace(code) {
-    const ok = acceptsPeace(code, S.player);
-    if (ok) makePeace(S.player, code);
-    else toast(`${N(code).flag} ${N(code).name} rejected your peace offer.`, 'war');
+  function playerOffersPeace(i) {
+    if (acceptsPeace(i, S.player)) makePeace(S.player, i);
+    else toast(`${N(i).flag} ${N(i).name} rejected your peace offer.`, 'war');
     if (ui.modalOpen) diplomacy();
     renderPanel();
   }
-
-  function offerPeaceToPlayer(code) {
-    const n = N(code);
-    openModal(`<h2>🕊️ Peace offer</h2><p>${n.flag} <b>${esc(n.name)}</b> offers you a white peace. Every province stays with whoever holds it now, and a 120-day truce begins.</p>
+  function offerPeaceToPlayer(i) {
+    const n = N(i);
+    openModal(`<h2>🕊️ Peace offer</h2><p>${n.flag} <b>${esc(n.name)}</b> offers peace. Everyone keeps the land they hold now, and a 120-day truce begins.</p>
       <div class="row"><button class="big ghost" data-a="no">Refuse</button><button class="big primary" data-a="yes">Accept</button></div>`, (b) => {
-      if (b.dataset.a === 'yes') makePeace(code, S.player);
+      if (b.dataset.a === 'yes') makePeace(i, S.player);
       closeModal();
     });
   }
-
   function diplomacy() {
     const me = S.player;
-    const list = Object.values(S.nations).filter((n) => n.alive)
-      .map((n) => ({ n, c: provsOf(n.code).length, s: strength(n.code) }))
-      .sort((a, b) => (isPlayer(b.n.code) - isPlayer(a.n.code)) || (atWar(me, b.n.code) - atWar(me, a.n.code)) || b.c - a.c);
-    const rows = list.map(({ n, c, s }) => {
-      let right = '';
-      if (isPlayer(n.code)) right = '<span class="tag you">YOU</span>';
-      else if (atWar(me, n.code)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.code}">Peace</button>`;
-      else if (truceOf(me, n.code)) right = `<span class="tag truce">TRUCE ${truceOf(me, n.code).until - S.day}d</span>`;
-      else right = `<button class="danger" data-war="${n.code}">War</button>`;
-      const wars = enemiesOf(n.code).filter((e) => !isPlayer(e)).map((e) => N(e).flag).join('');
+    const list = S.N.filter((n) => n && n.alive)
+      .sort((a, b) => (isPlayer(b.idx) - isPlayer(a.idx)) || (atWar(me, b.idx) - atWar(me, a.idx)) || b.cells - a.cells);
+    const rows = list.map((n) => {
+      let right;
+      if (isPlayer(n.idx)) right = '<span class="tag you">YOU</span>';
+      else if (atWar(me, n.idx)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.idx}">Peace</button>`;
+      else if (truceOf(me, n.idx)) right = `<span class="tag truce">TRUCE ${truceOf(me, n.idx).until - S.day}d</span>`;
+      else right = `<button class="danger" data-war="${n.idx}">War</button>`;
+      const wars = enemiesOf(n.idx).filter((e) => !isPlayer(e)).map((e) => N(e).flag).join('');
       return `<div class="drow"><span class="flag">${n.flag}</span><div class="dn"><b><span class="color-dot" style="background:${n.color}"></span>${esc(n.name)}</b>
-        <span>${c} prov · ${fmtT(s)} troops${wars ? ' · at war with ' + wars : ''}</span></div>${right}</div>`;
+        <span>${fmtKm(n.km)} · ${fmtT(strength(n.idx))} troops${wars ? ' · at war with ' + wars : ''}</span></div>${right}</div>`;
     }).join('');
     openModal(`<h2>🤝 Diplomacy</h2><div class="dlist">${rows}</div><div class="row"><button class="big" data-close>Close</button></div>`, (b) => {
       if (b.dataset.close != null) return closeModal();
-      if (b.dataset.war) { closeModal(); confirmWar(b.dataset.war); }
-      if (b.dataset.peace) playerOffersPeace(b.dataset.peace);
+      if (b.dataset.war) { closeModal(); confirmWar(+b.dataset.war); }
+      if (b.dataset.peace) playerOffersPeace(+b.dataset.peace);
     });
   }
-
   function newsModal() {
     const items = S.news.map((x) => `<div class="news-item"><small>${dateStr(x.d)}</small>${esc(x.m)}</div>`).join('') || '<p>No news yet.</p>';
     openModal(`<h2>📰 News</h2>${items}<div class="row"><button class="big" data-close>Close</button></div>`, () => closeModal());
   }
-
   function gameMenu() {
     const chk = (k, label) => `<label class="check"><input type="checkbox" data-set="${k}" ${settings[k] ? 'checked' : ''}> ${label}</label>`;
     openModal(`<h2>☰ Menu</h2>
       ${chk('satellite', 'Satellite imagery')}
       ${chk('labels', 'Place names & borders overlay')}
-      ${chk('autoFront', 'Generals move idle troops to the front')}
-      ${chk('autoRecruit', 'Generals recruit troops with spare gold (keeps 100💰)')}
-      ${chk('autoAttack', 'Generals launch attacks automatically')}
+      ${chk('autoRecruit', 'Recruit troops with spare gold automatically (keeps 100💰)')}
       <div class="row"><button class="big" data-a="howto">How to play</button></div>
       <div class="row"><button class="big ghost" data-a="quit">Save & quit</button><button class="big primary" data-a="close">Resume</button></div>`, (b) => {
       if (b.dataset.a === 'close') closeModal();
@@ -815,43 +1003,39 @@
       };
     });
   }
-
   function howTo() {
     openModal(`<h2>❔ How to play</h2><ol class="howto">
-      <li>Pick a country — or found your own nation by breaking away from one.</li>
-      <li>Each province earns 💰 gold and slowly raises 🪖 troops. Spend gold to recruit troops or build 🛡 forts.</li>
-      <li>Declare war from <b>Diplomacy</b> or by tapping a foreign province.</li>
-      <li>Tap one of your provinces, then tap a <b style="color:#ff3b30">red</b> neighbor to attack. Choose how many troops to send (25%–All).</li>
-      <li>Dashed lines are sea crossings: slower and 25% weaker.</li>
-      <li>Take an enemy capital ★ while they've lost half their land and the whole country surrenders to you.</li>
-      <li>Control 70% of Europe to win. Lose every province and it's game over.</li>
-      <li>Pinch to zoom; the game saves automatically.</li></ol>
+      <li>Pick a country, or create your own nation and <b>draw its borders</b> with your finger anywhere on the map.</li>
+      <li>To attack, tap <b>✏️ Draw</b> and draw a loop around the land you want. Choose how many troops to commit and launch — your front line pushes through the drawn area day by day.</li>
+      <li>Drawing over a country you're at peace with asks you to declare war first.</li>
+      <li>Bigger armies push faster. Capitals ★ are defended harder; take one after a country has lost half its land and it surrenders.</li>
+      <li>Land earns 💰 gold; spend it on troops. Make peace in <b>Diplomacy</b>.</li>
+      <li>Sandbox scenario: drawn loops become yours instantly — paint the map however you like.</li>
+      <li>Pinch with two fingers to zoom, even while drawing. Control 70% of Europe to win.</li></ol>
       <div class="row"><button class="big primary" data-close>Got it</button></div>`, () => {
       closeModal();
       if (ui.mode === 'title') $('screen-title').classList.remove('hidden');
     });
   }
-
   function victory() {
-    openModal(`<h2>👑 Europe is yours!</h2><p>${N(S.player).flag} <b>${esc(N(S.player).name)}</b> controls ${provsOf(S.player).length} of ${S.prov.length} provinces on ${dateStr(S.day)}.</p>
-      <div class="row"><button class="big ghost" data-a="quit">Main menu</button><button class="big primary" data-a="go">Keep conquering</button></div>`, (b) => {
+    openModal(`<h2>👑 Europe is yours!</h2><p>${N(S.player).flag} <b>${esc(N(S.player).name)}</b> controls ${Math.round((N(S.player).cells / LAND) * 100)}% of Europe on ${dateStr(S.day)}.</p>
+      <div class="row"><button class="big ghost" data-a="quit">Main menu</button><button class="big primary" data-a="go">Keep going</button></div>`, (b) => {
       closeModal();
       if (b.dataset.a === 'quit') { save(); toTitle(); }
     });
   }
-
   function gameOver() {
     S.over = true;
-    try { localStorage.removeItem('ia_save'); } catch (e) { /* ignore */ }
-    openModal(`<h2>💀 Defeat</h2><p>${N(S.player).flag} <b>${esc(N(S.player).name)}</b> has fallen on ${dateStr(S.day)}. History is written by the victors.</p>
+    try { localStorage.removeItem('ia_save2'); } catch (e) { /* ignore */ }
+    openModal(`<h2>💀 Defeat</h2><p>${N(S.player).flag} <b>${esc(N(S.player).name)}</b> has fallen on ${dateStr(S.day)}.</p>
       <div class="row"><button class="big ghost" data-a="watch">Watch the world</button><button class="big primary" data-a="quit">Main menu</button></div>`, (b) => {
       closeModal();
       if (b.dataset.a === 'quit') toTitle();
-      else { S.over = false; S.spectate = true; }
+      else S.over = false;
     });
   }
 
-  // ------------------------------------------------------------------ title / pick flow
+  // ------------------------------------------------------------------ title / pick / found flow
   const EMBLEM = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9a8"/><stop offset=".5" stop-color="#f5b83d"/><stop offset="1" stop-color="#a86d0c"/></linearGradient>
     <clipPath id="sh"><path d="M60 14 L96 26 V58 C96 82 80 98 60 106 C40 98 24 82 24 58 V26 Z"/></clipPath></defs>
@@ -865,145 +1049,136 @@
   $('emblem').innerHTML = EMBLEM;
 
   function hideScreens() { ['screen-title', 'screen-pick', 'screen-custom', 'pick-confirm'].forEach((s) => $(s).classList.add('hidden')); }
+  function clearMapExtras() {
+    OFF.forEach((o) => o.layer && map.removeLayer(o.layer));
+    OFF = [];
+    if (pending && pending.draft) map.removeLayer(pending.draft);
+    pending = null;
+  }
 
   let titleDrift = null;
   function toTitle() {
-    ui.mode = 'title'; ui.sel = null; S = null;
-    hideScreens();
+    clearMapExtras();
+    ui.mode = 'title'; ui.info = null;
+    setDraw(false);
+    hideScreens(); hidePanel();
     $('hud').classList.add('hidden');
     $('screen-title').classList.remove('hidden');
     $('btn-continue').classList.toggle('hidden', !hasSave());
-    restyleAll();
+    S = null; OWN.fill(0); PIX.fill(0); tctx.putImageData(img, 0, 0);
     map.flyToBounds([[40, -8], [62, 35]], { duration: 0.8 });
     clearInterval(titleDrift);
     let ph = 0;
     titleDrift = setInterval(() => { if (ui.mode === 'title') map.panBy([Math.sin((ph += 0.004)) * 0.7, 0], { animate: false }); }, 50);
   }
-
-  function opts() { return { scenario: $('opt-scenario').value, aggr: +$('opt-aggr').value }; }
+  const opts = () => ({ scenario: $('opt-scenario').value, aggr: +$('opt-aggr').value });
 
   function startPick() {
+    clearInterval(titleDrift);
+    ui.mode = 'pick'; ui.pickIdx = 0;
     newGame(opts());
-    ui.mode = 'pick'; ui.pickCode = null;
     hideScreens();
     $('screen-pick').classList.remove('hidden');
     $('pick-title').textContent = 'Choose your country';
     $('pick-hint').textContent = 'Tap a country on the map or pick from the list';
-    const list = Object.values(S.nations).sort((a, b) => a.name.localeCompare(b.name));
-    $('pick-list').innerHTML = list.map((n) => `<button data-code="${n.code}">${n.flag} ${esc(n.name)}</button>`).join('');
-    restyleAll();
+    const list = S.N.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+    $('pick-list').innerHTML = list.map((n) => `<button data-idx="${n.idx}">${n.flag} ${esc(n.name)}</button>`).join('');
   }
   $('pick-list').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-code]');
-    if (b) pickCountry(b.dataset.code, true);
+    const b = e.target.closest('button[data-idx]');
+    if (b) pickCountry(+b.dataset.idx, true);
   });
-
-  function pickCountry(code, fly) {
-    ui.pickCode = code;
-    applyHighlights();
-    document.querySelectorAll('#pick-list button').forEach((b) => b.classList.toggle('on', b.dataset.code === code));
-    const n = N(code);
-    const ids = provsOf(code);
-    if (fly && ids.length) map.flyToBounds(L.latLngBounds(ids.map((i) => [P[i].lat, P[i].lon])).pad(0.6), { duration: 0.6, maxZoom: 6 });
-    const wars = enemiesOf(code).map((e) => N(e).flag + ' ' + N(e).name).join(', ');
+  function pickCountry(i, fly) {
+    ui.pickIdx = i;
+    paintAll();
+    document.querySelectorAll('#pick-list button').forEach((b) => b.classList.toggle('on', +b.dataset.idx === i));
+    const n = N(i);
+    if (fly) map.flyTo([latOfY(n.cy), lonOfX(n.cx)], Math.max(4, Math.min(6, 9.5 - Math.log2(Math.sqrt(n.cells)))), { duration: 0.6 });
+    const wars = enemiesOf(i).map((e) => N(e).flag + ' ' + N(e).name).join(', ');
     $('pick-confirm').innerHTML = `<div class="p-head"><span class="flag">${n.flag}</span><div><div class="p-title">${esc(n.name)}</div>
-      <div class="p-sub">${ids.length} provinces · ${fmtT(strength(code))} troops${wars ? ' · at war with ' + esc(wars) : ''}</div></div></div>
+      <div class="p-sub">${fmtKm(n.km)} · ${fmtT(n.t)} troops${wars ? ' · at war with ' + esc(wars) : ''}</div></div></div>
       <div class="p-row" style="margin-top:12px"><button class="primary" id="pick-go">Play as ${esc(n.name)} ›</button></div>`;
     $('pick-confirm').classList.remove('hidden');
-    $('pick-go').onclick = () => beginGame(code);
+    $('pick-go').onclick = () => beginGame(i);
   }
 
-  function beginGame(code) {
-    S.player = code;
+  function beginGame(i) {
+    S.player = i;
     hideScreens();
     clearInterval(titleDrift);
-    ui.mode = 'game'; ui.sel = null; ui.pickCode = null;
+    ui.mode = 'game'; ui.info = i; ui.pickIdx = 0;
+    setDraw(false);
     $('hud').classList.remove('hidden');
-    restyleAll(); updateHud(); renderPanel();
-    const ids = provsOf(code);
-    if (ids.length) map.flyToBounds(L.latLngBounds(ids.map((i) => [P[i].lat, P[i].lon])).pad(0.9), { duration: 0.8, maxZoom: 6 });
+    recount(); paintAll(); updateHud(); renderPanel();
+    const n = N(i);
+    map.flyTo([latOfY(n.cy), lonOfX(n.cx)], Math.max(4, Math.min(7, 10 - Math.log2(Math.sqrt(n.cells)))), { duration: 0.8 });
     S.speed = 0;
-    toast(`${N(code).flag} You lead ${N(code).name}. The game is paused — press 1× when ready, commander!`);
+    toast(S.sandbox ? `${n.flag} Sandbox: tap ✏️ and draw to paint land for ${n.name}.` : `${n.flag} You lead ${n.name}. Paused — tap ✏️ to draw an attack, then press 1×.`);
     save();
   }
 
-  // custom nation
   const SWATCHES = ['#f5b83d', '#ff6b00', '#e0307a', '#9b4dff', '#00c2a8', '#28c840', '#00a2ff', '#ffffff', '#111827', '#8b5a2b'];
   const EMBLEMS = ['🦅', '🐻', '🦁', '🐺', '🐉', '👑', '⚔️', '🔥', '⭐', '🌙', '🍊', '🛡️'];
   function startCustom() {
+    clearInterval(titleDrift);
     ui.custom = ui.custom || { color: SWATCHES[0], flag: EMBLEMS[10] };
     hideScreens();
     $('screen-custom').classList.remove('hidden');
     $('cn-colors').innerHTML = SWATCHES.map((c) => `<button data-c="${c}" style="background:${c}" class="${ui.custom.color === c ? 'on' : ''}"></button>`).join('');
     $('cn-emblems').innerHTML = EMBLEMS.map((f) => `<button data-f="${f}" class="${ui.custom.flag === f ? 'on' : ''}">${f}</button>`).join('');
   }
-  $('cn-colors').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    ui.custom.color = b.dataset.c; startCustom();
-  });
-  $('cn-emblems').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    ui.custom.flag = b.dataset.f; startCustom();
-  });
+  $('cn-colors').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { ui.custom.color = b.dataset.c; startCustom(); } });
+  $('cn-emblems').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { ui.custom.flag = b.dataset.f; startCustom(); } });
   $('cn-next').onclick = () => {
-    ui.custom.name = ($('cn-name').value || 'New Nation').trim().slice(0, 24);
-    ui.custom.war = $('cn-war').checked;
-    ui.custom.claim = null;
+    const c = ui.custom;
+    c.name = ($('cn-name').value || 'New Nation').trim().slice(0, 24);
+    c.war = $('cn-war').checked;
+    c.history = [];
     newGame(opts());
-    ui.mode = 'pickCustom';
+    const n = { idx: S.N.length, code: 'CUS', name: c.name, color: c.color, flag: c.flag, power: 1.2, t: 0, gold: 150, alive: true, cells: 0, val: 0, km: 0, start: 0, cap: -1, cx: 0, cy: 0, custom: true };
+    S.N.push(n);
+    c.idx = n.idx;
+    buildPalette();
+    ui.mode = 'found';
     hideScreens();
     $('screen-pick').classList.remove('hidden');
-    $('pick-title').textContent = `${ui.custom.flag} ${ui.custom.name}`;
-    $('pick-hint').textContent = 'Tap the province where your nation will rise';
+    $('pick-title').textContent = `${c.flag} ${c.name}`;
+    $('pick-hint').textContent = 'Draw your borders with your finger · pinch to zoom';
     $('pick-list').innerHTML = '';
-    restyleAll();
+    setDraw(true);
+    renderFoundSheet();
   };
 
-  function pickCustomLand(id) {
-    const from = owner(id);
-    const claim = [id];
-    const extra = P[id].adj.filter((a) => !a.sea && owner(a.id) === from && !P[a.id].cap).map((a) => a.id)
-      .sort((x, y) => P[y].val - P[x].val).slice(0, 2);
-    claim.push(...extra);
-    ui.custom.claim = claim;
-    ui.custom.from = from;
-    applyHighlights();
-    const c = ui.custom;
-    const total = claim.reduce((s, i) => s + S.prov[i].t, 0) * 1.4;
-    $('pick-confirm').innerHTML = `<div class="p-head"><span class="flag">${c.flag}</span><div><div class="p-title">${esc(c.name)}</div>
-      <div class="p-sub">${claim.length} provinces around ${esc(P[id].name)} · ~${fmtT(total)} troops · breaking away from ${N(from).flag} ${esc(N(from).name)}</div></div></div>
-      <div class="p-row" style="margin-top:12px"><button class="primary" id="pick-go">Found ${esc(c.name)} ›</button></div>`;
-    $('pick-confirm').classList.remove('hidden');
-    $('pick-go').onclick = foundNation;
-  }
-
-  function foundNation() {
-    const c = ui.custom;
-    const code = 'CUS';
-    S.nations[code] = { code, name: c.name, color: c.color, flag: c.flag, power: 1.2, gold: 150, alive: true, start: c.claim.length, capital: c.claim[0], lost: 0, custom: true };
-    for (const id of c.claim) {
-      const prev = S.prov[id].o;
-      S.nations[prev].start--;
-      if (S.nations[prev].capital === id) S.nations[prev].capital = null;
-      S.prov[id].o = code;
-      S.prov[id].t = Math.round(S.prov[id].t * 1.4 * 10) / 10;
-    }
-    S.prov[c.claim[0]].f = Math.max(1, S.prov[c.claim[0]].f);
-    if (c.war) declareWar(c.from, code, true);
-    beginGame(code);
-    news(`${c.flag} ${c.name} has declared independence from ${N(c.from).name}!`, c.war ? 'war' : '');
-  }
-
   // ------------------------------------------------------------------ save / load
-  function hasSave() { try { return !!localStorage.getItem('ia_save'); } catch (e) { return false; } }
+  function hasSave() { try { return !!localStorage.getItem('ia_save2'); } catch (e) { return false; } }
+  function encodeOwn() {
+    const runs = [];
+    for (let i = 0; i < OWN.length;) { let j = i; while (j < OWN.length && OWN[j] === OWN[i] && j - i < 65535) j++; runs.push(OWN[i], j - i); i = j; }
+    let s = '';
+    const u8 = new Uint8Array(new Uint16Array(runs).buffer);
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function decodeOwn(b64) {
+    const bin = atob(b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const runs = new Uint16Array(u8.buffer);
+    let o = 0;
+    for (let i = 0; i < runs.length; i += 2) { OWN.fill(runs[i], o, o + runs[i + 1]); o += runs[i + 1]; }
+  }
   function save() {
-    if (!S || !S.player || S.over) return;
-    try { localStorage.setItem('ia_save', JSON.stringify(S)); } catch (e) { /* storage full or disabled */ }
+    if (!S || !S.player || S.over || ui.mode !== 'game') return;
+    // offensives in progress are refunded to the reserve in the save
+    const N2 = S.N.map((n) => (n ? Object.assign({}, n, { t: n.t + committed(n.idx) }) : null));
+    try { localStorage.setItem('ia_save2', JSON.stringify(Object.assign({}, S, { N: N2, own: encodeOwn() }))); } catch (e) { /* storage full */ }
   }
   function load() {
     try {
-      const s = JSON.parse(localStorage.getItem('ia_save'));
-      if (!s || s.prov.length !== P.length) return false;
+      const s = JSON.parse(localStorage.getItem('ia_save2'));
+      if (!s || !s.own) return false;
+      decodeOwn(s.own);
+      delete s.own;
       S = s;
       return true;
     } catch (e) { return false; }
@@ -1015,40 +1190,37 @@
   $('btn-howto').onclick = () => { $('screen-title').classList.add('hidden'); howTo(); };
   $('btn-continue').onclick = () => {
     if (!load()) { toast('Save could not be loaded.'); return; }
-    hideScreens();
-    clearInterval(titleDrift);
-    ui.mode = 'game'; ui.sel = null;
-    $('hud').classList.remove('hidden');
-    restyleAll(); updateHud();
-    const ids = provsOf(S.player);
-    if (ids.length) map.flyToBounds(L.latLngBounds(ids.map((i) => [P[i].lat, P[i].lon])).pad(0.9), { duration: 0.8, maxZoom: 6 });
+    beginGame(S.player);
   };
   document.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => toTitle(); });
   document.querySelectorAll('.speed button').forEach((b) => { b.onclick = () => { S.speed = +b.dataset.speed; updateHud(); }; });
   $('btn-menu').onclick = gameMenu;
   $('btn-diplo').onclick = diplomacy;
   $('btn-news').onclick = newsModal;
-  $('btn-nation').onclick = () => {
-    const ids = provsOf(S.player);
-    if (ids.length) map.flyToBounds(L.latLngBounds(ids.map((i) => [P[i].lat, P[i].lon])).pad(0.6), { duration: 0.6, maxZoom: 7 });
-  };
+  $('btn-draw').onclick = () => { if (pending) cancelPending(); setDraw(!ui.draw); };
+  $('btn-nation').onclick = () => { ui.info = S.player; renderPanel(); const n = N(S.player); map.flyTo([latOfY(n.cy), lonOfX(n.cx)], map.getZoom(), { duration: 0.5 }); };
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
-  // Android back button: returns true when handled
   window.IA = {
     save,
     onBack() {
       if (ui.modalOpen) { closeModal(); return true; }
-      if (ui.mode === 'game') { if (ui.sel != null) { select(null); return true; } gameMenu(); return true; }
-      if (ui.mode === 'pick' || ui.mode === 'pickCustom' || !$('screen-custom').classList.contains('hidden')) { toTitle(); return true; }
+      if (pending) { cancelPending(); return true; }
+      if (ui.mode === 'game') {
+        if (ui.draw) { setDraw(false); return true; }
+        if (ui.info != null) { ui.info = null; renderPanel(); return true; }
+        gameMenu(); return true;
+      }
+      if (ui.mode !== 'title') { toTitle(); return true; }
       return false;
     },
     // test hooks
-    _state: () => S, _P: P, _xy: (id) => map.latLngToContainerPoint([P[id].lat, P[id].lon]), _map: map, _sim(days) { for (let i = 0; i < days; i++) { advanceArmies(1); tickDay(); } },
+    _state: () => S, _own: () => OWN, _off: () => OFF.map((o) => ({ a: S.N[o.a].code, t: Math.round(o.t), taken: o.taken, total: o.total, q: o.queue.length, naval: o.naval })), _map: map, _P: P,
+    _sim(days) { for (let i = 0; i < days; i++) tickDay(); flush(); },
+    _lasso(lls) { const poly = lls.map(([la, lo]) => [xOfLon(lo), yOfLat(la)]); return cellsInPolygon(poly); },
   };
 
   resize();
-  computeSizes();
   toTitle();
   requestAnimationFrame(frame);
 })();

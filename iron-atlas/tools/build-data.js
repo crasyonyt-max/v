@@ -206,7 +206,7 @@ function kmeans(points, k) {
 
 // ---- 1. simplify topology (keeps shared borders identical) and extract countries
 const pre = ts.presimplify(topo);
-const simp = ts.simplify(pre, ts.quantile(pre, 0.45));
+const simp = ts.simplify(pre, ts.quantile(pre, 0.75));
 const geoms = simp.objects.countries.geometries;
 const groups = {};
 for (const g of geoms) {
@@ -334,114 +334,59 @@ for (const c of countries) {
   if (!ps.some((p) => p.capital)) ps.sort((a, b) => b.area - a.area)[0].capital = true;
 }
 
-// ---- 4. adjacency
 const round = (v) => Math.round(v * 1000) / 1000;
-provinces.forEach((p, i) => {
-  p.id = i;
-  p.mp = p.mp.map((poly) => poly.map((r) => r.map(([x, y]) => [round(x), round(y)])));
-  p.verts = [];
-  p.mp.forEach((poly) => poly.forEach((r) => r.forEach((v) => p.verts.push(v))));
-  const xs = p.verts.map((v) => v[0]), ys = p.verts.map((v) => v[1]);
-  p.bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
-});
-const CELL = 0.5;
-const grid = new Map();
-provinces.forEach((p) => p.verts.forEach((v, vi) => {
-  const k = Math.floor(v[0] / CELL) + ':' + Math.floor(v[1] / CELL);
-  if (!grid.has(k)) grid.set(k, []);
-  grid.get(k).push([p.id, v]);
-}));
-function near(v, km) {
-  const out = [];
-  const gx = Math.floor(v[0] / CELL), gy = Math.floor(v[1] / CELL);
-  for (let dx = -2; dx <= 2; dx++) for (let dy = -1; dy <= 1; dy++) {
-    const arr = grid.get(gx + dx + ':' + (gy + dy));
-    if (arr) for (const [id, w] of arr) if (distKm(v, w) <= km) out.push([id, w]);
-  }
-  return out;
-}
-const land = provinces.map(() => new Set());
-const strait = provinces.map(() => new Set());
-const coastal = provinces.map(() => []);
-for (const p of provinces) {
-  for (const v of p.verts) {
-    let shared = false;
-    for (const [id, w] of near(v, 32)) {
-      if (id === p.id) continue;
-      const d = distKm(v, w);
-      if (d < 1.5) { land[p.id].add(id); shared = true; } else strait[p.id].add(id);
-    }
-    if (!shared) coastal[p.id].push(v);
-  }
-}
-const links = provinces.map(() => new Map()); // id -> type (0 land, 1 sea)
-provinces.forEach((p) => {
-  land[p.id].forEach((q) => { links[p.id].set(q, 0); links[q].set(p.id, 0); });
-});
-provinces.forEach((p) => {
-  strait[p.id].forEach((q) => { if (!links[p.id].has(q)) { links[p.id].set(q, 1); links[q].set(p.id, 1); } });
-});
-// longer sea lanes between coasts (max 4 per province), only if the lane crosses water
-const onLand = (pt) => provinces.some((q) => pt[0] >= q.bb[0] && pt[0] <= q.bb[2] && pt[1] >= q.bb[1] && pt[1] <= q.bb[3] && pointInMP(pt, q.mp));
-const sampled = coastal.map((cv) => cv.filter((_, i) => i % 3 === 0));
-for (const p of provinces) {
-  if (!sampled[p.id].length) continue;
-  const cands = [];
-  for (const q of provinces) {
-    if (q.id === p.id || links[p.id].has(q.id) || !sampled[q.id].length) continue;
-    if (q.bb[0] > p.bb[2] + 5 || q.bb[2] < p.bb[0] - 5 || q.bb[1] > p.bb[3] + 3 || q.bb[3] < p.bb[1] - 3) continue;
-    let bd = Infinity, pair = null;
-    for (const a of sampled[p.id]) for (const b of sampled[q.id]) {
-      const d = distKm(a, b);
-      if (d < bd) { bd = d; pair = [a, b]; }
-    }
-    if (bd > 320) continue;
-    let wet = true;
-    for (let t = 0.15; t <= 0.851; t += 0.1) {
-      const pt = [pair[0][0] + (pair[1][0] - pair[0][0]) * t, pair[0][1] + (pair[1][1] - pair[0][1]) * t];
-      if (onLand(pt)) { wet = false; break; }
-    }
-    if (wet) cands.push([bd, q.id]);
-  }
-  cands.sort((a, b) => a[0] - b[0]).slice(0, 4).forEach(([, q]) => { links[p.id].set(q, 1); links[q].set(p.id, 1); });
-}
+provinces.forEach((p, i) => { p.id = i; });
 
-// connect islands that are still cut off (e.g. Iceland) to the nearest other coast
-for (;;) {
-  const comp = new Array(provinces.length).fill(-1);
-  let nc = 0;
-  for (const p of provinces) {
-    if (comp[p.id] >= 0) continue;
-    const st = [p.id]; comp[p.id] = nc;
-    while (st.length) { const u = st.pop(); for (const v of links[u].keys()) if (comp[v] < 0) { comp[v] = nc; st.push(v); } }
-    nc++;
+// ---- 5. rasterize provinces onto a Web-Mercator grid (cell value = province id + 1)
+const GW = 1600;
+const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * RAD) / 2));
+const MT = mercY(BBOX[3]), MB = mercY(BBOX[1]);
+const GH = Math.round((GW * (MT - MB)) / ((BBOX[2] - BBOX[0]) * RAD));
+const gx = (lon) => ((lon - BBOX[0]) / (BBOX[2] - BBOX[0])) * GW;
+const gy = (lat) => ((MT - mercY(lat)) / (MT - MB)) * GH;
+const grid = new Uint16Array(GW * GH);
+for (const p of provinces) {
+  const edges = [];
+  p.mp.forEach((poly) => poly.forEach((ring) => {
+    for (let i = 0; i < ring.length - 1; i++) {
+      const a = [gx(ring[i][0]), gy(ring[i][1])], b = [gx(ring[i + 1][0]), gy(ring[i + 1][1])];
+      if (a[1] !== b[1]) edges.push(a[1] < b[1] ? [a, b] : [b, a]);
+    }
+  }));
+  let y0 = Infinity, y1 = -Infinity;
+  edges.forEach(([a, b]) => { y0 = Math.min(y0, a[1]); y1 = Math.max(y1, b[1]); });
+  for (let r = Math.max(0, Math.floor(y0)); r <= Math.min(GH - 1, Math.ceil(y1)); r++) {
+    const yc = r + 0.5, xs = [];
+    for (const [a, b] of edges) if (yc >= a[1] && yc < b[1]) xs.push(a[0] + ((yc - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+    xs.sort((m, n) => m - n);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const c0 = Math.max(0, Math.ceil(xs[i] - 0.5)), c1 = Math.min(GW - 1, Math.floor(xs[i + 1] - 0.5));
+      for (let c = c0; c <= c1; c++) if (!grid[r * GW + c]) grid[r * GW + c] = p.id + 1;
+    }
   }
-  if (nc === 1) break;
-  const sizes = new Array(nc).fill(0); comp.forEach((c) => sizes[c]++);
-  const small = sizes.indexOf(Math.min(...sizes));
-  let best = [Infinity];
-  for (const p of provinces) if (comp[p.id] === small) for (const q of provinces) if (comp[q.id] !== small) {
-    for (const a of sampled[p.id]) for (const b of sampled[q.id]) { const d = distKm(a, b); if (d < best[0]) best = [d, p.id, q.id]; }
-  }
-  links[best[1]].set(best[2], 1); links[best[2]].set(best[1], 1);
-  console.log('linked island', provinces[best[1]].name, '<->', provinces[best[2]].name, Math.round(best[0]), 'km');
 }
+// run-length encode as uint16 pairs [value, length]
+const runs = [];
+for (let i = 0; i < grid.length;) {
+  let j = i;
+  while (j < grid.length && grid[j] === grid[i] && j - i < 65535) j++;
+  runs.push(grid[i], j - i);
+  i = j;
+}
+const rle = Buffer.from(new Uint16Array(runs).buffer).toString('base64');
+const cells = new Array(provinces.length).fill(0);
+grid.forEach((v) => { if (v) cells[v - 1]++; });
 
-// ---- 5. output
 const out = {
+  bbox: BBOX, w: GW, h: GH,
   countries: countries.map((c) => ({ code: c.code, name: c.name, power: c.power })),
   provinces: provinces.map((p) => ({
-    id: p.id, c: p.country, n: p.name, cap: p.capital ? 1 : 0,
-    a: Math.round(p.area), l: [round(p.label[0]), round(p.label[1])],
-    coast: coastal[p.id].length > 0 ? 1 : 0,
-    adj: [...links[p.id].entries()].map(([q, t]) => (t ? -(q + 1) : q + 1)),
-    g: p.mp,
+    c: p.country, n: p.name, cap: p.capital ? 1 : 0, a: Math.round(p.area), k: cells[p.id],
+    l: [round(p.label[0]), round(p.label[1])],
   })),
+  rle,
 };
-const target = path.join(__dirname, '..', 'www', 'data', 'provinces.js');
+const target = path.join(__dirname, '..', 'www', 'data', 'territory.js');
 fs.mkdirSync(path.dirname(target), { recursive: true });
 fs.writeFileSync(target, 'window.IA_DATA=' + JSON.stringify(out) + ';\n');
-const isolated = out.provinces.filter((p) => !p.adj.length).map((p) => p.n);
-console.log(`countries ${out.countries.length}, provinces ${out.provinces.length}, size ${(fs.statSync(target).size / 1024).toFixed(0)} KB`);
-console.log('isolated:', isolated.join(', ') || 'none');
-console.log('capitals:', out.provinces.filter((p) => p.cap).map((p) => p.c + ':' + p.n).join(', '));
+console.log(`grid ${GW}x${GH}, runs ${runs.length / 2}, provinces ${provinces.length}, empty ${cells.filter((k) => !k).length}, size ${(fs.statSync(target).size / 1024).toFixed(0)} KB`);

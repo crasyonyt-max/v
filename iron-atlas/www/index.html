@@ -10,6 +10,7 @@
 <body>
 <div id="map"></div>
 <canvas id="fx"></canvas>
+<div id="draw-layer" class="hidden"></div>
 
 <!-- In-game HUD -->
 <div id="hud" class="hidden">
@@ -30,6 +31,8 @@
     <button id="btn-news" class="pill">📰</button>
   </div>
   <div id="toasts"></div>
+  <div id="draw-banner" class="hidden">✏️ Draw a loop around enemy land to invade it</div>
+  <button id="btn-draw" class="fab" aria-label="Draw">✏️<span>Draw</span></button>
   <div id="panel" class="hidden"></div>
 </div>
 
@@ -50,6 +53,7 @@
         <select id="opt-scenario">
           <option value="present">Present day (2026)</option>
           <option value="peace">Peaceful Europe</option>
+          <option value="sandbox">Sandbox (paint freely)</option>
         </select>
       </label>
       <label>AI aggression
@@ -86,7 +90,7 @@
     <label class="check"><input type="checkbox" id="cn-war" checked> Declare independence (start at war with the country you break away from)</label>
     <div class="row">
       <button class="big ghost" data-back>Back</button>
-      <button class="big primary" id="cn-next">Choose Land ›</button>
+      <button class="big primary" id="cn-next">Draw Borders ›</button>
     </div>
   </div>
 </div>
@@ -94,7 +98,7 @@
 <div id="modal" class="screen hidden"><div class="modal" id="modal-body"></div></div>
 
 <script src="lib/leaflet.js"></script>
-<script src="data/provinces.js"></script>
+<script src="data/territory.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

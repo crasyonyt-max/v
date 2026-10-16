@@ -147,3 +147,20 @@ select, input[type=text], .field input { width: 100%; margin-top: 4px; backgroun
   .stat { font-size: 12px; }
   #hud-name { display: none; }
 }
+
+/* ---------- drawing ---------- */
+#draw-layer { position: absolute; inset: 0; z-index: 500; touch-action: none; cursor: crosshair; }
+.fab { position: absolute; right: 12px; bottom: calc(14px + var(--safe-bottom)); width: 64px; height: 64px; border-radius: 50%;
+  background: linear-gradient(180deg, #ffcf66, #e6a21f); color: #1a1200; font-size: 24px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(0,0,0,.45); line-height: 1; }
+.fab span { font-size: 10px; font-weight: 800; margin-top: 2px; }
+.fab.on { background: #d8432e; color: #fff; box-shadow: 0 0 0 4px rgba(216,67,46,.35), 0 6px 20px rgba(0,0,0,.45); }
+#hud.panel-open .fab { bottom: calc(14px + var(--safe-bottom) + var(--panel-h, 0px)); }
+#draw-banner { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(90px + var(--safe-bottom)); background: #d8432e; color: #fff;
+  font-weight: 700; font-size: 13px; padding: 8px 14px; border-radius: 999px; white-space: nowrap; pointer-events: none !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+.terr { image-rendering: auto; }
+.off-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line); }
+.off-row .bar { flex: 1; height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+.off-row .bar i { display: block; height: 100%; background: var(--red); }
+.off-row button { background: rgba(255,255,255,.1); border-radius: 8px; padding: 4px 8px; font-weight: 700; }
