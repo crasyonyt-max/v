@@ -8,6 +8,7 @@
 
 - `downloads/` — app installers (.apk and .exe) linked from the website's download buttons.
 - `assets/nova-logo.png` — company logo.
+- `iron-atlas/` — source of **Iron Atlas**, a satellite-map conquest game for Android (`downloads/IronAtlas.apk`). See [iron-atlas/README.md](iron-atlas/README.md).
 - `wordpress/homepage.html` — the homepage, in WordPress block format.
 
 ## Add the homepage to WordPress (novasystemsllc.wordpress.com)

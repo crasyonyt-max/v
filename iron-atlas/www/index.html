@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Iron Atlas</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="map"></div>
+<canvas id="fx"></canvas>
+
+<!-- In-game HUD -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <button id="btn-nation" class="nation-chip"><span id="hud-flag"></span><span id="hud-name"></span></button>
+    <div class="stat" title="Treasury"><span class="ico">💰</span><span id="hud-gold">0</span></div>
+    <div class="stat" title="Total troops"><span class="ico">🪖</span><span id="hud-troops">0</span></div>
+    <div class="stat" title="Provinces"><span class="ico">🗺️</span><span id="hud-prov">0</span></div>
+    <button id="btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+  </div>
+  <div id="timebar">
+    <span id="hud-date">16.10.2026</span>
+    <div class="speed">
+      <button data-speed="0">⏸</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
+    </div>
+    <span class="grow"></span>
+    <button id="btn-diplo" class="pill">🤝 <span class="wide">Diplomacy</span></button>
+    <button id="btn-news" class="pill">📰</button>
+  </div>
+  <div id="toasts"></div>
+  <div id="panel" class="hidden"></div>
+</div>
+
+<!-- Menus / modals -->
+<div id="screen-title" class="screen">
+  <div class="title-box">
+    <div class="emblem" id="emblem"></div>
+    <h1>IRON ATLAS</h1>
+    <div class="subtitle">Conquest of Europe</div>
+    <div class="menu-buttons">
+      <button id="btn-continue" class="big hidden">▶ Continue</button>
+      <button id="btn-play-country" class="big primary">🏳️ Play as a Country</button>
+      <button id="btn-play-custom" class="big">✨ Create Your Own Nation</button>
+      <button id="btn-howto" class="big ghost">❔ How to Play</button>
+    </div>
+    <div class="settings-row">
+      <label>Scenario
+        <select id="opt-scenario">
+          <option value="present">Present day (2026)</option>
+          <option value="peace">Peaceful Europe</option>
+        </select>
+      </label>
+      <label>AI aggression
+        <select id="opt-aggr">
+          <option value="0.5">Calm</option>
+          <option value="1" selected>Normal</option>
+          <option value="2">Chaos</option>
+        </select>
+      </label>
+    </div>
+    <div class="credit">Imagery © Esri, Maxar, Earthstar Geographics · Borders © Natural Earth</div>
+  </div>
+</div>
+
+<div id="screen-pick" class="screen hidden overlay-top">
+  <div class="pick-head">
+    <button class="icon-btn back" data-back>‹</button>
+    <div>
+      <div class="pick-title" id="pick-title">Choose your country</div>
+      <div class="pick-hint" id="pick-hint">Tap a country on the map or pick from the list</div>
+    </div>
+  </div>
+  <div id="pick-list" class="pick-list"></div>
+</div>
+
+<div id="pick-confirm" class="sheet hidden"></div>
+
+<div id="screen-custom" class="screen hidden">
+  <div class="modal">
+    <h2>✨ Found a New Nation</h2>
+    <label class="field">Nation name<input id="cn-name" maxlength="24" value="Fanta Empire"></label>
+    <div class="field">Color<div id="cn-colors" class="swatches"></div></div>
+    <div class="field">Emblem<div id="cn-emblems" class="swatches emblems"></div></div>
+    <label class="check"><input type="checkbox" id="cn-war" checked> Declare independence (start at war with the country you break away from)</label>
+    <div class="row">
+      <button class="big ghost" data-back>Back</button>
+      <button class="big primary" id="cn-next">Choose Land ›</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="screen hidden"><div class="modal" id="modal-body"></div></div>
+
+<script src="lib/leaflet.js"></script>
+<script src="data/provinces.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
