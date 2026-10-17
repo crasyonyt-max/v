@@ -11,8 +11,8 @@ SDK=${ANDROID_SDK:-/usr/lib/android-sdk}
 JAR=${ANDROID_JAR:-$(ls -d "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)}
 BT=$(ls -d "$SDK"/build-tools/*/ | sort -V | grep -v debian | tail -1)
 DX=${DX:-$BT/dx}
-VERSION_CODE=${VERSION_CODE:-2}
-VERSION_NAME=${VERSION_NAME:-1.1.0}
+VERSION_CODE=${VERSION_CODE:-3}
+VERSION_NAME=${VERSION_NAME:-1.2.0}
 KEYSTORE=${KEYSTORE:-$ROOT/android/ironatlas.keystore}
 KS_PASS=${KS_PASS:-ironatlas}
 

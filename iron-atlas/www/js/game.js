@@ -37,6 +37,47 @@
   let LAND = 0;
   for (let i = 0; i < PROV.length; i++) if (PROV[i]) LAND++;
 
+  // nation index of each cell's original country (nations are created in D.countries order, from 1)
+  const CIDX = {};
+  D.countries.forEach((c, k) => { CIDX[c.code] = k + 1; });
+  const ORIG = new Uint8Array(W * H);
+  for (let i = 0; i < PROV.length; i++) if (PROV[i]) ORIG[i] = CIDX[P[PROV[i] - 1].c];
+
+  // flood-fill helper over 4-connected cells; same(i, j) decides whether j joins i's component
+  const STACK = new Int32Array(W * H);
+  function floodLabel(out, same, onCell) {
+    out.fill(-1);
+    let id = 0;
+    for (let s0 = 0; s0 < out.length; s0++) {
+      if (out[s0] !== -1 || !same(s0, s0)) continue;
+      let sp = 0;
+      STACK[sp++] = s0; out[s0] = id;
+      while (sp) {
+        const c = STACK[--sp];
+        if (onCell) onCell(c, id);
+        const x = c % W;
+        if (x > 0 && out[c - 1] === -1 && same(c, c - 1)) { out[c - 1] = id; STACK[sp++] = c - 1; }
+        if (x < W - 1 && out[c + 1] === -1 && same(c, c + 1)) { out[c + 1] = id; STACK[sp++] = c + 1; }
+        if (c >= W && out[c - W] === -1 && same(c, c - W)) { out[c - W] = id; STACK[sp++] = c - W; }
+        if (c < W * (H - 1) && out[c + W] === -1 && same(c, c + W)) { out[c + W] = id; STACK[sp++] = c + W; }
+      }
+      id++;
+    }
+    return id;
+  }
+  // landmasses (continent vs islands) and each country's natural exclaves (Kaliningrad, islands, …)
+  const LM = new Int32Array(W * H);
+  floodLabel(LM, (i, j) => PROV[i] > 0 && PROV[j] > 0);
+  const NAT = new Uint8Array(W * H);
+  (function naturalExclaves() {
+    const comp = new Int32Array(W * H);
+    const sizes = [], owner = [];
+    floodLabel(comp, (i, j) => ORIG[i] > 0 && ORIG[j] === ORIG[i], (c, id) => { sizes[id] = (sizes[id] || 0) + 1; owner[id] = ORIG[c]; });
+    const main = {};
+    sizes.forEach((sz, id) => { const o = owner[id]; if (main[o] == null || sz > sizes[main[o]]) main[o] = id; });
+    for (let i = 0; i < comp.length; i++) if (comp[i] >= 0 && main[ORIG[i]] !== comp[i]) NAT[i] = 1;
+  })();
+
   const ISO2 = {
     ALB: 'AL', ARM: 'AM', AUT: 'AT', AZE: 'AZ', BLR: 'BY', BEL: 'BE', BIH: 'BA', BGR: 'BG', HRV: 'HR', CYP: 'CY', CZE: 'CZ',
     DNK: 'DK', EST: 'EE', FIN: 'FI', FRA: 'FR', GEO: 'GE', DEU: 'DE', GRC: 'GR', HUN: 'HU', ISL: 'IS', IRL: 'IE', ITA: 'IT',
@@ -75,6 +116,7 @@
   function newGame(opts) {
     OFF.forEach((o) => o.layer && map.removeLayer(o.layer));
     OFF = [];
+    CUT.fill(0); POCKETS = []; HELD = new Set();
     S = { v: 2, day: 0, speed: 1, player: 0, aggr: opts.aggr, scenario: opts.scenario, sandbox: opts.scenario === 'sandbox',
       N: [null], wars: [], truces: [], news: [], over: false, won: false, nextOff: 1 };
     const byCode = {};
@@ -229,8 +271,9 @@
     for (let i = 1; i < S.N.length; i++) {
       const n = S.N[i];
       const [r, g, b] = hexRgb(n.color);
-      const focus = ui.mode === 'pick' && ui.pickIdx === i;
-      const dim = ui.mode === 'pick' && ui.pickIdx && !focus;
+      const tr = ui.mode === 'treaty' && ui.treaty;
+      const focus = (ui.mode === 'pick' && ui.pickIdx === i) || (tr && (tr.a === i || tr.b === i));
+      const dim = (ui.mode === 'pick' && ui.pickIdx && !focus) || (tr && !focus);
       const a = focus ? 190 : dim ? 70 : isPlayer(i) ? 135 : 112;
       FILL[i] = ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
       const ea = focus ? 255 : 225;
@@ -275,7 +318,8 @@
     const old = OWN[i];
     if (old === a) return;
     const v = CELL_VAL[PROV[i] - 1], km = CELL_KM2[PROV[i] - 1];
-    if (old) { const o = S.N[old]; o.cells--; o.val -= v; o.km -= km; }
+    if (old) { const o = S.N[old]; o.cells--; o.val -= v; o.km -= km; DIRTYN.add(old); }
+    DIRTYN.add(a);
     const n = S.N[a]; n.cells++; n.val += v; n.km += km;
     OWN[i] = a;
     markDirty(i);
@@ -427,6 +471,147 @@
     if (!o.target.size || o.t <= 0.3) endOffensive(o);
   }
 
+  // ------------------------------------------------------------------ encirclement
+  // Land of a nation at war that is cut off from its mainland (and isn't a natural exclave or a
+  // separate island) is lost after POCKET_DAYS: annexed by, or split between, the enemies around it.
+  const POCKET_DAYS = 7;
+  const TINY_POCKET = 40; // cells (~400 km²)
+  const COMP = new Int32Array(W * H);
+  const CUT = new Uint16Array(W * H); // day+1 a cell was first seen inside a pocket
+  let cutAny = false;
+  let POCKETS = []; // for drawing countdowns
+  // Only nations whose land changed (or that hold a pocket) are re-checked, so quiet fronts cost nothing.
+  const GEN = new Uint32Array(W * H); // COMP is valid for a cell only when GEN matches the current pass
+  let gen = 0;
+  let DIRTYN = new Set();
+  let HELD = new Set(); // nations that currently have a pocket
+  function checkPockets(onlyHeld) {
+    if (onlyHeld && !HELD.size) return;
+    if (!S.wars.length || S.sandbox) { if (cutAny) { CUT.fill(0); cutAny = false; } DIRTYN.clear(); HELD.clear(); return; }
+    const todo = new Uint8Array(S.N.length);
+    let any = false;
+    const warring = new Uint8Array(S.N.length);
+    S.wars.forEach((w) => { warring[w.a] = 1; warring[w.b] = 1; });
+    if (!onlyHeld) DIRTYN.forEach((i) => { if (warring[i]) { todo[i] = 1; any = true; } });
+    HELD.forEach((i) => { todo[i] = 1; any = true; });
+    if (onlyHeld) HELD.forEach((i) => DIRTYN.delete(i)); else DIRTYN = new Set();
+    if (!any) return;
+    gen++;
+    const comps = [];
+    const day1 = Math.min(65534, S.day + 1);
+    for (let s0 = 0; s0 < OWN.length; s0++) {
+      const o = OWN[s0];
+      if (!o || !todo[o] || GEN[s0] === gen) continue;
+      const id = comps.length;
+      const k = { o, size: 0, cap: false, nat: false, lm: LM[s0], first: 65535, nb: [], sx: 0, sy: 0, start: s0 };
+      comps.push(k);
+      const capCell = S.N[o].cap;
+      let sp = 0;
+      STACK[sp++] = s0; GEN[s0] = gen; COMP[s0] = id;
+      while (sp) {
+        const c = STACK[--sp];
+        k.size++;
+        const x = c % W;
+        k.sx += x; k.sy += (c - x) / W;
+        if (c === capCell) k.cap = true;
+        if (NAT[c] && ORIG[c] === o) k.nat = true;
+        const cu = CUT[c];
+        if (cu && cu < k.first) k.first = cu;
+        let j, q;
+        if (x > 0) { j = c - 1; q = OWN[j]; if (q === o) { if (GEN[j] !== gen) { GEN[j] = gen; COMP[j] = id; STACK[sp++] = j; } } else if (q && k.nb.indexOf(q) < 0) k.nb.push(q); }
+        if (x < W - 1) { j = c + 1; q = OWN[j]; if (q === o) { if (GEN[j] !== gen) { GEN[j] = gen; COMP[j] = id; STACK[sp++] = j; } } else if (q && k.nb.indexOf(q) < 0) k.nb.push(q); }
+        if (c >= W) { j = c - W; q = OWN[j]; if (q === o) { if (GEN[j] !== gen) { GEN[j] = gen; COMP[j] = id; STACK[sp++] = j; } } else if (q && k.nb.indexOf(q) < 0) k.nb.push(q); }
+        if (c < W * (H - 1)) { j = c + W; q = OWN[j]; if (q === o) { if (GEN[j] !== gen) { GEN[j] = gen; COMP[j] = id; STACK[sp++] = j; } } else if (q && k.nb.indexOf(q) < 0) k.nb.push(q); }
+      }
+    }
+    // mainland of each nation: the part holding its capital, else its largest part
+    const main = {};
+    comps.forEach((k, id) => {
+      const m = main[k.o];
+      if (m == null || (k.cap && !comps[m].cap) || (k.cap === comps[m].cap && k.size > comps[m].size)) main[k.o] = id;
+    });
+    const pocket = new Uint8Array(comps.length);
+    comps.forEach((k, id) => {
+      if (main[k.o] === id || k.nat || k.lm !== comps[main[k.o]].lm) return;
+      k.enemies = k.nb.filter((q) => atWar(k.o, q));
+      if (k.enemies.length) pocket[id] = 1;
+    });
+    POCKETS = [];
+    // refresh the "cut off since" day of every re-checked cell
+    cutAny = false;
+    for (let i = 0; i < OWN.length; i++) {
+      if (GEN[i] === gen) {
+        if (pocket[COMP[i]]) { if (!CUT[i]) CUT[i] = day1; cutAny = true; } else if (CUT[i]) CUT[i] = 0;
+      } else if (CUT[i]) {
+        if (todo[OWN[i]] || !warring[OWN[i]]) CUT[i] = 0; else cutAny = true;
+      }
+    }
+    HELD = new Set(); // every nation holding a pocket was in `todo`, so this is rebuilt below
+    const losers = new Set();
+    comps.forEach((k, id) => {
+      if (!pocket[id]) return;
+      if (k.size < TINY_POCKET) { annexPocket(id, k, true); losers.add(k.o); return; } // leftover slivers vanish at once
+      const age = k.first === 65535 ? 0 : day1 - k.first;
+      if (k.first === 65535 && isPlayer(k.o)) {
+        toast(`⚠️ ${fmtKm(k.size * 9)} of your land is encircled! Reconnect it within ${POCKET_DAYS} days or it's lost.`, 'war');
+      }
+      if (age < POCKET_DAYS) { HELD.add(k.o); POCKETS.push({ x: k.sx / k.size, y: k.sy / k.size, o: k.o, days: POCKET_DAYS - age, enemies: k.enemies }); return; }
+      annexPocket(id, k);
+      losers.add(k.o);
+    });
+    losers.forEach((l) => afterCaptures(S.N[l].lastTaker || 0, [l]));
+  }
+
+  function annexPocket(id, k, quiet) {
+    // grow outwards from every enemy border at once, so each enemy gets the part next to it
+    const cells = [];
+    // collect the pocket's cells by flooding from its first cell (no full-grid scan)
+    const seen = new Set([k.start]);
+    for (let q = [k.start]; q.length;) {
+      const c = q.pop();
+      cells.push(c);
+      const x = c % W;
+      for (const j of [x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1, c - W, c + W]) {
+        if (j >= 0 && j < OWN.length && !seen.has(j) && GEN[j] === gen && COMP[j] === id) { seen.add(j); q.push(j); }
+      }
+    }
+    const enemies = new Set(k.enemies);
+    const assign = new Map();
+    let queue = [];
+    for (const c of cells) {
+      const x = c % W;
+      const ns = [x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1, c - W, c + W];
+      for (const j of ns) if (j >= 0 && j < OWN.length && enemies.has(OWN[j])) { assign.set(c, OWN[j]); queue.push(c); break; }
+    }
+    while (queue.length) {
+      const next = [];
+      for (const c of queue) {
+        const x = c % W;
+        const ns = [x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1, c - W, c + W];
+        for (const j of ns) if (j >= 0 && j < OWN.length && GEN[j] === gen && COMP[j] === id && !assign.has(j)) { assign.set(j, assign.get(c)); next.push(j); }
+      }
+      queue = next;
+    }
+    const got = {};
+    let km = 0;
+    for (const c of cells) {
+      const to = assign.get(c) || k.enemies[0];
+      got[to] = (got[to] || 0) + 1;
+      km += kmOf(c);
+      const w = warOf(to, k.o);
+      if (w) { if (w.a === k.o) w.lostA++; else w.lostB++; }
+      setOwner(c, to);
+      CUT[c] = 0;
+    }
+    const takers = Object.keys(got).map(Number).sort((a, b) => got[b] - got[a]);
+    const lost = N(k.o);
+    lost.t = Math.max(0, lost.t - (lost.t * k.size) / Math.max(1, lost.cells + k.size)); // the trapped troops are lost
+    lost.lastTaker = takers[0];
+    if (!quiet) news(takers.length === 1
+      ? `🔻 An encircled pocket of ${lost.flag} ${lost.name} (${fmtKm(km)}) was annexed by ${N(takers[0]).flag} ${N(takers[0]).name}.`
+      : `🔻 An encircled pocket of ${lost.flag} ${lost.name} (${fmtKm(km)}) was split between ${takers.map((t) => N(t).flag + ' ' + N(t).name).join(' and ')}.`, 'war');
+  }
+
   // ------------------------------------------------------------------ AI
   function aiOffensive(a, e) {
     const samples = BORDERS.get(a * 256 + e);
@@ -519,6 +704,7 @@
     if (atWar(a, b) || a === b || !N(a).alive || !N(b).alive) return false;
     S.truces = S.truces.filter((t) => !((t.a === a && t.b === b) || (t.a === b && t.b === a)));
     S.wars.push({ a, b, start: S.day, lostA: 0, lostB: 0 });
+    DIRTYN.add(a); DIRTYN.add(b);
     if (!quiet) news(`⚔️ ${N(a).flag} ${N(a).name} declared war on ${N(b).flag} ${N(b).name}!`, 'war');
     if (isPlayer(a) || isPlayer(b)) renderPanel();
     return true;
@@ -545,7 +731,8 @@
       if (strength(i) < armyLimit(i) * 0.75) n.t += 0.04 * n.val * n.power;
     }
     OFF.slice().forEach(stepOffensive);
-    if (S.day % 4 === 0) recount();
+    checkPockets(S.day % 2 === 1); // new pockets are looked for every other day, existing ones daily
+    if (S.day % 5 === 0) recount();
     if (!S.sandbox) {
       for (let i = 1; i < S.N.length; i++) {
         if (!S.N[i].alive) continue;
@@ -611,6 +798,12 @@
         const fs = Math.max(10, Math.min(15, size / 9));
         pill(c.x, c.y + 14, `${n.flag} ${size > 110 ? n.name + ' ' : ''}${fmtT(n.t)}`, n.color, fs);
       }
+      // encircled pockets counting down
+      for (const k of POCKETS) {
+        if (!isPlayer(k.o) && !k.enemies.includes(S.player)) continue;
+        const c = gridToPt(k.x, k.y);
+        pill(c.x, c.y, `⏳ ${k.days}d encircled`, N(k.o).color, 11);
+      }
       // offensives progress
       for (const o of OFF) {
         if (!isPlayer(o.a) && !enemiesOf(S.player).includes(o.a)) continue;
@@ -639,6 +832,7 @@
   }
   function drawColor() {
     if (ui.mode === 'found') return ui.custom.color;
+    if (ui.mode === 'treaty') return N(ui.treaty.side).color;
     return S && S.player ? '#ff3b30' : '#ff3b30';
   }
 
@@ -648,8 +842,9 @@
     ui.draw = on;
     drawLayer.classList.toggle('hidden', !on);
     $('btn-draw').classList.toggle('on', on);
-    $('draw-banner').classList.toggle('hidden', !on || ui.mode !== 'game');
-    $('draw-banner').textContent = S && S.sandbox ? '✏️ Draw a loop — the land inside becomes yours' : '✏️ Draw a loop around enemy land to invade it';
+    $('draw-banner').classList.toggle('hidden', !on || (ui.mode !== 'game' && ui.mode !== 'treaty'));
+    $('draw-banner').textContent = ui.mode === 'treaty' ? `✏️ Draw a loop to give land to ${N(ui.treaty.side).name}`
+      : S && S.sandbox ? '✏️ Draw a loop — the land inside becomes yours' : '✏️ Draw a loop around enemy land to invade it';
     if (on) { map.dragging.disable(); } else { map.dragging.enable(); }
   }
   let pinch = false;
@@ -674,6 +869,7 @@
     const cells = cellsInPolygon(poly);
     const lls = latlngs.map((ll) => [ll.lat, ll.lng]);
     if (ui.mode === 'found') claimForNation(cells);
+    else if (ui.mode === 'treaty') treatyClaim(cells);
     else if (ui.mode === 'game') proposeOffensive(cells, lls);
   };
   drawLayer.addEventListener('pointerup', finish);
@@ -794,6 +990,97 @@
     if (c.war && !S.sandbox) donors.filter((d) => taken[d] > n.cells * 0.15).forEach((d) => declareWar(d, me, true));
   }
 
+  // ------------------------------------------------------------------ peace treaties drawn on the map
+  // You redraw the border between you and your enemy; the enemy judges the terms by how the war went.
+  function startTreaty(other) {
+    const me = S.player;
+    if (!atWar(me, other)) return;
+    if (ui.modalOpen) closeModal();
+    if (pending) cancelPending();
+    ui.treaty = { a: me, b: other, side: me, history: [], gain: 0 };
+    ui.mode = 'treaty'; ui.info = null;
+    paintAll();
+    setDraw(true);
+    const n = N(other);
+    map.flyTo([latOfY((N(me).cy + n.cy) / 2), lonOfX((N(me).cx + n.cx) / 2)], Math.max(map.getZoom(), 4.5), { duration: 0.6 });
+    renderTreaty();
+  }
+  function treatyClaim(cells) {
+    const t = ui.treaty, other = t.side === t.a ? t.b : t.a;
+    const changed = [];
+    let km = 0;
+    for (const c of cells) if (OWN[c] === other) { changed.push(c); km += kmOf(c); setOwner(c, t.side); }
+    if (!changed.length) { toast(`Draw over ${N(other).name}'s land to give it to ${N(t.side).name}.`); return; }
+    t.history.push({ cells: changed, from: other, km });
+    t.gain += t.side === t.a ? km : -km;
+    renderTreaty();
+  }
+  function treatyUndo() {
+    const t = ui.treaty, h = t.history.pop();
+    if (!h) return;
+    h.cells.forEach((c) => setOwner(c, h.from));
+    t.gain -= h.from === t.b ? h.km : -h.km;
+    renderTreaty();
+  }
+  // how much land (km²) the enemy is willing to give up, and whether it takes the deal
+  function treatyVerdict() {
+    const t = ui.treaty, a = t.a, b = t.b;
+    if (S.sandbox) return { ok: true, why: 'Sandbox: every treaty is accepted.' };
+    const w = warOf(a, b);
+    const days = S.day - w.start;
+    const lostA = w.a === a ? w.lostA : w.lostB, lostB = w.a === a ? w.lostB : w.lostA;
+    const nb = N(b);
+    const kmPerCell = nb.km / Math.max(1, nb.cells);
+    const before = nb.km + Math.max(0, t.gain);
+    const ratio = strength(a) / Math.max(1, strength(b));
+    let allowance = 0;
+    if (ratio > 1) allowance += before * Math.min(0.45, (ratio - 1) * 0.15);
+    allowance += Math.max(0, lostB - lostA) * kmPerCell * 0.6;
+    if (nb.capLost) allowance += before * 0.2;
+    if (days > 120) allowance += before * 0.05;
+    if (t.gain <= 0) {
+      const ok = days >= 10 || t.gain < 0 || ratio > 1;
+      return { ok, why: ok ? `${nb.name} is happy with these terms.` : `${nb.name} wants to keep fighting a little longer.` };
+    }
+    const ok = t.gain <= allowance;
+    const pct = Math.round((t.gain / Math.max(1, allowance)) * 100);
+    return { ok, why: ok ? `${nb.name} will accept (${pct}% of what they'd give up).`
+      : `${nb.name} refuses: you ask for ${fmtKm(t.gain)}, they'd give at most ${fmtKm(allowance)}. Win more battles or ask for less.` };
+  }
+  function renderTreaty() {
+    const t = ui.treaty, A = N(t.a), B = N(t.b), v = treatyVerdict();
+    const sign = (x) => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmtKm(Math.abs(x));
+    $('panel').innerHTML = `<div class="p-head"><span class="flag">📜</span><div><div class="p-title">Peace treaty</div>
+      <div class="p-sub">${A.flag} ${esc(A.name)} ${sign(t.gain)} · ${B.flag} ${esc(B.name)} ${sign(-t.gain)}</div></div>
+      <button class="icon-btn p-close" data-act="t-cancel">✕</button></div>
+      <div class="hint" style="margin:8px 0 6px">Draw loops on the map to decide who gets which land:</div>
+      <div class="seg">${[t.a, t.b].map((i) => `<button data-side="${i}" class="${t.side === i ? 'on' : ''}">${N(i).flag} ${esc(N(i).name)} gets</button>`).join('')}</div>
+      <div class="hint" style="color:${v.ok ? '#34c759' : '#ff6b5e'}">${v.ok ? '✅' : '❌'} ${esc(v.why)}</div>
+      <div class="p-row"><button data-act="t-move">${ui.draw ? '✋ Move map' : '✏️ Draw'}</button>
+        <button data-act="t-undo" ${t.history.length ? '' : 'disabled'}>↶ Undo</button>
+        <button class="ok" data-act="t-sign">🕊️ Propose</button></div>`;
+    showPanel();
+  }
+  function endTreaty(revert) {
+    const t = ui.treaty;
+    if (revert) while (t.history.length) treatyUndo();
+    ui.treaty = null;
+    ui.mode = 'game';
+    setDraw(false);
+    recount(); paintAll();
+    ui.info = S.player;
+    renderPanel(); updateHud();
+  }
+  function signTreaty() {
+    const t = ui.treaty, v = treatyVerdict();
+    if (!v.ok) { toast(`${N(t.b).flag} ${N(t.b).name} rejected the treaty. Change the map and try again.`, 'war'); return; }
+    const A = N(t.a), B = N(t.b), gain = t.gain;
+    endTreaty(false);
+    makePeace(t.a, t.b);
+    if (gain) news(`📜 Treaty signed: ${gain > 0 ? A.flag + ' ' + A.name : B.flag + ' ' + B.name} gains ${fmtKm(Math.abs(gain))} from ${gain > 0 ? B.name : A.name}.`, 'peace');
+    afterCaptures(gain > 0 ? t.a : t.b, [gain > 0 ? t.b : t.a]);
+  }
+
   // ------------------------------------------------------------------ main loop
   let last = performance.now(), acc = 0;
   function frame(now) {
@@ -867,7 +1154,7 @@
         <span>${Math.round((o.taken / o.total) * 100)}%</span><button data-stop="${o.id}">Stop</button></div>`).join('');
       if (!mine.length) h += `<div class="hint">Tap ✏️ and draw a loop around enemy land to launch an offensive.</div>`;
     } else if (atWar(me, i)) {
-      h += `<div class="p-row"><button data-act="peace">🕊️ Offer peace</button></div>
+      h += `<div class="p-row"><button data-act="peace">📜 Negotiate peace</button></div>
         <div class="hint">Tap ✏️ and draw around their land to attack.</div>`;
     } else {
       const tr = truceOf(me, i);
@@ -884,6 +1171,14 @@
     if (!b) return;
     const me = S.player;
     if (b.dataset.commit) { ui.commit = +b.dataset.commit; renderLaunch(); return; }
+    if (b.dataset.side) { ui.treaty.side = +b.dataset.side; setDraw(true); renderTreaty(); return; }
+    if (ui.mode === 'treaty') {
+      if (b.dataset.act === 't-cancel') endTreaty(true);
+      if (b.dataset.act === 't-undo') treatyUndo();
+      if (b.dataset.act === 't-move') { setDraw(!ui.draw); renderTreaty(); }
+      if (b.dataset.act === 't-sign') signTreaty();
+      return;
+    }
     if (b.dataset.stop) { const o = OFF.find((x) => x.id === +b.dataset.stop); if (o) endOffensive(o); renderPanel(); return; }
     switch (b.dataset.act) {
       case 'close': ui.info = null; renderPanel(); break;
@@ -944,12 +1239,7 @@
       closeModal(); renderPanel();
     });
   }
-  function playerOffersPeace(i) {
-    if (acceptsPeace(i, S.player)) makePeace(S.player, i);
-    else toast(`${N(i).flag} ${N(i).name} rejected your peace offer.`, 'war');
-    if (ui.modalOpen) diplomacy();
-    renderPanel();
-  }
+  function playerOffersPeace(i) { startTreaty(i); }
   function offerPeaceToPlayer(i) {
     const n = N(i);
     openModal(`<h2>🕊️ Peace offer</h2><p>${n.flag} <b>${esc(n.name)}</b> offers peace. Everyone keeps the land they hold now, and a 120-day truce begins.</p>
@@ -965,7 +1255,7 @@
     const rows = list.map((n) => {
       let right;
       if (isPlayer(n.idx)) right = '<span class="tag you">YOU</span>';
-      else if (atWar(me, n.idx)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.idx}">Peace</button>`;
+      else if (atWar(me, n.idx)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.idx}">📜 Peace</button>`;
       else if (truceOf(me, n.idx)) right = `<span class="tag truce">TRUCE ${truceOf(me, n.idx).until - S.day}d</span>`;
       else right = `<button class="danger" data-war="${n.idx}">War</button>`;
       const wars = enemiesOf(n.idx).filter((e) => !isPlayer(e)).map((e) => N(e).flag).join('');
@@ -1009,7 +1299,9 @@
       <li>To attack, tap <b>✏️ Draw</b> and draw a loop around the land you want. Choose how many troops to commit and launch — your front line pushes through the drawn area day by day.</li>
       <li>Drawing over a country you're at peace with asks you to declare war first.</li>
       <li>Bigger armies push faster. Capitals ★ are defended harder; take one after a country has lost half its land and it surrenders.</li>
-      <li>Land earns 💰 gold; spend it on troops. Make peace in <b>Diplomacy</b>.</li>
+      <li>Land earns 💰 gold; spend it on troops.</li>
+      <li><b>Peace treaties</b>: in Diplomacy tap 📜 Peace, then draw the new borders — choose who gets each loop. The enemy accepts if the terms match how the war went.</li>
+      <li>Land cut off from its mainland during a war is lost after 7 days, annexed by (or split between) the enemies around it.</li>
       <li>Sandbox scenario: drawn loops become yours instantly — paint the map however you like.</li>
       <li>Pinch with two fingers to zoom, even while drawing. Control 70% of Europe to win.</li></ol>
       <div class="row"><button class="big primary" data-close>Got it</button></div>`, () => {
@@ -1059,7 +1351,7 @@
   let titleDrift = null;
   function toTitle() {
     clearMapExtras();
-    ui.mode = 'title'; ui.info = null;
+    ui.mode = 'title'; ui.info = null; ui.treaty = null;
     setDraw(false);
     hideScreens(); hidePanel();
     $('hud').classList.add('hidden');
@@ -1178,6 +1470,8 @@
       const s = JSON.parse(localStorage.getItem('ia_save2'));
       if (!s || !s.own) return false;
       decodeOwn(s.own);
+      CUT.fill(0); POCKETS = []; HELD = new Set();
+      DIRTYN = new Set(s.N.map((n, i) => i).filter((i) => i > 0));
       delete s.own;
       S = s;
       return true;
@@ -1197,7 +1491,7 @@
   $('btn-menu').onclick = gameMenu;
   $('btn-diplo').onclick = diplomacy;
   $('btn-news').onclick = newsModal;
-  $('btn-draw').onclick = () => { if (pending) cancelPending(); setDraw(!ui.draw); };
+  $('btn-draw').onclick = () => { if (pending) cancelPending(); setDraw(!ui.draw); if (ui.mode === 'treaty') renderTreaty(); };
   $('btn-nation').onclick = () => { ui.info = S.player; renderPanel(); const n = N(S.player); map.flyTo([latOfY(n.cy), lonOfX(n.cx)], map.getZoom(), { duration: 0.5 }); };
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
@@ -1206,6 +1500,7 @@
     onBack() {
       if (ui.modalOpen) { closeModal(); return true; }
       if (pending) { cancelPending(); return true; }
+      if (ui.mode === 'treaty') { endTreaty(true); return true; }
       if (ui.mode === 'game') {
         if (ui.draw) { setDraw(false); return true; }
         if (ui.info != null) { ui.info = null; renderPanel(); return true; }
@@ -1217,6 +1512,8 @@
     // test hooks
     _state: () => S, _own: () => OWN, _off: () => OFF.map((o) => ({ a: S.N[o.a].code, t: Math.round(o.t), taken: o.taken, total: o.total, q: o.queue.length, naval: o.naval })), _map: map, _P: P,
     _sim(days) { for (let i = 0; i < days; i++) tickDay(); flush(); },
+    _paint(lls, idx) { const poly = lls.map(([la, lo]) => [xOfLon(lo), yOfLat(la)]); cellsInPolygon(poly).forEach((c) => setOwner(c, idx)); recount(); flush(); },
+    _pockets: () => POCKETS,
     _lasso(lls) { const poly = lls.map(([la, lo]) => [xOfLon(lo), yOfLat(la)]); return cellsInPolygon(poly); },
   };
 
