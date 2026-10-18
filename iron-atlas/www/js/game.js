@@ -118,7 +118,7 @@
     OFF = [];
     CUT.fill(0); POCKETS = []; HELD = new Set();
     S = { v: 2, day: 0, speed: 1, player: 0, aggr: opts.aggr, scenario: opts.scenario, sandbox: opts.scenario === 'sandbox',
-      N: [null], wars: [], truces: [], news: [], over: false, won: false, nextOff: 1 };
+      N: [null], wars: [], truces: [], allies: [], news: [], over: false, won: false, nextOff: 1 };
     const byCode = {};
     for (const c of D.countries) {
       const n = { idx: S.N.length, code: c.code, name: c.name, color: BASE_COLORS[c.code] || '#888', flag: flagOf(c.code), power: c.power,
@@ -203,6 +203,8 @@
   const atWar = (a, b) => a !== b && S.wars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
   const warOf = (a, b) => S.wars.find((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
   const truceOf = (a, b) => S.truces.find((t) => ((t.a === a && t.b === b) || (t.a === b && t.b === a)) && t.until > S.day);
+  const allied = (a, b) => a !== b && S.allies.some((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a));
+  const alliesOf = (i) => S.allies.filter((x) => x.a === i || x.b === i).map((x) => (x.a === i ? x.b : x.a));
   const enemiesOf = (i) => S.wars.filter((w) => w.a === i || w.b === i).map((w) => (w.a === i ? w.b : w.a));
   const committed = (i) => OFF.reduce((s, o) => s + (o.a === i ? o.t : 0), 0);
   const strength = (i) => N(i).t + committed(i);
@@ -336,6 +338,7 @@
     if (!n.alive) return;
     n.alive = false; n.t = 0;
     S.wars = S.wars.filter((w) => w.a !== i && w.b !== i);
+    S.allies = S.allies.filter((x) => x.a !== i && x.b !== i);
     OFF.filter((o) => o.a === i).forEach((o) => endOffensive(o, true));
     if (isPlayer(i)) gameOver();
   }
@@ -383,13 +386,38 @@
   }
 
   // ------------------------------------------------------------------ offensives
-  function launchOffensive(a, cells, latlngs, troops) {
+  // only: optional Set of nation indices to attack (default: everyone inside that we're at war with)
+  function launchOffensive(a, cells, latlngs, troops, only) {
+    const ok = (o) => o !== a && atWar(a, o) && (!only || only.has(o));
     const target = new Set();
-    for (const c of cells) if (OWN[c] !== a && atWar(a, OWN[c])) target.add(c);
+    for (const c of cells) if (ok(OWN[c])) target.add(c);
     if (!target.size || troops < 0.5) return null;
     N(a).t -= troops;
     const o = { id: S.nextOff++, a, t: troops, t0: troops, target, total: target.size, taken: 0, km: 0, queue: [], latlngs, naval: false, born: S.day };
     seedFrontier(o);
+    let corridor = null;
+    if (!o.queue.length) {
+      // the circle doesn't touch our land: open a corridor from our nearest border towards it
+      let sx = 0, sy = 0;
+      target.forEach((c) => { sx += c % W; sy += Math.floor(c / W); });
+      const tx = sx / target.size, ty = sy / target.size;
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < OWN.length; i++) {
+        if (OWN[i] !== a) continue;
+        const d = (i % W - tx) ** 2 + (Math.floor(i / W) - ty) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best >= 0) {
+        const bx = best % W + 0.5, by = Math.floor(best / W) + 0.5;
+        const len = Math.hypot(tx - bx, ty - by) || 1, nx = -(ty - by) / len, ny = (tx - bx) / len, hw = 9;
+        const quad = [[bx + nx * hw, by + ny * hw], [tx + nx * hw, ty + ny * hw], [tx - nx * hw, ty - ny * hw], [bx - nx * hw, by - ny * hw]];
+        let added = 0;
+        for (const c of cellsInPolygon(quad)) if (ok(OWN[c]) && !target.has(c)) { target.add(c); added++; }
+        o.total = target.size;
+        seedFrontier(o);
+        if (o.queue.length && added) corridor = [[latOfY(by), lonOfX(bx)], [latOfY(ty), lonOfX(tx)]];
+      }
+    }
     if (!o.queue.length) {
       // nothing touches our land: amphibious landing at the target cell closest to our capital/centre
       const n = N(a);
@@ -399,7 +427,9 @@
       o.queue.push(best);
       o.naval = true;
     }
-    o.layer = L.polygon(latlngs, { color: N(a).color, weight: isPlayer(a) ? 3 : 2, opacity: 0.95, fill: false, dashArray: isPlayer(a) ? null : '6 6', interactive: false, smoothFactor: 1.5 }).addTo(map);
+    o.layer = L.featureGroup([L.polygon(latlngs, { color: N(a).color, weight: isPlayer(a) ? 3 : 2, opacity: 0.95, fill: false, dashArray: isPlayer(a) ? null : '6 6', interactive: false, smoothFactor: 1.5 })]);
+    if (corridor) o.layer.addLayer(L.polyline(corridor, { color: N(a).color, weight: isPlayer(a) ? 3 : 2, dashArray: '2 8', lineCap: 'round', interactive: false }));
+    o.layer.addTo(map);
     OFF.push(o);
     return o;
   }
@@ -686,11 +716,12 @@
         if (isPlayer(e)) { if (acceptsPeace(i, e) && Math.random() < 0.15 && !ui.modalOpen) offerPeaceToPlayer(i); }
         else if (acceptsPeace(i, e) && (acceptsPeace(e, i) || (S.day - w.start > 90 && Math.random() < 0.15))) makePeace(i, e);
       }
+      aiAlliances(i);
       if (enemies.length >= 2 || Math.random() > 0.012 * S.aggr) continue;
       const my = strength(i);
       let best = 0, bestScore = 0;
       for (const o of neighborsOf(i)) {
-        if (atWar(i, o) || truceOf(i, o) || !N(o).alive) continue;
+        if (atWar(i, o) || truceOf(i, o) || !N(o).alive || allied(i, o)) continue;
         let score = my / Math.max(1, strength(o) * (1 - 0.1 * enemiesOf(o).length));
         if (N(o).cells > LAND * 0.2) score *= 1.6;
         if (isPlayer(o)) score *= 1.1;
@@ -700,14 +731,102 @@
     }
   }
 
-  function declareWar(a, b, quiet) {
-    if (atWar(a, b) || a === b || !N(a).alive || !N(b).alive) return false;
+  function declareWar(a, b, quiet, noCall) {
+    if (atWar(a, b) || a === b || !N(a).alive || !N(b).alive || allied(a, b)) return false;
     S.truces = S.truces.filter((t) => !((t.a === a && t.b === b) || (t.a === b && t.b === a)));
     S.wars.push({ a, b, start: S.day, lostA: 0, lostB: 0 });
     DIRTYN.add(a); DIRTYN.add(b);
     if (!quiet) news(`⚔️ ${N(a).flag} ${N(a).name} declared war on ${N(b).flag} ${N(b).name}!`, 'war');
     if (isPlayer(a) || isPlayer(b)) renderPanel();
+    if (!noCall) callToArms(a, b);
     return true;
+  }
+
+  // ------------------------------------------------------------------ alliances
+  // Allies defend each other (and sometimes join attacks). Calls to arms do not chain further.
+  function callToArms(att, def) {
+    for (const x of alliesOf(def)) {
+      if (x === att || allied(x, att) || atWar(x, att) || !N(x).alive) continue;
+      if (isPlayer(x)) askPlayer(`<h2>🛡️ Call to arms</h2><p>Your ally ${N(def).flag} <b>${esc(N(def).name)}</b> was attacked by ${N(att).flag} <b>${esc(N(att).name)}</b>. Join the war?</p>
+        <p class="hint">Refusing ends your alliance with ${esc(N(def).name)}.</p>`, (yes) => {
+        if (!N(def).alive || !N(att).alive) return;
+        if (yes) { declareWar(x, att, true, true); news(`🛡️ ${N(x).flag} ${N(x).name} joins the war to defend ${N(def).name}.`, 'war'); }
+        else breakAlliance(x, def);
+      });
+      else if (Math.random() < 0.85) { declareWar(x, att, true, true); news(`🛡️ ${N(x).flag} ${N(x).name} joins the war to defend its ally ${N(def).flag} ${N(def).name}!`, 'war'); }
+      else breakAlliance(x, def);
+    }
+    for (const y of alliesOf(att)) {
+      if (y === def || allied(y, def) || atWar(y, def) || !N(y).alive) continue;
+      if (isPlayer(y)) askPlayer(`<h2>⚔️ Ally's war</h2><p>Your ally ${N(att).flag} <b>${esc(N(att).name)}</b> declared war on ${N(def).flag} <b>${esc(N(def).name)}</b>. Join the attack?</p>
+        <p class="hint">You can stay out of it without breaking the alliance.</p>`, (yes) => {
+        if (yes && N(def).alive && N(att).alive) { declareWar(y, def, true, true); news(`⚔️ ${N(y).flag} ${N(y).name} joins its ally ${N(att).name} against ${N(def).name}.`, 'war'); }
+      });
+      else if (neighborsOf(y).has(def) && Math.random() < 0.3) { declareWar(y, def, true, true); news(`⚔️ ${N(y).flag} ${N(y).name} joins its ally ${N(att).flag} ${N(att).name} against ${N(def).flag} ${N(def).name}.`, 'war'); }
+    }
+  }
+  function formAlliance(a, b) {
+    if (allied(a, b) || atWar(a, b)) return;
+    S.allies.push({ a, b, since: S.day });
+    news(`🤝 ${N(a).flag} ${N(a).name} and ${N(b).flag} ${N(b).name} formed an alliance.`, 'peace');
+  }
+  function breakAlliance(a, b) {
+    if (!allied(a, b)) return;
+    S.allies = S.allies.filter((x) => !((x.a === a && x.b === b) || (x.a === b && x.b === a)));
+    news(`💔 ${N(a).flag} ${N(a).name} broke its alliance with ${N(b).flag} ${N(b).name}.`);
+  }
+  // how keen `i` is to ally with `other` (positive = yes)
+  function allianceScore(i, other) {
+    if (atWar(i, other) || allied(i, other)) return -9;
+    let score = 0;
+    const theirEnemies = enemiesOf(other);
+    score += enemiesOf(i).filter((e) => theirEnemies.includes(e)).length * 2;
+    if (alliesOf(i).some((x) => atWar(x, other)) || alliesOf(other).some((x) => atWar(x, i))) score -= 3;
+    const nb = neighborsOf(i), nb2 = neighborsOf(other);
+    if (nb.has(other)) score += 0.5;
+    // a shared, stronger neighbour is a reason to stick together
+    for (const t of nb) if (nb2.has(t) && t !== other && strength(t) > strength(i) * 1.3 && !allied(t, i)) { score += 1.5; break; }
+    score += Math.min(1.5, (strength(other) / Math.max(1, strength(i))) * 0.5);
+    if (truceOf(i, other)) score -= 2;
+    if (alliesOf(i).length >= 4) score -= 1;
+    return score;
+  }
+  function proposeAlliance(i) {
+    const me = S.player, score = allianceScore(i, me) + Math.random() * 0.6;
+    if (score >= 1.5) { formAlliance(me, i); toast(`🤝 ${N(i).flag} ${N(i).name} accepted your alliance!`, 'peace'); }
+    else {
+      const why = alliesOf(i).some((x) => atWar(x, me)) ? 'you are at war with one of their allies'
+        : truceOf(i, me) ? 'they still remember the last war' : 'they see no reason to tie themselves to you yet';
+      toast(`${N(i).flag} ${N(i).name} declined: ${why}.`, 'war');
+    }
+    renderPanel();
+  }
+  function aiAlliances(i) {
+    if (alliesOf(i).length >= 2 || Math.random() > 0.012) return;
+    const nb = [...neighborsOf(i)].filter((o) => N(o).alive);
+    const my = strength(i);
+    // look for a partner against a stronger neighbour or a shared enemy
+    // partners must be close: neighbours, or neighbours of a threatening neighbour
+    const pool = new Set(nb);
+    for (const t of nb) if (strength(t) > my * 1.4) neighborsOf(t).forEach((o) => pool.add(o));
+    let best = 0, bs = 1.8;
+    for (const o of pool) {
+      if (o === i || !N(o).alive || isPlayer(o)) continue;
+      const sc = Math.min(allianceScore(i, o), allianceScore(o, i));
+      if (sc > bs) { bs = sc; best = o; }
+    }
+    if (best) formAlliance(i, best);
+  }
+  // questions for the player (calls to arms) wait until no other window is open
+  const asks = [];
+  function askPlayer(html, cb) { asks.push({ html, cb }); }
+  function nextAsk() {
+    if (ui.modalOpen || !asks.length || ui.mode !== 'game') return;
+    if (!S || S.over || !N(S.player).alive) { asks.length = 0; return; }
+    const q = asks.shift();
+    openModal(`${q.html}<div class="row"><button class="big ghost" data-a="no">No</button><button class="big primary" data-a="yes">Yes</button></div>`, (b) => {
+      closeModal(); q.cb(b.dataset.a === 'yes'); renderPanel(); updateHud();
+    });
   }
   function makePeace(a, b) {
     if (!warOf(a, b)) return;
@@ -910,23 +1029,34 @@
       recount(); updateHud(); renderPanel();
       return;
     }
-    pending = { cells, latlngs, by, km, ids };
+    const usable = ids.filter((i) => !allied(me, i));
+    if (!usable.length) { toast('Only allied land inside that loop.'); return; }
+    // preselect: everyone we're already fighting; otherwise the biggest country in the circle
+    const sel = new Set(usable.filter((i) => atWar(me, i)));
+    if (!sel.size) { const f = usable.find((i) => !truceOf(me, i)); if (f) sel.add(f); }
+    pending = { cells, latlngs, by, km, ids, sel };
     const draft = L.polygon(latlngs, { color: '#ff3b30', weight: 3, fill: true, fillOpacity: 0.12, interactive: false }).addTo(map);
     pending.draft = draft;
     renderLaunch();
   }
   function renderLaunch() {
     const me = S.player, p = pending;
-    const rows = p.ids.slice(0, 4).map((i) => `<div class="p-sub" style="margin:2px 0">${N(i).flag} ${esc(N(i).name)} · ${fmtKm(p.km[i])}
-      ${atWar(me, i) ? '<span class="tag war" style="padding:1px 5px;border-radius:4px;font-size:10px">AT WAR</span>' : truceOf(me, i) ? '— truce' : '— will declare war'}</div>`).join('');
-    const blocked = p.ids.every((i) => truceOf(me, i));
-    const newWars = p.ids.filter((i) => !atWar(me, i) && !truceOf(me, i));
+    const chips = p.ids.slice(0, 8).map((i) => {
+      const al = allied(me, i), tr = !atWar(me, i) && truceOf(me, i);
+      const state = al ? 'ally' : tr ? 'truce' : atWar(me, i) ? 'at war' : 'declare war';
+      return `<button class="chip ${p.sel.has(i) ? 'on' : ''}" data-target="${i}" ${al || tr ? 'disabled' : ''}>${p.sel.has(i) ? '☑' : '☐'} ${N(i).flag} ${esc(N(i).name)}
+        <small>${fmtKm(p.km[i])} · ${state}</small></button>`;
+    }).join('');
+    const newWars = [...p.sel].filter((i) => !atWar(me, i));
     const troops = N(me).t * ui.commit;
-    $('panel').innerHTML = `<div class="p-head"><span class="flag">⚔️</span><div><div class="p-title">New offensive</div>${rows}</div>
+    $('panel').innerHTML = `<div class="p-head"><span class="flag">⚔️</span><div><div class="p-title">New offensive</div>
+      <div class="p-sub">Choose which countries in your circle to attack:</div></div>
       <button class="icon-btn p-close" data-act="cancel">✕</button></div>
+      <div class="chips">${chips}</div>
       <div class="hint" style="margin:8px 0 6px">Commit troops from your reserve (${fmtT(N(me).t)}):</div>
       <div class="seg">${[0.25, 0.5, 0.75, 1].map((f) => `<button data-commit="${f}" class="${ui.commit === f ? 'on' : ''}">${f === 1 ? 'All' : f * 100 + '%'}</button>`).join('')}</div>
-      <div class="p-row"><button class="danger" data-act="launch" ${blocked || troops < 1 ? 'disabled' : ''}>${newWars.length ? '⚔️ Declare war & attack' : '⚔️ Launch'} with ${fmtT(troops)}</button></div>`;
+      <div class="p-row"><button class="danger" data-act="launch" ${!p.sel.size || troops < 1 ? 'disabled' : ''}>${newWars.length ? '⚔️ Declare war & attack' : '⚔️ Launch'} with ${fmtT(troops)}</button></div>
+      <div class="hint">You don't need to draw along the border — if the circle isn't next to your land, your army fights its way there from your nearest border.</div>`;
     showPanel();
   }
   function cancelPending() { if (pending && pending.draft) map.removeLayer(pending.draft); pending = null; renderPanel(); }
@@ -1092,6 +1222,7 @@
       while (acc >= 1 && n++ < 3) { acc -= 1; tickDay(); }
       if (now - ui.lastPanel > 500) { ui.lastPanel = now; updateHud(); if (!pending) renderPanel(true); }
     }
+    nextAsk();
     flush();
     render();
     requestAnimationFrame(frame);
@@ -1156,11 +1287,17 @@
     } else if (atWar(me, i)) {
       h += `<div class="p-row"><button data-act="peace">📜 Negotiate peace</button></div>
         <div class="hint">Tap ✏️ and draw around their land to attack.</div>`;
+    } else if (allied(me, i)) {
+      h += `<div class="p-row"><button data-act="unally">💔 Leave alliance</button></div>
+        <div class="hint">🤝 Your ally — they defend you when you're attacked, and you them.</div>`;
     } else {
       const tr = truceOf(me, i);
-      h += `<div class="p-row"><button class="danger" data-act="war" ${tr ? 'disabled' : ''}>⚔️ Declare war</button></div>
-        <div class="hint">${tr ? `Truce for ${tr.until - S.day} more days.` : 'Or just draw around their land — you\'ll be asked to declare war.'}</div>`;
+      h += `<div class="p-row"><button class="ok" data-act="ally">🤝 Propose alliance</button>
+        <button class="danger" data-act="war" ${tr ? 'disabled' : ''}>⚔️ Declare war</button></div>
+        <div class="hint">${tr ? `Truce for ${tr.until - S.day} more days.` : 'Or just circle their land with ✏️ — you\'ll be asked to declare war.'}</div>`;
     }
+    const al = alliesOf(i);
+    if (al.length) h += `<div class="hint">Allies: ${al.map((x) => N(x).flag + ' ' + esc(N(x).name)).join(', ')}</div>`;
     if (soft && $('panel').innerHTML === h) return;
     $('panel').innerHTML = h;
     showPanel();
@@ -1171,6 +1308,7 @@
     if (!b) return;
     const me = S.player;
     if (b.dataset.commit) { ui.commit = +b.dataset.commit; renderLaunch(); return; }
+    if (b.dataset.target) { const i = +b.dataset.target; if (pending.sel.has(i)) pending.sel.delete(i); else pending.sel.add(i); renderLaunch(); return; }
     if (b.dataset.side) { ui.treaty.side = +b.dataset.side; setDraw(true); renderTreaty(); return; }
     if (ui.mode === 'treaty') {
       if (b.dataset.act === 't-cancel') endTreaty(true);
@@ -1185,8 +1323,8 @@
       case 'cancel': cancelPending(); break;
       case 'launch': {
         const p = pending;
-        p.ids.filter((i) => !atWar(me, i) && !truceOf(me, i)).forEach((i) => declareWar(me, i));
-        const o = launchOffensive(me, p.cells, p.latlngs, N(me).t * ui.commit);
+        [...p.sel].filter((i) => !atWar(me, i)).forEach((i) => declareWar(me, i));
+        const o = launchOffensive(me, p.cells, p.latlngs, N(me).t * ui.commit, p.sel);
         map.removeLayer(p.draft);
         pending = null;
         if (o) { toast(o.naval ? '⚓ Amphibious landing launched!' : '⚔️ Offensive launched!'); ui.info = me; }
@@ -1203,6 +1341,8 @@
         break;
       }
       case 'war': confirmWar(ui.info); break;
+      case 'ally': proposeAlliance(ui.info); break;
+      case 'unally': breakAlliance(me, ui.info); renderPanel(); break;
       case 'peace': playerOffersPeace(ui.info); break;
     }
   });
@@ -1248,24 +1388,53 @@
       closeModal();
     });
   }
-  function diplomacy() {
+  function diplomacy(tab) {
     const me = S.player;
-    const list = S.N.filter((n) => n && n.alive)
-      .sort((a, b) => (isPlayer(b.idx) - isPlayer(a.idx)) || (atWar(me, b.idx) - atWar(me, a.idx)) || b.cells - a.cells);
-    const rows = list.map((n) => {
-      let right;
-      if (isPlayer(n.idx)) right = '<span class="tag you">YOU</span>';
-      else if (atWar(me, n.idx)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.idx}">📜 Peace</button>`;
-      else if (truceOf(me, n.idx)) right = `<span class="tag truce">TRUCE ${truceOf(me, n.idx).until - S.day}d</span>`;
-      else right = `<button class="danger" data-war="${n.idx}">War</button>`;
-      const wars = enemiesOf(n.idx).filter((e) => !isPlayer(e)).map((e) => N(e).flag).join('');
-      return `<div class="drow"><span class="flag">${n.flag}</span><div class="dn"><b><span class="color-dot" style="background:${n.color}"></span>${esc(n.name)}</b>
-        <span>${fmtKm(n.km)} · ${fmtT(strength(n.idx))} troops${wars ? ' · at war with ' + wars : ''}</span></div>${right}</div>`;
-    }).join('');
-    openModal(`<h2>🤝 Diplomacy</h2><div class="dlist">${rows}</div><div class="row"><button class="big" data-close>Close</button></div>`, (b) => {
+    tab = tab || ui.diploTab || 'nations';
+    ui.diploTab = tab;
+    let body;
+    if (tab === 'nations') {
+      const list = S.N.filter((n) => n && n.alive)
+        .sort((a, b) => (isPlayer(b.idx) - isPlayer(a.idx)) || (atWar(me, b.idx) - atWar(me, a.idx)) || (allied(me, b.idx) - allied(me, a.idx)) || b.cells - a.cells);
+      body = list.map((n) => {
+        let right;
+        if (isPlayer(n.idx)) right = '<span class="tag you">YOU</span>';
+        else if (atWar(me, n.idx)) right = `<span class="tag war">WAR</span><button class="ok" data-peace="${n.idx}">📜 Peace</button>`;
+        else if (allied(me, n.idx)) right = `<span class="tag ally">ALLY</span><button data-unally="${n.idx}">Leave</button>`;
+        else if (truceOf(me, n.idx)) right = `<span class="tag truce">TRUCE ${truceOf(me, n.idx).until - S.day}d</span><button class="ok" data-ally="${n.idx}">🤝</button>`;
+        else right = `<button class="ok" data-ally="${n.idx}">🤝 Ally</button><button class="danger" data-war="${n.idx}">War</button>`;
+        const wars = enemiesOf(n.idx).filter((e) => !isPlayer(e)).map((e) => N(e).flag).join('');
+        const al = alliesOf(n.idx).map((x) => N(x).flag).join('');
+        return `<div class="drow"><span class="flag">${n.flag}</span><div class="dn"><b><span class="color-dot" style="background:${n.color}"></span>${esc(n.name)}</b>
+          <span>${fmtKm(n.km)} · ${fmtT(strength(n.idx))}${al ? ' · 🤝 ' + al : ''}${wars ? ' · ⚔️ ' + wars : ''}</span></div>${right}</div>`;
+      }).join('');
+    } else {
+      // alliance blocs = connected groups of the alliance graph
+      const seen = new Set(), blocs = [];
+      S.N.forEach((n) => {
+        if (!n || !n.alive || seen.has(n.idx) || !alliesOf(n.idx).length) return;
+        const bloc = [], st = [n.idx];
+        seen.add(n.idx);
+        while (st.length) { const x = st.pop(); bloc.push(x); alliesOf(x).forEach((y) => { if (!seen.has(y) && N(y).alive) { seen.add(y); st.push(y); } }); }
+        blocs.push(bloc);
+      });
+      blocs.sort((a, b) => b.reduce((s, x) => s + strength(x), 0) - a.reduce((s, x) => s + strength(x), 0));
+      body = blocs.map((bloc, k) => {
+        const total = bloc.reduce((s, x) => s + strength(x), 0);
+        const links = S.allies.filter((x) => bloc.includes(x.a)).map((x) => `${N(x.a).flag}↔${N(x.b).flag}`).join(' ');
+        return `<div class="drow" style="display:block"><div class="dn"><b>${bloc.includes(me) ? '⭐ Your alliance' : 'Alliance ' + (k + 1)} · ${fmtT(total)} troops</b>
+          <span style="display:block;margin:4px 0;font-size:13px;color:var(--text)">${bloc.map((x) => N(x).flag + ' ' + esc(N(x).name)).join(' · ')}</span>
+          <span>Pacts: ${links}</span></div></div>`;
+      }).join('') || '<p>No alliances yet. Propose one from the Nations tab.</p>';
+    }
+    openModal(`<h2>🤝 Diplomacy</h2><div class="seg" style="margin-bottom:10px"><button data-tab="nations" class="${tab === 'nations' ? 'on' : ''}">Nations</button><button data-tab="alliances" class="${tab === 'alliances' ? 'on' : ''}">Alliances (${S.allies.length})</button></div>
+      <div class="dlist">${body}</div><div class="row"><button class="big" data-close>Close</button></div>`, (b) => {
       if (b.dataset.close != null) return closeModal();
+      if (b.dataset.tab) return diplomacy(b.dataset.tab);
       if (b.dataset.war) { closeModal(); confirmWar(+b.dataset.war); }
       if (b.dataset.peace) playerOffersPeace(+b.dataset.peace);
+      if (b.dataset.ally) { proposeAlliance(+b.dataset.ally); diplomacy(); }
+      if (b.dataset.unally) { breakAlliance(me, +b.dataset.unally); diplomacy(); }
     });
   }
   function newsModal() {
@@ -1351,7 +1520,7 @@
   let titleDrift = null;
   function toTitle() {
     clearMapExtras();
-    ui.mode = 'title'; ui.info = null; ui.treaty = null;
+    ui.mode = 'title'; ui.info = null; ui.treaty = null; asks.length = 0;
     setDraw(false);
     hideScreens(); hidePanel();
     $('hud').classList.add('hidden');
@@ -1410,10 +1579,10 @@
   }
 
   const SWATCHES = ['#f5b83d', '#ff6b00', '#e0307a', '#9b4dff', '#00c2a8', '#28c840', '#00a2ff', '#ffffff', '#111827', '#8b5a2b'];
-  const EMBLEMS = ['🦅', '🐻', '🦁', '🐺', '🐉', '👑', '⚔️', '🔥', '⭐', '🌙', '🍊', '🛡️'];
+  const EMBLEMS = ['🦅', '🐻', '🦁', '🐺', '🐉', '👑', '⚔️', '🔥', '⭐', '🌙', '🌳', '🛡️'];
   function startCustom() {
     clearInterval(titleDrift);
-    ui.custom = ui.custom || { color: SWATCHES[0], flag: EMBLEMS[10] };
+    ui.custom = ui.custom || { color: SWATCHES[0], flag: EMBLEMS[8] };
     hideScreens();
     $('screen-custom').classList.remove('hidden');
     $('cn-colors').innerHTML = SWATCHES.map((c) => `<button data-c="${c}" style="background:${c}" class="${ui.custom.color === c ? 'on' : ''}"></button>`).join('');
@@ -1474,6 +1643,7 @@
       DIRTYN = new Set(s.N.map((n, i) => i).filter((i) => i > 0));
       delete s.own;
       S = s;
+      S.allies = S.allies || [];
       return true;
     } catch (e) { return false; }
   }
