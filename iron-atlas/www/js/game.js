@@ -1659,7 +1659,7 @@
   document.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => toTitle(); });
   document.querySelectorAll('.speed button').forEach((b) => { b.onclick = () => { S.speed = +b.dataset.speed; updateHud(); }; });
   $('btn-menu').onclick = gameMenu;
-  $('btn-diplo').onclick = diplomacy;
+  $('btn-diplo').onclick = () => diplomacy();
   $('btn-news').onclick = newsModal;
   $('btn-draw').onclick = () => { if (pending) cancelPending(); setDraw(!ui.draw); if (ui.mode === 'treaty') renderTreaty(); };
   $('btn-nation').onclick = () => { ui.info = S.player; renderPanel(); const n = N(S.player); map.flyTo([latOfY(n.cy), lonOfX(n.cx)], map.getZoom(), { duration: 0.5 }); };
