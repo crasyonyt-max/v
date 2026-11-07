@@ -162,6 +162,30 @@ local RS = pathProxy({ "ReplicatedStorage" })
 fakeServices.ServerStorage = pathProxy({ "ServerStorage" })
 local Server = pathProxy({ "ServerScriptService", "Server" })
 
+-- Every Enum.X.Y used anywhere in src/ must exist ----------------------------------
+test("all enums exist", function()
+	local bad = {}
+	local function scan(dir: string)
+		for _, entry in fs.readDir(dir) do
+			local path = dir .. "/" .. entry
+			if fs.isDir(path) then
+				scan(path)
+			elseif string.sub(entry, -4) == ".lua" then
+				for enumName, item in string.gmatch(fs.readFile(path), "Enum%.(%a+)%.([%w_]+)") do
+					local ok = pcall(function()
+						return (roblox.Enum :: any)[enumName][item]
+					end)
+					if not ok then
+						table.insert(bad, path .. ": Enum." .. enumName .. "." .. item)
+					end
+				end
+			end
+		end
+	end
+	scan("src")
+	assert(#bad == 0, "unknown enums:\n  " .. table.concat(bad, "\n  "))
+end)
+
 -- Shared modules -------------------------------------------------------------------
 local Plate = requirePath(RS.Shared.Plate)
 test("plates", function()

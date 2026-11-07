@@ -149,7 +149,7 @@ local function spawnCFrame(player: Player, width: number): CFrame?
 		}
 		else { Workspace }
 	local blockers = OverlapParams.new()
-	blockers.FilterType = Enum.OverlapFilterType.Include
+	blockers.FilterType = Enum.RaycastFilterType.Include
 	blockers.FilterDescendantsInstances = { city and city:FindFirstChild("Buildings") or Workspace.Terrain, folder }
 	-- try beside the player (right, left), then ahead and behind; first free spot wins
 	local side = width / 2 + 5
