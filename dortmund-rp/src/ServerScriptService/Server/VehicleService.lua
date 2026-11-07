@@ -123,6 +123,8 @@ function VehicleService.Despawn(player: Player)
 end
 
 -- Ground-level CFrame beside the player; `width` keeps big trucks clear of them.
+local setupSeats: (Model, Player, { [string]: any }) -> ()
+
 local function spawnCFrame(player: Player, width: number): CFrame?
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -144,6 +146,70 @@ local function spawnCFrame(player: Player, width: number): CFrame?
 	local groundY = if hit then hit.Position.Y else root.Position.Y - 3
 	local pos = Vector3.new(origin.X, groundY, origin.Z)
 	return CFrame.lookAt(pos, pos + look)
+end
+
+-- Who may take the driver's seat of a car spawned by `owner`.
+local function mayDrive(driver: Player, owner: Player, meta: { [string]: any }): boolean
+	return driver == owner or Roles.IsServerAdmin(driver) or (meta.Job ~= nil and JobService.Get(driver) == meta.Job)
+end
+
+-- "Einsteigen" prompts on every seat. Seats sit inside the car body, so players
+-- can't touch them; the server seats them instead and puts them beside the door
+-- again when they get out (otherwise they'd be stuck inside the body).
+function setupSeats(model: Model, owner: Player, meta: { [string]: any })
+	local chassis = model.PrimaryPart :: BasePart
+	for _, seat in model:GetChildren() do
+		if not (seat:IsA("Seat") or seat:IsA("VehicleSeat")) then
+			continue
+		end
+		local seatPart = seat :: BasePart
+		seatPart.CanTouch = false
+		local isDriver = seat:IsA("VehicleSeat")
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = if isDriver then "Fahren" else "Einsteigen"
+		prompt.ObjectText = model.Name
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt.KeyboardKeyCode = Enum.KeyCode.G
+		prompt.Parent = seatPart
+
+		local lastOccupant: Humanoid? = nil
+		seatPart:GetPropertyChangedSignal("Occupant"):Connect(function()
+			local occupant = (seat :: any).Occupant :: Humanoid?
+			prompt.Enabled = occupant == nil
+			if occupant then
+				lastOccupant = occupant
+				return
+			end
+			-- got out: place them next to their door, on the ground
+			local hum = lastOccupant
+			lastOccupant = nil
+			local character = hum and hum.Parent
+			if character and character:IsA("Model") and character.Parent then
+				local side = if chassis.CFrame:PointToObjectSpace(seatPart.Position).X < 0 then -1 else 1
+				local out = chassis.CFrame * CFrame.new(side * (chassis.Size.X / 2 + 2.5), 0, 0)
+				task.defer(function()
+					character:PivotTo(
+						CFrame.new(out.Position + Vector3.new(0, 3, 0)) * (chassis.CFrame - chassis.CFrame.Position)
+					)
+				end)
+			end
+		end)
+
+		prompt.Triggered:Connect(function(player)
+			local character = player.Character
+			local hum = character and character:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 or hum.SeatPart or (seat :: any).Occupant then
+				return
+			end
+			if isDriver and not mayDrive(player, owner, meta) then
+				Remotes.Push(player, "Notify", { key = "not_your_car", error = true })
+				return
+			end
+			(seat :: any):Sit(hum)
+		end)
+	end
 end
 
 local function spawnModel(
@@ -187,12 +253,7 @@ local function spawnModel(
 			return
 		end
 		local driver = Players:GetPlayerFromCharacter(humanoid.Parent)
-		local allowed = driver ~= nil
-			and (
-				driver == player
-				or Roles.IsServerAdmin(driver)
-				or (meta.Job ~= nil and JobService.Get(driver) == meta.Job)
-			)
+		local allowed = driver ~= nil and mayDrive(driver, player, meta)
 		if not allowed then
 			-- not your car: get out
 			task.defer(function()
@@ -209,6 +270,7 @@ local function spawnModel(
 		end)
 	end)
 
+	setupSeats(model, player, meta)
 	spawned[player] = model
 	return true, nil
 end
