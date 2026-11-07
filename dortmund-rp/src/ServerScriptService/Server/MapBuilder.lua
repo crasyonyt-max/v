@@ -99,6 +99,10 @@ function MapBuilder.Build()
 				{ JobId = job.id, ActionText = "Dienst antreten", ObjectText = loc.title },
 				loc.title .. " · " .. title
 			)
+			marker("JobEnd", mx - dir.X * 9, mz - dir.Z * 9, Color3.fromRGB(120, 120, 120), {
+				ActionText = "Dienst beenden",
+				ObjectText = loc.title,
+			}, nil)
 			marker("JobGarage", mx + dir.X * 9, mz + dir.Z * 9, job.color, {
 				JobId = job.id,
 				UI = "JobGarage",

@@ -62,7 +62,8 @@ function JobService.Set(player: Player, jobId: string): (boolean, string?)
 		return false, "same_job"
 	end
 	local now = os.clock()
-	if lastChange[player] and now - lastChange[player] < 20 then
+	-- cooldown only for starting a job; quitting must always work
+	if jobId ~= "Unemployed" and lastChange[player] and now - lastChange[player] < 10 then
 		return false, "too_fast"
 	end
 	lastChange[player] = now
@@ -89,6 +90,13 @@ function JobService.Start()
 			return
 		end
 		local ok, err = JobService.Set(player, jobId)
+		if not ok and err then
+			Remotes.Push(player, "Notify", { key = err, error = true })
+		end
+	end)
+
+	Interaction.OnTrigger("JobEnd", function(player)
+		local ok, err = JobService.Set(player, "Unemployed")
 		if not ok and err then
 			Remotes.Push(player, "Notify", { key = err, error = true })
 		end
