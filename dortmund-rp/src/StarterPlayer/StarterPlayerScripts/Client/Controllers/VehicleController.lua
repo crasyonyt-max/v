@@ -1,0 +1,389 @@
+--!strict
+-- Driving (client owns the car's physics while driving) + dashboard UI.
+-- Keys: W/S gas/brake, A/D steer, L lights, Q/E indicators, X hazards,
+--       B blue lights, N siren, V first-person camera. Mobile: on-screen buttons.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Make = require(script.Parent.Parent.UI.Make)
+local Notify = require(script.Parent.Parent.UI.Notify)
+local Net = require(script.Parent.Parent.Net)
+local Store = require(script.Parent.Parent.Store)
+
+local New, T = Make.New, Make.Theme
+
+local player = Players.LocalPlayer
+local VehicleController = {}
+
+local WHEEL_DIR = -1 -- forward = negative hinge speed about +X (see VehicleBuilder)
+local REVERSE_KMH = 30
+
+-- Dashboard --------------------------------------------------------------------------
+local gui = New("ScreenGui", {
+	Name = "Dashboard",
+	ResetOnSpawn = false,
+	DisplayOrder = 8,
+	Enabled = false,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+
+local dash = New("Frame", {
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -10),
+	Size = UDim2.fromOffset(340, 118),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 10),
+	BackgroundTransparency = 0.15,
+	Parent = gui,
+}, { Make.Corner(16), Make.Stroke(Color3.fromRGB(60, 60, 70), 1) })
+
+local speedLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.fromOffset(110, 8),
+	Size = UDim2.fromOffset(120, 50),
+	Text = "0",
+	TextScaled = true,
+	Font = T.black,
+	TextColor3 = Color3.new(1, 1, 1),
+	Parent = dash,
+})
+Make.Label("km/h", 12, T.sub, T.bold, {
+	Position = UDim2.fromOffset(110, 56),
+	Size = UDim2.fromOffset(120, 16),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = dash,
+})
+local gearLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.fromOffset(240, 14),
+	Size = UDim2.fromOffset(90, 40),
+	RichText = true,
+	Text = "P",
+	TextScaled = true,
+	Font = T.black,
+	TextColor3 = T.sub,
+	Parent = dash,
+})
+local function bar(y: number, color: Color3, label: string): Frame
+	Make.Label(
+		label,
+		10,
+		T.sub,
+		T.bold,
+		{ Position = UDim2.fromOffset(12, y - 13), Size = UDim2.fromOffset(90, 12), Parent = dash }
+	)
+	local back = New(
+		"Frame",
+		{ Position = UDim2.fromOffset(12, y), Size = UDim2.fromOffset(90, 8), BackgroundColor3 = T.card, Parent = dash },
+		{ Make.Corner(4) }
+	)
+	return New("Frame", { Size = UDim2.fromScale(0.5, 1), BackgroundColor3 = color, Parent = back }, { Make.Corner(4) })
+end
+local rpmBar = bar(26, Color3.fromRGB(240, 80, 60), "RPM ×1000")
+local fuelBar = bar(56, Color3.fromRGB(250, 190, 30), "⛽")
+local leftArrow = Make.Label(
+	"◀",
+	22,
+	Color3.fromRGB(60, 60, 60),
+	T.black,
+	{ Position = UDim2.fromOffset(84, 14), Size = UDim2.fromOffset(24, 30), Parent = dash }
+)
+local rightArrow = Make.Label(
+	"▶",
+	22,
+	Color3.fromRGB(60, 60, 60),
+	T.black,
+	{ Position = UDim2.fromOffset(232, 52), Size = UDim2.fromOffset(24, 30), Parent = dash }
+)
+local lightIcon = Make.Label(
+	"💡",
+	16,
+	T.sub,
+	T.font,
+	{ Position = UDim2.fromOffset(12, 68), Size = UDim2.fromOffset(30, 20), Parent = dash }
+)
+
+local buttons = New("Frame", {
+	BackgroundTransparency = 1,
+	Position = UDim2.fromOffset(8, 86),
+	Size = UDim2.new(1, -16, 0, 26),
+	Parent = dash,
+}, { Make.List(4, true) })
+
+-- State --------------------------------------------------------------------------------
+local car: Model? = nil
+local seat: VehicleSeat? = nil
+local motors: { HingeConstraint } = {}
+local steers: { HingeConstraint } = {}
+local conn: RBXScriptConnection? = nil
+local firstPerson = false
+local lastBrake = false
+local lastBrakeSent = 0
+local warnedFuel = false
+
+local function control(action: string, value: any?)
+	task.spawn(function()
+		local r = Net.Request("Vehicle.Control", action, value)
+		if not r.ok and r.err ~= "too_fast" then
+			Notify.Error(r.err)
+		end
+	end)
+end
+
+local function setCamera(fp: boolean)
+	firstPerson = fp
+	player.CameraMode = if fp then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic
+	if not fp then
+		player.CameraMaxZoomDistance = 128
+		player.CameraMinZoomDistance = 0.5
+	end
+end
+
+local function buildButtons()
+	Make.Clear(buttons)
+	local isEmergency = car ~= nil and car:GetAttribute("Emergency") == true
+	local list = {
+		{
+			"💡",
+			function()
+				control("Headlights")
+			end,
+		},
+		{
+			"◀",
+			function()
+				control("Indicator", "L")
+			end,
+		},
+		{
+			"⚠",
+			function()
+				control("Indicator", "H")
+			end,
+		},
+		{
+			"▶",
+			function()
+				control("Indicator", "R")
+			end,
+		},
+		{
+			"🎥",
+			function()
+				setCamera(not firstPerson)
+			end,
+		},
+	}
+	if isEmergency then
+		table.insert(list, {
+			"🔵",
+			function()
+				control("Bluelight")
+			end,
+		})
+		table.insert(list, {
+			"📢",
+			function()
+				control("Siren")
+			end,
+		})
+	end
+	for i, b in list do
+		Make.Button(
+			b[1],
+			T.card,
+			b[2],
+			{ Size = UDim2.fromOffset(40, 26), TextSize = 14, LayoutOrder = i, Parent = buttons }
+		)
+	end
+end
+
+local function stop()
+	if conn then
+		conn:Disconnect()
+		conn = nil
+	end
+	for _, m in motors do
+		m.AngularVelocity = 0
+		m.MotorMaxTorque = (m:GetAttribute("BaseTorque") or 5000) :: number
+	end
+	for _, s in steers do
+		s.TargetAngle = 0
+	end
+	if firstPerson then
+		setCamera(false)
+	end
+	car, seat = nil, nil
+	motors, steers = {}, {}
+	gui.Enabled = false
+end
+
+local function drive(dt: number)
+	local model, vseat = car, seat
+	if not model or not vseat or not model.PrimaryPart then
+		return
+	end
+	local chassis = model.PrimaryPart :: BasePart
+	local top = (model:GetAttribute("TopSpeed") or 100) :: number
+	local accel = (model:GetAttribute("Accel") or 1) :: number
+	local r = (model:GetAttribute("WheelRadius") or 1.3) :: number
+	local fuel = (model:GetAttribute("Fuel") or 100) :: number
+	local reverseTop = REVERSE_KMH / 3.6 * Config.StudsPerMeter
+
+	local throttle = vseat.ThrottleFloat
+	local steer = vseat.SteerFloat
+	if fuel <= 0 then
+		if throttle ~= 0 and not warnedFuel then
+			warnedFuel = true
+			Notify.Show(Store.T("out_of_fuel"), true)
+		end
+		throttle = math.min(throttle, 0)
+	else
+		warnedFuel = false
+	end
+
+	local speed = chassis.AssemblyLinearVelocity:Dot(chassis.CFrame.LookVector) -- studs/s, + = forward
+	local accelRate = 8 + 9 * accel -- studs/s²
+	local cmd = 0
+	local torqueScale = 1
+	local braking = false
+
+	if throttle > 0.05 then
+		if speed < -1 then
+			cmd, torqueScale, braking = 0, 2.5, true
+		else
+			cmd = math.min(top, math.max(speed, 0) + accelRate * 0.3 * throttle)
+			torqueScale = throttle
+		end
+	elseif throttle < -0.05 then
+		if speed > 1 then
+			cmd, torqueScale, braking = 0, 2.5, true
+		else
+			cmd = math.max(-reverseTop, math.min(speed, 0) - accelRate * 0.25 * -throttle)
+			torqueScale = -throttle
+		end
+	else
+		cmd = 0
+		torqueScale = if math.abs(speed) < 1.5 then 1.5 else 0.06 -- hold when stopped, roll otherwise
+	end
+
+	for _, m in motors do
+		local base = (m:GetAttribute("BaseTorque") or 5000) :: number
+		m.MotorMaxTorque = base * torqueScale
+		m.AngularVelocity = WHEEL_DIR * cmd / r
+	end
+
+	local speedRatio = math.clamp(math.abs(speed) / top, 0, 1)
+	local maxAngle = 34 - 26 * math.clamp(speedRatio * 1.6, 0, 1)
+	for _, s in steers do
+		s.TargetAngle = -steer * maxAngle
+	end
+
+	-- brake lights (rate limited)
+	local now = os.clock()
+	if braking ~= lastBrake and now - lastBrakeSent > 0.3 then
+		lastBrake = braking
+		lastBrakeSent = now
+		control("Brake", braking)
+	end
+
+	-- dashboard
+	local kmh = math.abs(speed) / Config.StudsPerMeter * 3.6
+	speedLabel.Text = tostring(math.floor(kmh + 0.5))
+	local gear = if math.abs(speed) < 0.5 and throttle == 0
+		then "P"
+		elseif speed < -0.5 or (throttle < 0 and speed < 1) then "R"
+		else "D"
+	gearLabel.Text = gear
+	gearLabel.TextColor3 = if gear == "D"
+		then Color3.fromRGB(120, 230, 140)
+		elseif gear == "R" then Color3.fromRGB(250, 120, 120)
+		else T.sub
+	-- fake 6-speed gearbox for the rev counter
+	local gearSpan = 1 / 6
+	local inGear = (speedRatio % gearSpan) / gearSpan
+	local rpm = if gear == "P" then 0.13 else 0.15 + inGear * 0.7 + math.abs(throttle) * 0.1
+	rpmBar.Size = UDim2.fromScale(math.clamp(rpm, 0, 1), 1)
+	fuelBar.Size = UDim2.fromScale(math.clamp(fuel / 100, 0, 1), 1)
+	fuelBar.BackgroundColor3 = if fuel < 15 then T.bad else Color3.fromRGB(250, 190, 30)
+	local ind = model:GetAttribute("Indicator")
+	local blink = (os.clock() % 0.8) < 0.4
+	leftArrow.TextColor3 = if (ind == "L" or ind == "H") and blink
+		then Color3.fromRGB(60, 230, 90)
+		else Color3.fromRGB(60, 60, 60)
+	rightArrow.TextColor3 = if (ind == "R" or ind == "H") and blink
+		then Color3.fromRGB(60, 230, 90)
+		else Color3.fromRGB(60, 60, 60)
+	lightIcon.TextTransparency = if model:GetAttribute("Headlights") then 0 else 0.7
+	local _ = dt
+end
+
+local function start(vseat: VehicleSeat)
+	local model = vseat.Parent
+	if not model or not model:IsA("Model") then
+		return
+	end
+	car, seat = model, vseat
+	motors, steers = {}, {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("HingeConstraint") then
+			if d.Name == "Motor" then
+				table.insert(motors, d)
+			elseif d.Name == "Steer" then
+				table.insert(steers, d)
+			end
+		end
+	end
+	buildButtons()
+	gui.Enabled = true
+	conn = RunService.Heartbeat:Connect(drive)
+end
+
+local function onCharacter(character: Model)
+	local hum = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	if not hum then
+		return
+	end
+	hum.Seated:Connect(function(active, seatPart)
+		if active and seatPart and seatPart:IsA("VehicleSeat") and seatPart.Name == "DriveSeat" then
+			start(seatPart)
+		else
+			stop()
+		end
+	end)
+end
+
+player.CharacterAdded:Connect(function(c)
+	stop()
+	onCharacter(c)
+end)
+if player.Character then
+	task.spawn(onCharacter, player.Character)
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or not car then
+		return
+	end
+	local k = input.KeyCode
+	if k == Enum.KeyCode.L then
+		control("Headlights")
+	elseif k == Enum.KeyCode.Q then
+		control("Indicator", "L")
+	elseif k == Enum.KeyCode.E then
+		control("Indicator", "R")
+	elseif k == Enum.KeyCode.X then
+		control("Indicator", "H")
+	elseif k == Enum.KeyCode.B and car:GetAttribute("Emergency") then
+		control("Bluelight")
+	elseif k == Enum.KeyCode.N and car:GetAttribute("Emergency") then
+		control("Siren")
+	elseif k == Enum.KeyCode.V then
+		setCamera(not firstPerson)
+	end
+end)
+
+return VehicleController
