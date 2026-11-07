@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local MeshLibrary = require(script.Parent.MeshLibrary)
 
 local VehicleBuilder = {}
 
@@ -645,6 +646,17 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	local cabRear = zFront + body.cabEnd * L
 	local isTruck = body.rear ~= nil and body.cabStart <= 0.05
 
+	-- Realistic body mesh (if loaded) + where lights / plates / stripes sit on it
+	local mesh = MeshLibrary.Body(def.body)
+	local A = if mesh then mesh.anchors else nil
+	local headY = if A then A.frontBottom + (A.frontBelt - A.frontBottom) * 0.68 else y0 + body.lower * 0.72
+	local headHalfW = if A then A.frontHalfWidth else W / 2
+	local tailY = if A then A.rearBottom + (A.rearBelt - A.rearBottom) * 0.72 else y0 + body.lower * 0.72
+	local tailHalfW = if A then A.rearHalfWidth else W / 2
+	local sideHalfW = if A then A.sideHalfWidth else W / 2
+	local sideBottom = if A then A.sideBottom else y0
+	local sideBelt = if A then A.sideBelt else y1
+
 	-- Chassis / lower body (collides, carries all the mass)
 	local chassis =
 		part(model, "Chassis", Vector3.new(W, body.lower, L), CFrame.new(0, y0 + body.lower / 2, 0), paint, {
@@ -673,12 +685,13 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	)
 
 	for _, side in { -1, 1 } do
-		local hx = side * (W / 2 - 0.9)
+		local hx = side * (headHalfW - 0.85)
+		local tx = side * (tailHalfW - 0.8)
 		local head = part(
 			model,
 			"Headlight",
 			Vector3.new(1.3, 0.45, 0.1),
-			CFrame.new(hx, y0 + body.lower * 0.72, zFront - 0.06),
+			CFrame.new(hx, headY, zFront - 0.06),
 			Color3.fromRGB(230, 230, 220),
 			{ Material = Enum.Material.Glass }
 		)
@@ -695,18 +708,18 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 			model,
 			"Taillight",
 			Vector3.new(1.2, 0.45, 0.1),
-			CFrame.new(hx, y0 + body.lower * 0.72, zRear + 0.06),
+			CFrame.new(tx, tailY, zRear + 0.06),
 			Color3.fromRGB(120, 0, 0),
 			{ Material = Enum.Material.Glass }
 		)
 		attach(tail)
 
-		for _, z in { zFront - 0.06, zRear + 0.06 } do
+		for _, spot2 in { { zFront - 0.06, headHalfW, headY }, { zRear + 0.06, tailHalfW, tailY } } do
 			local ind = part(
 				model,
 				if side < 0 then "IndicatorL" else "IndicatorR",
 				Vector3.new(0.45, 0.3, 0.1),
-				CFrame.new(side * (W / 2 - 0.2), y0 + body.lower * 0.72, z),
+				CFrame.new(side * (spot2[2] - 0.15), spot2[3], spot2[1]),
 				Color3.fromRGB(120, 70, 0),
 				{ Material = Enum.Material.Glass }
 			)
@@ -716,7 +729,16 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 
 	plate(model, "PlateFront", CFrame.new(0, y0 + 0.75, zFront - 0.45), Enum.NormalId.Front)
 	attach(model:FindFirstChild("PlateFront") :: BasePart)
-	plate(model, "PlateRear", CFrame.new(0, y0 + body.lower * 0.4, zRear + 0.06), Enum.NormalId.Back)
+	plate(
+		model,
+		"PlateRear",
+		CFrame.new(
+			0,
+			if A then A.rearBottom + (A.rearBelt - A.rearBottom) * 0.38 else y0 + body.lower * 0.4,
+			zRear + 0.06
+		),
+		Enum.NormalId.Back
+	)
 	attach(model:FindFirstChild("PlateRear") :: BasePart)
 
 	-- Cabin -------------------------------------------------------------------
@@ -1021,8 +1043,8 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 			local stripe = part(
 				model,
 				"Stripe",
-				Vector3.new(0.06, body.lower * 0.35, L - 0.4),
-				CFrame.new(side * (W / 2 + 0.03), y0 + body.lower * 0.55, 0),
+				Vector3.new(0.06, (sideBelt - sideBottom) * 0.3, L * (if mesh then 0.8 else 1) - 0.4),
+				CFrame.new(side * (sideHalfW + 0.03), sideBottom + (sideBelt - sideBottom) * 0.58, 0),
 				livery.stripe
 			)
 			attach(stripe)
@@ -1031,8 +1053,8 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 					part(
 						model,
 						"Stripe2",
-						Vector3.new(0.06, body.lower * 0.18, L - 0.4),
-						CFrame.new(side * (W / 2 + 0.035), y0 + body.lower * 0.3, 0),
+						Vector3.new(0.06, (sideBelt - sideBottom) * 0.15, L * (if mesh then 0.8 else 1) - 0.4),
+						CFrame.new(side * (sideHalfW + 0.035), sideBottom + (sideBelt - sideBottom) * 0.34, 0),
 						livery.stripe2
 					)
 				)
@@ -1045,7 +1067,7 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 					model,
 					"LiveryText",
 					Vector3.new(0.05, panelH, math.min(L * 0.5, 9)),
-					CFrame.new(side * (W / 2 + 0.06), panelY, panelZ),
+					CFrame.new(side * (sideHalfW + 0.06), panelY, panelZ),
 					Color3.new(1, 1, 1),
 					{ Transparency = 1 }
 				)
@@ -1131,15 +1153,33 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		wheel.CustomPhysicalProperties = wheelPhys
 		wheel.CanCollide = true
 		wheel.Parent = model
-		local rim = part(
-			model,
-			"Rim",
-			Vector3.new(wheelW + 0.05, r * 1.2, r * 1.2),
-			wheel.CFrame,
-			Color3.fromRGB(180, 180, 185),
-			{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
-		)
-		weld(wheel, rim)
+		local wheelMesh = MeshLibrary.Wheel()
+		if wheelMesh then
+			-- realistic tyre + rim; the physics cylinder stays invisible underneath
+			wheel.Transparency = 1
+			local outward = if x < 0 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
+			for _, piece in wheelMesh.pieces do
+				local mp = MeshLibrary.Place(piece, model, wheel.CFrame * outward, Vector3.new(wheelW, r, r))
+				if piece.name == "Tire" then
+					mp.Color = Color3.fromRGB(22, 22, 24)
+					mp.Material = Enum.Material.Rubber
+				else
+					mp.Color = Color3.fromRGB(186, 188, 194)
+					mp.Material = Enum.Material.Metal
+				end
+				weld(wheel, mp)
+			end
+		else
+			local rim = part(
+				model,
+				"Rim",
+				Vector3.new(wheelW + 0.05, r * 1.2, r * 1.2),
+				wheel.CFrame,
+				Color3.fromRGB(180, 180, 185),
+				{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
+			)
+			weld(wheel, rim)
+		end
 
 		local noCol = Instance.new("NoCollisionConstraint")
 		noCol.Part0 = chassis
@@ -1214,6 +1254,49 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	makeWheel("WheelFR", wheelX, axleF, true)
 	makeWheel("WheelRL", -wheelX, axleR, false)
 	makeWheel("WheelRR", wheelX, axleR, false)
+
+	-- Realistic body ---------------------------------------------------------------
+	if mesh then
+		-- the block bodywork is only a fallback; the mesh replaces it
+		local replaced = {
+			Windshield = true,
+			RearWindow = true,
+			Windows = true,
+			CargoBox = true,
+			Roof = true,
+			PillarA = true,
+			PillarC = true,
+		}
+		if body.rear == "box" then
+			replaced.Body = true
+			replaced.Shutter = true
+		end
+		for _, child in model:GetChildren() do
+			if replaced[child.Name] then
+				child:Destroy()
+			end
+		end
+		chassis.Transparency = 1
+		for _, piece in mesh.pieces do
+			local mp = MeshLibrary.Place(piece, model, CFrame.identity)
+			mp.Name = "Mesh" .. piece.name
+			if piece.name == "Body" then
+				mp.Color = paint
+				mp.Material = Enum.Material.SmoothPlastic
+				mp.Reflectance = 0.04
+				mp:SetAttribute("Paint", true)
+			elseif piece.name == "Glass" then
+				mp.Color = GLASS
+				mp.Material = Enum.Material.Glass
+				mp.Transparency = 0.3
+			else
+				mp.Color = TRIM
+				mp.Material = Enum.Material.SmoothPlastic
+			end
+			weld(chassis, mp)
+		end
+		model:SetAttribute("Realistic", true)
+	end
 
 	-- Driving parameters for the client controller -----------------------------
 	local topSpeed = def.speed / 3.6 * Config.StudsPerMeter -- studs/s

@@ -264,6 +264,44 @@ test("config", function()
 	eq(Config.AdminPhoneId, "nvdr_p1")
 end)
 
+-- Mesh alignment: a fake import rotated 180°, scaled x3.57 and moved must map back ------
+local MeshLibrary = requirePath(Server.MeshLibrary)
+test("mesh import alignment", function()
+	local V3, CF = roblox.Vector3, roblox.CFrame
+	local L, markerY = 13, 2.1
+	local importScale = 3.57
+	local importCF = CF.new(50, 10, -20) * CF.Angles(0, math.pi, 0) -- flipped front/back
+	local root = roblox.Instance.new("Model")
+	local function mp(name, ourPos: Vector3, size: Vector3)
+		local p = roblox.Instance.new("MeshPart")
+		p.Name = name
+		p.Size = size * importScale
+		p.CFrame = importCF * CF.new((ourPos - V3.new(0, markerY, 0)) * importScale)
+		p.Parent = root
+	end
+	mp("MarkerFront", V3.new(0, markerY, -L / 2), V3.one * 0.1)
+	mp("MarkerRear", V3.new(0, markerY, L / 2), V3.one * 0.1)
+	mp("MarkerTop", V3.new(0, markerY + 4, 0), V3.one * 0.1)
+	mp("Body", V3.new(0.2, 2.5, -1), V3.new(6, 3, 13))
+	local pieces = MeshLibrary._align(root, L, markerY)
+	assert(pieces and #pieces == 1, "one body piece")
+	local b = pieces[1]
+	local pos = b.cf.Position
+	assert((pos - V3.new(0.2, 2.5, -1)).Magnitude < 1e-3, "position " .. tostring(pos))
+	assert((b.size - V3.new(6, 3, 13)).Magnitude < 1e-3, "size " .. tostring(b.size))
+	assert(b.cf.LookVector:Dot(V3.new(0, 0, -1)) > 0.999, "orientation restored")
+end)
+
+-- Every vehicle builds (blocks fallback and with meshes) ------------------------------
+local CarMeshes = requirePath(pathProxy({ "ServerStorage", "CarMeshes" }))
+test("car mesh data", function()
+	for _, v in Vehicles.List do
+		local info = CarMeshes["body_" .. v.body]
+		assert(info and info.assetId > 0, "no uploaded mesh for body " .. v.body)
+	end
+	assert(CarMeshes.wheel.assetId > 0, "wheel mesh")
+end)
+
 -- Every vehicle builds -----------------------------------------------------------
 for _, v in Vehicles.List do
 	test("build " .. v.id, function()
@@ -288,6 +326,40 @@ for _, v in Vehicles.List do
 		end
 		VehicleBuilder.SetPlate(model, "DO-AB 1234")
 		eq(model:GetAttribute("Plate"), "DO-AB 1234")
+		model:Destroy()
+	end)
+end
+
+local function fakeEntry(key, info)
+	local pieces = {}
+	local names = if key == "wheel" then { "Tire", "Rim", "Spokes" } else { "Body", "Glass", "Trim" }
+	for _, n in names do
+		local t = roblox.Instance.new("MeshPart")
+		t.Name = n
+		table.insert(
+			pieces,
+			{ name = n, template = t, cf = roblox.CFrame.new(0, 2, 0), size = roblox.Vector3.new(2, 2, 2) }
+		)
+	end
+	return { pieces = pieces, anchors = info.anchors }
+end
+for key, info in CarMeshes do
+	MeshLibrary._inject(key, fakeEntry(key, info))
+end
+for _, v in Vehicles.List do
+	test("build with meshes " .. v.id, function()
+		local model = VehicleBuilder.Build(v)
+		assert(model:GetAttribute("Realistic"), "mesh not used")
+		assert(model:FindFirstChild("MeshBody") and model:FindFirstChild("MeshGlass"), "mesh pieces")
+		assert(not model:FindFirstChild("Windshield"), "block windshield should be replaced")
+		eq(model.PrimaryPart.Transparency, 1, "chassis hidden")
+		local tires = 0
+		for _, d in model:GetChildren() do
+			if d.Name == "Tire" then
+				tires += 1
+			end
+		end
+		eq(tires, 4, "tyres")
 		model:Destroy()
 	end)
 end
