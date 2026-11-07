@@ -4,13 +4,13 @@
 
 local Config = {}
 
-Config.GameName = "Dortmund RP"
+Config.GameName = "Emergency Dortmund"
 Config.Version = "0.1.0"
 
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {
-	-- 123456789,
+	10396317047, -- game owner
 }
 
 -- Special Game Admin phone. Only Game Admins can own / equip it.
