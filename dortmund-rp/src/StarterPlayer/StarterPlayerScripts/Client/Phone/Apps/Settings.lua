@@ -85,6 +85,14 @@ Phone.Register({
 				end
 			end
 
+			Make.Label(
+				"Karte / Map: © OpenStreetMap-Mitwirkende (ODbL)",
+				11,
+				T.sub,
+				T.font,
+				{ LayoutOrder = 9, Parent = root }
+			)
+
 			local mine = Make.Card({ LayoutOrder = 4, Parent = root })
 			Make.Label(Store.T("my_phones"), 14, T.text, T.bold, { Parent = mine })
 			for _, id in state.phones or {} do

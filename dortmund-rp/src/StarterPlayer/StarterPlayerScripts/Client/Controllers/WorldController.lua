@@ -2,6 +2,7 @@
 -- Client-side visuals for everyone's vehicles (lights, indicators, blue lights),
 -- street lights at night and rain. Server only sets attributes; animation is local.
 
+local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -100,26 +101,27 @@ local function updateVehicles()
 	end
 end
 
-local streetOn: boolean? = nil
+-- Street lamps are tagged by the server; streamed-in lamps get the current state.
+local night = false
+local function setLamp(lamp: Instance)
+	if lamp:IsA("BasePart") then
+		lamp.Material = if night then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		local light = lamp:FindFirstChildWhichIsA("Light")
+		if light then
+			light.Enabled = night
+		end
+	end
+end
+CollectionService:GetInstanceAddedSignal("StreetLamp"):Connect(setLamp)
 local function updateStreetLights()
 	local h = Lighting.ClockTime
-	local night = h < 6.8 or h > 18.6
-	if night == streetOn then
+	local now = h < 6.8 or h > 18.6
+	if now == night then
 		return
 	end
-	streetOn = night
-	local map = Workspace:FindFirstChild("Map")
-	local lights = map and map:FindFirstChild("StreetLights")
-	if not lights then
-		streetOn = nil
-		return
-	end
-	for _, d in lights:GetDescendants() do
-		if d:IsA("SpotLight") then
-			d.Enabled = night
-		elseif d:IsA("BasePart") and d.Name == "Lamp" then
-			d.Material = if night then Enum.Material.Neon else Enum.Material.SmoothPlastic
-		end
+	night = now
+	for _, lamp in CollectionService:GetTagged("StreetLamp") do
+		setLamp(lamp)
 	end
 end
 

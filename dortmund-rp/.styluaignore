@@ -1,0 +1,3 @@
+src/ServerStorage/CityData/
+src/ServerStorage/CityMeta.lua
+src/ReplicatedStorage/Shared/Locations.lua

@@ -58,6 +58,10 @@ local S: { [string]: { de: string, en: string } } = {
 	not_arrived = { de = "Du bist noch nicht am Einsatzort.", en = "You have not arrived yet." },
 	call_no_reward = { de = "Einsatz abgeschlossen (keine Belohnung).", en = "Call closed (no reward)." },
 	call_new = { de = "🚨 Neuer Notruf (%s): %s", en = "🚨 New emergency call (%s): %s" },
+	no_space = {
+		de = "Hier ist kein Platz zum Ausparken. Stell dich an die Straße.",
+		en = "No space here. Stand next to a road.",
+	},
 	no_character = { de = "Kein Charakter.", en = "No character." },
 	not_your_car = { de = "Das ist nicht dein Fahrzeug.", en = "This is not your vehicle." },
 	not_driving = { de = "Du fährst gerade nicht.", en = "You are not driving." },

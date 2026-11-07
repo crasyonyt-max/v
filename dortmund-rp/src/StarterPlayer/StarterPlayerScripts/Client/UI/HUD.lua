@@ -62,6 +62,14 @@ HUD.PhoneButton = New("TextButton", {
 	Parent = gui,
 }, { Make.Corner(28), Make.Stroke(T.accent, 2) })
 
+Make.Label("© OpenStreetMap", 10, Color3.fromRGB(200, 200, 200), T.font, {
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.new(0, 8, 1, -4),
+	Size = UDim2.fromOffset(120, 14),
+	TextTransparency = 0.3,
+	Parent = gui,
+})
+
 function HUD.Render(s: { [string]: any })
 	money.Text = Locale.Euro(s.bank or 0)
 	local jobDef = Jobs.ById[s.job or "Unemployed"]

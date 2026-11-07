@@ -1,6 +1,7 @@
 -- Server entry point. Order matters: services connect to DataService.Loaded
 -- before DataService starts loading players.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script.Parent:WaitForChild("Server")
@@ -15,8 +16,16 @@ local State = require(Server.State)
 
 Remotes.IsReady = DataService.IsLoaded
 
+-- Nobody spawns until the city exists (otherwise they would fall).
+Players.CharacterAutoLoads = false
 MapBuilder.Build()
 Interaction.Start()
+Players.CharacterAutoLoads = true
+for _, player in Players:GetPlayers() do
+	if not player.Character then
+		task.spawn(player.LoadCharacter, player)
+	end
+end
 
 local services = {
 	require(Server.WorldService),

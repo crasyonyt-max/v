@@ -136,16 +136,47 @@ local function spawnCFrame(player: Player, width: number): CFrame?
 		look = Vector3.new(0, 0, -1)
 	end
 	look = look.Unit
-	-- place the car beside the player, parallel to where they look
 	local right = look:Cross(Vector3.yAxis)
-	local origin = root.Position + right * (width / 2 + 5) + look * 2 + Vector3.new(0, 30, 0)
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = { folder, character }
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	local hit = Workspace:Raycast(origin, Vector3.new(0, -80, 0), params)
-	local groundY = if hit then hit.Position.Y else root.Position.Y - 3
-	local pos = Vector3.new(origin.X, groundY, origin.Z)
-	return CFrame.lookAt(pos, pos + look)
+	local city = Workspace:FindFirstChild("City")
+	local ground = RaycastParams.new()
+	ground.FilterType = Enum.RaycastFilterType.Include
+	ground.FilterDescendantsInstances = if city
+		then {
+			city:FindFirstChild("Ground"),
+			city:FindFirstChild("Roads"),
+			city:FindFirstChild("Pavements"),
+			city:FindFirstChild("Areas"),
+		}
+		else { Workspace }
+	local blockers = OverlapParams.new()
+	blockers.FilterType = Enum.OverlapFilterType.Include
+	blockers.FilterDescendantsInstances = { city and city:FindFirstChild("Buildings") or Workspace.Terrain, folder }
+	-- try beside the player (right, left), then ahead and behind; first free spot wins
+	local side = width / 2 + 5
+	local candidates = {
+		right * side,
+		-right * side,
+		right * (side + 8),
+		-right * (side + 8),
+		look * 20,
+		-look * 20,
+		right * side + look * 12,
+		-right * side - look * 12,
+	}
+	for _, offset in candidates do
+		local origin = root.Position + offset + Vector3.new(0, 40, 0)
+		local hit = Workspace:Raycast(origin, Vector3.new(0, -100, 0), ground)
+		if hit then
+			local pos = Vector3.new(origin.X, hit.Position.Y, origin.Z)
+			local cf = CFrame.lookAt(pos, pos + look)
+			local inWay =
+				Workspace:GetPartBoundsInBox(cf * CFrame.new(0, 4, 0), Vector3.new(width + 1, 6, width * 2.6), blockers)
+			if #inWay == 0 then
+				return cf
+			end
+		end
+	end
+	return nil
 end
 
 -- Who may take the driver's seat of a car spawned by `owner`.
@@ -225,7 +256,7 @@ local function spawnModel(
 	local cf = spawnCFrame(player, built.Size.X)
 	if not cf then
 		model:Destroy()
-		return false, "no_character"
+		return false, "no_space"
 	end
 	-- the model is built with the tyres touching y = 0; lift the chassis to its build height
 	cf *= CFrame.new(0, built.Position.Y + 0.3, 0)

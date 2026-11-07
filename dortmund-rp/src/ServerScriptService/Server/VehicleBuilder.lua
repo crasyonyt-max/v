@@ -634,6 +634,7 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	local paint = color or def.color
 	local model = Instance.new("Model")
 	model.Name = def.name
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 
 	local L, W = body.L, body.W
 	local y0 = body.clear

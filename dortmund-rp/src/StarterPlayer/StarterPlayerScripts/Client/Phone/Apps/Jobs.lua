@@ -2,9 +2,9 @@
 -- Jobs: current job, job XP, next vehicle unlock, navigate to stations, quit.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
 
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
+local Locations = require(ReplicatedStorage.Shared.Locations)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
@@ -16,17 +16,9 @@ local Phone = require(script.Parent.Parent.Phone)
 
 local T = Make.Theme
 
-local function findStation(jobId: string): BasePart?
-	local map = Workspace:FindFirstChild("Map")
-	if not map then
-		return nil
-	end
-	for _, d in map:GetDescendants() do
-		if d:IsA("BasePart") and d:GetAttribute("Interaction") == "JobStart" and d:GetAttribute("JobId") == jobId then
-			return d
-		end
-	end
-	return nil
+local function findStation(jobId: string): Vector3?
+	local loc = (Locations.Jobs :: any)[jobId]
+	return if loc then Vector3.new(loc.marker[1], 0, loc.marker[2]) else nil
 end
 
 Phone.Register({
@@ -85,7 +77,7 @@ Phone.Register({
 					Make.Button("🧭 " .. Store.T("navigate"), T.panel, function()
 						local station = findStation(def.id)
 						if station then
-							Waypoint.Set(station.Position, Jobs.Name(def.id, lang), def.color)
+							Waypoint.Set(station, Jobs.Name(def.id, lang), def.color)
 							Phone.Close()
 						end
 					end, { Size = UDim2.new(1, 0, 0, 30), Parent = card })

@@ -50,7 +50,29 @@ function WorldService.Start()
 	end)
 
 	atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
+	atmosphere.Offset = 0.2
+	atmosphere.Color = Color3.fromRGB(199, 206, 214)
+	atmosphere.Decay = Color3.fromRGB(106, 112, 125)
+	atmosphere.Glare = 0.2
 	atmosphere.Parent = Lighting
+	Lighting.OutdoorAmbient = Color3.fromRGB(120, 124, 132)
+	Lighting.Ambient = Color3.fromRGB(40, 42, 46)
+	Lighting.ShadowSoftness = 0.25
+	Lighting.ExposureCompensation = 0.1
+	local grade = Instance.new("ColorCorrectionEffect")
+	grade.Contrast = 0.08
+	grade.Saturation = -0.08
+	grade.TintColor = Color3.fromRGB(255, 250, 244)
+	grade.Parent = Lighting
+	local bloom = Instance.new("BloomEffect")
+	bloom.Intensity = 0.35
+	bloom.Size = 28
+	bloom.Threshold = 1.6
+	bloom.Parent = Lighting
+	local rays = Instance.new("SunRaysEffect")
+	rays.Intensity = 0.04
+	rays.Spread = 0.7
+	rays.Parent = Lighting
 	local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky")
 	sky.Parent = Lighting
 	pcall(function()

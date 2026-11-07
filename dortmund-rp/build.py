@@ -75,13 +75,22 @@ def item(path: Path, parents: tuple) -> str:
     return ""
 
 
+SERVICE_PROPS = {
+    # the real city is ~100k parts: stream it around each player
+    "Workspace": '<bool name="StreamingEnabled">true</bool>'
+    '<int name="StreamingTargetRadius">1400</int>'
+    '<int name="StreamingMinRadius">256</int>'
+    '<token name="StreamOutBehavior">2</token>',
+}
+
+
 def service(name: str, path: Path | None) -> str:
     children = ""
     if path is not None:
         children = "".join(item(child, (name,)) for child in sorted(path.iterdir()))
     return (
         f'<Item class="{name}" referent="{ref()}"><Properties>'
-        f'<string name="Name">{name}</string>'
+        f'<string name="Name">{name}</string>{SERVICE_PROPS.get(name, "")}'
         f"</Properties>{children}</Item>"
     )
 

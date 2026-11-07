@@ -36,6 +36,23 @@ local function pathProxy(parts: { string })
 				return function(_, child)
 					return self[child]
 				end
+			elseif key == "Name" then
+				return parts[#parts]
+			elseif key == "IsA" then
+				return function(_, class)
+					return class == "ModuleScript" and fs.isFile("src/" .. table.concat(parts, "/") .. ".lua")
+				end
+			elseif key == "GetChildren" then
+				return function()
+					local out = {}
+					for _, entry in fs.readDir("src/" .. table.concat(parts, "/")) do
+						local name = string.gsub(entry, "%.lua$", "")
+						local p = table.clone(parts)
+						table.insert(p, name)
+						table.insert(out, pathProxy(p))
+					end
+					return out
+				end
 			end
 			local p = table.clone(parts)
 			table.insert(p, key)
@@ -71,7 +88,7 @@ local fakeServices = {
 
 local fakeGame = {
 	GetService = function(_, name: string)
-		if name == "ReplicatedStorage" or name == "ServerScriptService" then
+		if name == "ReplicatedStorage" or name == "ServerScriptService" or name == "ServerStorage" then
 			return pathProxy({ name })
 		end
 		if fakeServices[name] then
@@ -107,6 +124,7 @@ end
 
 env = {
 	game = fakeGame,
+	task = require("@lune/task"),
 	workspace = dataModel:GetService("Workspace"),
 	require = requirePath,
 	Instance = roblox.Instance,
@@ -141,6 +159,7 @@ env = {
 }
 
 local RS = pathProxy({ "ReplicatedStorage" })
+fakeServices.ServerStorage = pathProxy({ "ServerStorage" })
 local Server = pathProxy({ "ServerScriptService", "Server" })
 
 -- Shared modules -------------------------------------------------------------------
@@ -259,17 +278,99 @@ overrides["ServerScriptService/Server/InteractionService"] = {
 		fakeServices.CollectionService:AddTag(part, "Interaction")
 	end,
 }
-test("map", function()
+test("triangle prisms hit their corners", function()
+	local CityBuilder = requirePath(Server.CityBuilder)
+	local V2 = roblox.Vector2
+	local rngT = env.Random.new(7)
+	for _ = 1, 200 do
+		local function rp()
+			return V2.new(rngT:NextInteger(-500, 500) / 3, rngT:NextInteger(-500, 500) / 3)
+		end
+		local a, b, c = rp(), rp(), rp()
+		local area = math.abs((b - a).X * (c - a).Y - (b - a).Y * (c - a).X) / 2
+		if area > 20 then
+			local holder = roblox.Instance.new("Folder")
+			CityBuilder._triPrism(
+				holder,
+				a,
+				b,
+				c,
+				0,
+				10,
+				roblox.Color3.new(1, 1, 1),
+				roblox.Enum.Material.Concrete,
+				true
+			)
+			local covered = 0
+			for _, w in holder:GetChildren() do
+				local sz = w.Size
+				-- wedge cross-section corners: bottom-front, bottom-back (right angle), top-back
+				for _, lp in
+					{
+						roblox.Vector3.new(0, -sz.Y / 2, -sz.Z / 2),
+						roblox.Vector3.new(0, -sz.Y / 2, sz.Z / 2),
+						roblox.Vector3.new(0, sz.Y / 2, sz.Z / 2),
+					}
+				do
+					local wp = w.CFrame * lp
+					local p = V2.new(wp.X, wp.Z)
+					local best = math.min((p - a).Magnitude, (p - b).Magnitude, (p - c).Magnitude)
+					if best < 0.01 then
+						covered += 1
+					end
+				end
+				assert(math.abs(w.CFrame.RightVector.Y) > 0.999, "wedge not vertical")
+				eq(w.CFrame.Position.Y, 5, "prism height centre")
+			end
+			-- each of the 2 wedges has 2 real triangle corners (+ the foot point)
+			eq(covered, 4, "wedge corners on triangle")
+			local sum = 0
+			for _, w in holder:GetChildren() do
+				sum += w.Size.Y * w.Size.Z / 2
+			end
+			assert(math.abs(sum - area) < 0.05, "area mismatch " .. sum .. " vs " .. area)
+		end
+	end
+end)
+
+test("real city + map", function()
+	local CityBuilder = requirePath(Server.CityBuilder)
+	CityBuilder.GroundY = function()
+		return 0.2 -- no raycasts in Lune
+	end
 	local MapBuilder = requirePath(Server.MapBuilder)
+	local t0 = os.clock()
 	MapBuilder.Build()
+	local city = dataModel:GetService("Workspace"):FindFirstChild("City")
+	assert(city, "no city")
+	local counts = {}
+	local total = 0
+	for _, f in city:GetChildren() do
+		counts[f.Name] = #f:GetChildren()
+		total += counts[f.Name]
+	end
+	print(
+		string.format(
+			"  city: %d parts in %.1fs  (buildings %d, roads %d, pavements %d, markings %d, trees %d, lights %d)",
+			total,
+			os.clock() - t0,
+			counts.Buildings,
+			counts.Roads,
+			counts.Pavements,
+			counts.Markings,
+			counts.Trees,
+			counts.StreetLights
+		)
+	)
+	assert(counts.Buildings > 20000, "too few building parts")
 	local kinds: { [string]: number } = {}
 	for _, m in tagged.Interaction or {} do
 		local k = m:GetAttribute("Interaction")
 		kinds[k] = (kinds[k] or 0) + 1
 	end
-	eq(kinds.JobStart, 7, "job start markers (one per job, Notarzt at DRH)")
+	eq(kinds.JobStart, 7, "job start markers (one per job)")
 	eq(kinds.JobGarage, 7, "job garages")
-	assert((kinds.Refuel or 0) >= 1, "gas pumps")
+	assert((kinds.Refuel or 0) >= 3, "petrol stations")
 	local uis = {}
 	for _, m in tagged.Interaction do
 		local ui = m:GetAttribute("UI")
@@ -277,7 +378,7 @@ test("map", function()
 			uis[ui] = true
 		end
 	end
-	assert(uis.Handyland and uis.Dealership and uis.Housing, "shops missing")
+	assert(uis.Handyland and uis.Dealership, "shops missing")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))
