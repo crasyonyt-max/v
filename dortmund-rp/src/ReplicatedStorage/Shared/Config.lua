@@ -11,6 +11,7 @@ Config.Version = "0.1.0"
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {
 	10396317047, -- game owner
+	8912131297, -- deniney26548
 }
 
 -- Special Game Admin phone. Only Game Admins can own / equip it.
