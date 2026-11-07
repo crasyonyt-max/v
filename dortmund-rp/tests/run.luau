@@ -97,14 +97,15 @@ local function requirePath(target: any)
 	end
 	local file = fileFor(parts)
 	assert(file, "module not found: " .. key)
-	local moduleEnv = setmetatable({ script = pathProxy(parts) }, { __index = env })
+	local moduleEnv = table.clone(env)
+	moduleEnv.script = pathProxy(parts)
 	local chunk = luau.load(fs.readFile(file), { debugName = file, environment = moduleEnv })
 	local result = chunk()
 	cache[key] = result
 	return result
 end
 
-env = setmetatable({
+env = {
 	game = fakeGame,
 	workspace = dataModel:GetService("Workspace"),
 	require = requirePath,
@@ -122,20 +123,22 @@ env = setmetatable({
 	NumberSequenceKeypoint = roblox.NumberSequenceKeypoint,
 	ColorSequence = roblox.ColorSequence,
 	NumberRange = roblox.NumberRange,
-	Random = { new = function(seed)
-		local s = seed or 1
-		return {
-			NextInteger = function(_, a, b)
-				s = (s * 1103515245 + 12345) % 2147483648
-				return a + s % (b - a + 1)
-			end,
-			NextNumber = function()
-				s = (s * 1103515245 + 12345) % 2147483648
-				return s / 2147483648
-			end,
-		}
-	end },
-}, { __index = _G })
+	Random = {
+		new = function(seed)
+			local s = seed or 1
+			return {
+				NextInteger = function(_, a, b)
+					s = (s * 1103515245 + 12345) % 2147483648
+					return a + s % (b - a + 1)
+				end,
+				NextNumber = function()
+					s = (s * 1103515245 + 12345) % 2147483648
+					return s / 2147483648
+				end,
+			}
+		end,
+	},
+}
 
 local RS = pathProxy({ "ReplicatedStorage" })
 local Server = pathProxy({ "ServerScriptService", "Server" })
@@ -264,8 +267,8 @@ test("map", function()
 		local k = m:GetAttribute("Interaction")
 		kinds[k] = (kinds[k] or 0) + 1
 	end
-	eq(kinds.JobStart, 8, "job start markers (7 jobs + Notarzt at DRH)")
-	eq(kinds.JobGarage, 8, "job garages")
+	eq(kinds.JobStart, 7, "job start markers (one per job, Notarzt at DRH)")
+	eq(kinds.JobGarage, 7, "job garages")
 	assert((kinds.Refuel or 0) >= 1, "gas pumps")
 	local uis = {}
 	for _, m in tagged.Interaction do

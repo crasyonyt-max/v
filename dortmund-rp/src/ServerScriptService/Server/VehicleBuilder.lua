@@ -721,31 +721,34 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	-- Cabin -------------------------------------------------------------------
 	local cabH = body.cab
 	local cy = y1 + cabH / 2
-	local coreFront = cabFront + body.ws
-	local coreRear = cabRear - body.rs
+	-- keep at least 1 stud of flat roof: shrink both window slopes if the cabin is short
+	local slopeFit = math.min(1, (cabRear - cabFront - 1) / math.max(body.ws + body.rs, 0.01))
+	local ws, rs = body.ws * slopeFit, body.rs * slopeFit
+	local coreFront = cabFront + ws
+	local coreRear = cabRear - rs
 	local glassProps = { Transparency = 0.45, Material = Enum.Material.Glass }
 
 	-- windshield
-	if body.ws > 0.1 then
+	if ws > 0.1 then
 		attach(
 			wedge(
 				model,
 				"Windshield",
-				Vector3.new(W - 0.4, cabH, body.ws),
-				CFrame.new(0, cy, cabFront + body.ws / 2),
+				Vector3.new(W - 0.4, cabH, ws),
+				CFrame.new(0, cy, cabFront + ws / 2),
 				GLASS,
 				glassProps
 			)
 		)
 	end
 	-- rear window
-	if body.rs > 0.1 then
+	if rs > 0.1 then
 		attach(
 			wedge(
 				model,
 				"RearWindow",
-				Vector3.new(W - 0.4, cabH, body.rs),
-				CFrame.new(0, cy, cabRear - body.rs / 2) * CFrame.Angles(0, math.pi, 0),
+				Vector3.new(W - 0.4, cabH, rs),
+				CFrame.new(0, cy, cabRear - rs / 2) * CFrame.Angles(0, math.pi, 0),
 				GLASS,
 				glassProps
 			)
