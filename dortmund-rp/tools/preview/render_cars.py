@@ -15,7 +15,7 @@ def load_glb(p):
         out.append((m['name'], P, I, js['materials'][pr['material']]['pbrMetallicRoughness']['baseColorFactor']))
     return out
 
-def render(path, label, yaw_deg=35, W=420, H=260, paint=(0.75, 0.12, 0.12)):
+def render(path, label, yaw_deg=35, W=420, H=260, paint=(0.75, 0.12, 0.12), scheme=None):
     img = Image.new('RGB', (W, H), (235, 238, 242)); d = ImageDraw.Draw(img)
     yaw, pitch = math.radians(yaw_deg), math.radians(16)
     def proj(p):
@@ -28,7 +28,9 @@ def render(path, label, yaw_deg=35, W=420, H=260, paint=(0.75, 0.12, 0.12)):
     for name, P, I, col in load_glb(path):
         if name.startswith('Marker'):
             continue
-        if name == 'Body':
+        if scheme and name in scheme:
+            col = scheme[name]
+        elif name in ('Body', 'SideLow', 'SideMid', 'SideHigh', 'Hood', 'Roof', 'Deck'):
             col = paint
         for i in range(0, len(I), 3):
             a, b, c = (P[I[i]], P[I[i + 1]], P[I[i + 2]])

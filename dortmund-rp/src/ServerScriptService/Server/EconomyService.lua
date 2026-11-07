@@ -29,8 +29,8 @@ function Economy.Add(player: Player, amount: number, reason: string): boolean
 	if not data or amount ~= amount or amount <= 0 or amount > 1e10 then
 		return false
 	end
-	amount = math.floor(amount)
-	data.bank += amount
+	amount = math.floor(amount * 100 + 0.5) / 100 -- cents
+	data.bank = math.floor((data.bank + amount) * 100 + 0.5) / 100
 	logTx(data, amount, reason)
 	State.MarkDirty(player)
 	return true
@@ -41,11 +41,11 @@ function Economy.TrySpend(player: Player, amount: number, reason: string): boole
 	if not data or amount ~= amount or amount < 0 then
 		return false
 	end
-	amount = math.floor(amount)
+	amount = math.floor(amount * 100 + 0.5) / 100 -- cents
 	if data.bank < amount then
 		return false
 	end
-	data.bank -= amount
+	data.bank = math.floor((data.bank - amount) * 100 + 0.5) / 100
 	if amount > 0 then
 		logTx(data, -amount, reason)
 	end

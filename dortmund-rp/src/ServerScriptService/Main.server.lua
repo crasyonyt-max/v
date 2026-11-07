@@ -22,6 +22,7 @@ require(Server.MeshLibrary).Start()
 Players.CharacterAutoLoads = false
 MapBuilder.Build()
 Interaction.Start()
+task.spawn(require(Server.StoreBuilder).Build) -- NPCs load from the web; don't block spawning
 Players.CharacterAutoLoads = true
 for _, player in Players:GetPlayers() do
 	if not player.Character then
@@ -38,6 +39,7 @@ local services = {
 	require(Server.EmergencyService),
 	require(Server.VehicleService),
 	require(Server.AdminService),
+	require(Server.StoreService),
 }
 for _, service in services do
 	service.Start()

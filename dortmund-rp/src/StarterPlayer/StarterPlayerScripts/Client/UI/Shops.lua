@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Phones = require(ReplicatedStorage.Shared.Phones)
@@ -282,6 +283,33 @@ renderers.JobGarage = function(jobId: any)
 				nil
 			)
 		end
+	end
+end
+
+renderers.Store = function(kind: any)
+	local store = Items.Stores[kind]
+	if not store then
+		return
+	end
+	title.Text = "🛒 " .. store.title
+	Make.Clear(tabBar)
+	Make.Label(Store.T("store_hint"), 12, T.sub, T.font, { Parent = body })
+	local g = grid()
+	for i, id in store.items do
+		local it = Items.ById[id]
+		local price = Items.Price(kind, id) or it.price
+		local line = Locale.Euro(price)
+			.. "\n"
+			.. (if it.hunger > 0 then "🍔 +" .. it.hunger .. "  " else "")
+			.. (if it.thirst > 0 then "💧 +" .. it.thirst else "")
+		itemCard(g, i, it.color, it.name, line, Store.T("buy"), T.good, function()
+			local r = Net.Request("Store.Buy", kind, id)
+			if r.ok then
+				Notify.Show("🛍️ " .. it.name, false, 2)
+			else
+				Notify.Error(r.err)
+			end
+		end)
 	end
 end
 

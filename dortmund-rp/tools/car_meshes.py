@@ -27,7 +27,7 @@ CACHE = ROOT / "data" / "car_assets.json"
 MESH_DIR = ROOT / "build" / "meshes"
 GROUP_ID = "35947661"
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 
 def body_types():
@@ -109,22 +109,50 @@ def section_profile(b, z, axles):
     return w, bottom, belt, top, zone
 
 
-def loft(b, axles, n_sections=64):
-    """Builds body/glass/trim meshes. Cross-section = 9 points (right half)."""
+def door_seams(b):
+    """z positions of door seams (front door front edge, B-pillar, rear edge)."""
+    L = b["L"]
+    zf = -L / 2
+    cab_f, cab_r = zf + b["cabStart"] * L, zf + b["cabEnd"] * L
+    ws, rs = b["ws"], b["rs"]
+    fit = min(1.0, (cab_r - cab_f - 1) / max(ws + rs, 0.01))
+    ws, rs = ws * fit, rs * fit
+    core_f, core_r = cab_f + ws * 0.7, cab_r - max(rs, 0.4)
+    if b.get("rear") or b.get("glassEnd") is not None:
+        # vans / trucks: cab door only
+        end = zf + (b.get("glassEnd") or b["cabEnd"]) * L
+        return [core_f, min(end, core_f + 3.6)]
+    if b.get("seats", 4) >= 5:
+        mid = (core_f + core_r) / 2
+        return [core_f, mid, min(core_r, mid + (mid - core_f))]
+    return [core_f, min(core_r, core_f + 4.6)]
+
+
+SIDE_MATS = {0: "Trim", 1: "Body", 2: "SideLow", 3: "SideMid", 4: "SideHigh", 5: "Body"}
+
+
+def loft(b, axles, n_sections=72):
+    """Body split into panels so liveries can colour them separately.
+    Cross-section (right half, bottom -> roof centre), 11 points / 10 segments."""
     L = b["L"]
     zs = [-L / 2 + L * i / (n_sections - 1) for i in range(n_sections)]
+    cab_f = -L / 2 + b["cabStart"] * L
+    cab_r = -L / 2 + b["cabEnd"] * L
     sections = []
     for z in zs:
         w, yb, belt, top, zone = section_profile(b, z, axles)
         g = max(top - belt, 0.0)
+        h = max(belt - yb, 0.01)
         greenhouse = zone in ("wind", "roof", "rear", "van") and g > 0.05
         tumble = (0.16 if zone != "van" else 0.05) * w if greenhouse else 0
         crown = 0.12 if not greenhouse else 0.06
         pts = [
             (0.0, yb),
             (w * 0.9, yb),
-            (w, yb + (belt - yb) * 0.35),
-            (w * 1.0, belt - (belt - yb) * 0.12),
+            (w, yb + h * 0.30),
+            (w, yb + h * 0.47),
+            (w, yb + h * 0.64),
+            (w, belt - h * 0.10),
             (w * 0.97, belt),
             (w * 0.97 - tumble * 0.5, belt + g * 0.55),
             (w * 0.97 - tumble, top - g * 0.08 - (0.05 if greenhouse else 0.0)),
@@ -133,30 +161,42 @@ def loft(b, axles, n_sections=64):
         ]
         sections.append((z, pts, zone, greenhouse))
 
-    meshes = {"Body": ([], []), "Glass": ([], []), "Trim": ([], [])}
+    names = ["Body", "SideLow", "SideMid", "SideHigh", "Hood", "Roof", "Deck", "Glass", "Trim", "Seams"]
+    meshes = {n: ([], []) for n in names}
+    seams = door_seams(b)
+
+    def top_mat(zone, z):
+        if zone in ("wind", "rear"):
+            return "Glass"
+        if zone in ("roof", "van", "box"):
+            return "Roof"
+        return "Hood" if z < cab_f else "Deck"
 
     def material(seg, zone_a, zone_b, gh, z):
-        if seg == 0:
-            return "Trim"
-        if seg <= 3:
-            return "Body"
-        if zone_a == "box" or zone_b == "box":
-            return "Body"
-        if seg in (4, 5, 6):  # side windows
-            if not gh or zone_a == "van":
+        if seg in SIDE_MATS:
+            return SIDE_MATS[seg]
+        if seg in (6, 7):  # side windows
+            if zone_a == "box" or zone_b == "box":
                 return "Body"
-            # pillars (A at windshield top, B in the middle, C before the rear window)
-            cf = -L / 2 + b["cabStart"] * L
-            cr = -L / 2 + b["cabEnd"] * L
-            mid = (cf + b["ws"] + cr - b["rs"]) / 2
-            for pz in (cf + b["ws"] * 0.95, mid, cr - max(b["rs"], 0.4) * 1.0):
+            if not gh or zone_a == "van":
+                return "Body" if seg == 6 else top_mat(zone_a, z) if not gh else "Body"
+            # pillars: A at the windshield, B in the middle, C before the rear window
+            core_f = cab_f + b["ws"] * 0.95
+            core_r = cab_r - max(b["rs"], 0.4)
+            for pz in (core_f, (core_f + core_r) / 2, core_r):
                 if abs(z - pz) < 0.22:
-                    return "Body"
+                    return "Roof"
             return "Glass"
-        # roof segments
-        if zone_a in ("wind", "rear") and gh:
-            return "Glass"
-        return "Body"
+        return top_mat(zone_a if gh or zone_a == "box" else zone_a, z) if gh or zone_a in ("box",) else ("Hood" if z < cab_f else "Deck")
+
+    def quad(mat, q, side):
+        pos, idx = meshes[mat]
+        base = len(pos)
+        pos.extend([list(p) for p in q])
+        if side == 1:
+            idx.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+        else:
+            idx.extend([base, base + 2, base + 1, base, base + 3, base + 2])
 
     for i in range(len(sections) - 1):
         za, pa, zone_a, gha = sections[i]
@@ -165,23 +205,31 @@ def loft(b, axles, n_sections=64):
         zmid = (za + zb) / 2
         for seg in range(len(pa) - 1):
             mat = material(seg, zone_a, zone_b, gh, zmid)
-            pos, idx = meshes[mat]
             for side in (1, -1):
-                q = [
+                quad(mat, [
                     (side * pa[seg][0], pa[seg][1], za),
                     (side * pa[seg + 1][0], pa[seg + 1][1], za),
                     (side * pb[seg + 1][0], pb[seg + 1][1], zb),
                     (side * pb[seg][0], pb[seg][1], zb),
-                ]
-                base = len(pos)
-                pos.extend([list(p) for p in q])
-                # outward winding: right side (side=1) faces +X
-                if side == 1:
-                    idx.extend([base, base + 1, base + 2, base, base + 2, base + 3])
-                else:
-                    idx.extend([base, base + 2, base + 1, base, base + 3, base + 2])
+                ], side)
 
-    # caps
+    # door seams: thin dark strips just outside the side surface, sill to belt
+    for zs_ in seams:
+        w, yb, belt, top, zone = section_profile(b, zs_, axles)
+        h = belt - yb
+        pts = [(w * 0.9, yb), (w, yb + h * 0.3), (w, belt - h * 0.1), (w * 0.97, belt)]
+        for side in (1, -1):
+            for k in range(len(pts) - 1):
+                (x1, y1), (x2, y2) = pts[k], pts[k + 1]
+                o = 0.012
+                quad("Seams", [
+                    (side * (x1 + o), y1, zs_ - 0.035),
+                    (side * (x2 + o), y2, zs_ - 0.035),
+                    (side * (x2 + o), y2, zs_ + 0.035),
+                    (side * (x1 + o), y1, zs_ + 0.035),
+                ], side)
+
+    # caps (front / rear faces)
     for (z, pts, _, _), facing in ((sections[0], -1), (sections[-1], 1)):
         pos, idx = meshes["Body"]
         ring = [(x, y) for x, y in pts] + [(-x, y) for x, y in reversed(pts)]
@@ -251,6 +299,7 @@ def anchors(b, axles):
         "sideHalfWidth": wm,
         "sideBelt": beltm,
         "sideBottom": ybm,
+        "doors": door_seams(b),
     }
 
 
@@ -352,10 +401,11 @@ def main():
         axles = axles_for(b)
         parts = loft(b, axles)
         marks, mark_y = markers(b)
+        colors = {"Glass": (0.1, 0.13, 0.16), "Trim": (0.06, 0.06, 0.07), "Seams": (0.05, 0.05, 0.05)}
         meshes = [
-            {"name": "Body", "positions": parts["Body"][0], "indices": parts["Body"][1], "color": (0.8, 0.8, 0.8), "metallic": 0.3, "roughness": 0.35},
-            {"name": "Glass", "positions": parts["Glass"][0], "indices": parts["Glass"][1], "color": (0.1, 0.13, 0.16), "roughness": 0.1},
-            {"name": "Trim", "positions": parts["Trim"][0], "indices": parts["Trim"][1], "color": (0.06, 0.06, 0.07)},
+            {"name": k, "positions": v[0], "indices": v[1], "color": colors.get(k, (0.8, 0.8, 0.8)),
+             "metallic": 0.3 if k not in colors else 0.0, "roughness": 0.1 if k == "Glass" else 0.4}
+            for k, v in parts.items()
         ] + marks
         meshes = [m for m in meshes if m["positions"]]
         jobs.append((f"body_{name}", meshes, {"markerY": mark_y, "anchors": anchors(b, axles)}))
@@ -376,6 +426,8 @@ def main():
     def lua(v):
         if isinstance(v, dict):
             return "{ " + ", ".join(f"{k} = {lua(x)}" for k, x in v.items()) + " }"
+        if isinstance(v, list):
+            return "{ " + ", ".join(lua(x) for x in v) + " }"
         if isinstance(v, float):
             return f"{v:.3f}"
         return str(v)

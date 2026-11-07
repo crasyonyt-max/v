@@ -46,6 +46,9 @@ local function template(): { [string]: any }
 		wallpaper = 1,
 		language = "de",
 		messages = {}, -- { peer, peerName, text, t, out }
+		inventory = {}, -- carried item ids (food & drinks)
+		hunger = 100,
+		thirst = 100,
 		tx = {}, -- bank transactions { amount, reason, t }
 		stats = { joins = 0, playtime = 0 },
 		_lock = nil,

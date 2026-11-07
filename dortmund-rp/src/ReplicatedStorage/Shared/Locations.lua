@@ -28,6 +28,20 @@ Locations.Fuel = {
 	{ -1437.1, -338.1 },
 }
 
+-- Enterable stores: centre, width (door side), depth, yaw (door faces local -Z), building top
+Locations.Stores = {
+	{ kind = "Kiosk", name = "Kiosk", x = -334.6, z = 6437.8, width = 49.3, depth = 92.5, yaw = 92.19, top = 58.2 },
+	{ kind = "Baeckerei", name = "Bäckerei Vinckeplatz", x = -1050.5, z = 5925.4, width = 59.2, depth = 77.1, yaw = 30.34, top = 58.2 },
+	{ kind = "Kiosk", name = "Kiosk Kreuzstraße", x = -2256.0, z = 6055.4, width = 46.9, depth = 64.1, yaw = 94.26, top = 67.1 },
+	{ kind = "Baeckerei", name = "Bäckerei Saarlandstraße", x = 1419.7, z = 5157.6, width = 35.0, depth = 72.9, yaw = 9.65, top = 60.7 },
+	{ kind = "Baeckerei", name = "Bäckerei Chemnitzer Straße", x = 1203.1, z = 5817.5, width = 52.1, depth = 69.4, yaw = -81.31, top = 57.1 },
+	{ kind = "Rewo", name = "Rewo Landgrafenstraße", x = 474.8, z = 5948.4, width = 54.4, depth = 144.5, yaw = -82.28, top = 58.2 },
+	{ kind = "Rewo", name = "Rewo Saarlandstraße", x = 1451.3, z = 5151.7, width = 30.5, depth = 73.3, yaw = 10.51, top = 60.7 },
+	{ kind = "Rewo", name = "Rewo Rittershausstraße", x = -2186.9, z = 4135.5, width = 69.1, depth = 70.5, yaw = -8.54, top = 42.9 },
+	{ kind = "Lindl", name = "Lindl Münsterstraße", x = 1398.0, z = -1549.2, width = 54.3, depth = 61.3, yaw = 104.09, top = 69.6 },
+	{ kind = "Alda", name = "Alda Märkische Straße", x = 4244.4, z = 5065.8, width = 75.1, depth = 186.7, yaw = 136.75, top = 15.0 },
+}
+
 Locations.Bounds = { -3285.4, -1820.0, 6610.4, 7260.1 }
 
 return Locations

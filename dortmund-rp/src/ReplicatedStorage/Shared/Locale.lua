@@ -58,6 +58,24 @@ local S: { [string]: { de: string, en: string } } = {
 	not_arrived = { de = "Du bist noch nicht am Einsatzort.", en = "You have not arrived yet." },
 	call_no_reward = { de = "Einsatz abgeschlossen (keine Belohnung).", en = "Call closed (no reward)." },
 	call_new = { de = "🚨 Neuer Notruf (%s): %s", en = "🚨 New emergency call (%s): %s" },
+	inventory_full = {
+		de = "Du kannst nicht mehr tragen. Iss oder trink erst etwas.",
+		en = "You can't carry more. Eat or drink something first.",
+	},
+	ate = { de = "😋 %s gegessen.", en = "😋 Ate %s." },
+	drank = { de = "🥤 %s getrunken.", en = "🥤 Drank %s." },
+	hunger = { de = "Hunger", en = "Hunger" },
+	thirst = { de = "Durst", en = "Thirst" },
+	hungry = { de = "Du hast Hunger! Kauf dir etwas zu essen.", en = "You are hungry! Buy something to eat." },
+	thirsty = { de = "Du hast Durst! Kauf dir etwas zu trinken.", en = "You are thirsty! Buy something to drink." },
+	store_hint = {
+		de = "Antippen zum Kaufen. Danach im Inventar auswählen und klicken zum Essen/Trinken.",
+		en = "Tap to buy. Then select it in your inventory and click to eat/drink.",
+	},
+	app_navi = { de = "Navi", en = "Maps" },
+	navi_shops = { de = "Einkaufen", en = "Shopping" },
+	navi_jobs = { de = "Dienststellen", en = "Stations" },
+	navi_places = { de = "Orte", en = "Places" },
 	no_space = {
 		de = "Hier ist kein Platz zum Ausparken. Stell dich an die Straße.",
 		en = "No space here. Stand next to a road.",
@@ -211,10 +229,20 @@ end
 -- German money format: 1.234.567 €
 function Locale.Euro(n: number): string
 	local negative = n < 0
-	local s = tostring(math.floor(math.abs(n)))
+	n = math.abs(n)
+	local whole = math.floor(n + 1e-6)
+	local cents = math.floor((n - whole) * 100 + 0.5)
+	if cents >= 100 then
+		whole += 1
+		cents -= 100
+	end
+	local s = tostring(whole)
 	local out = string.reverse((string.gsub(string.reverse(s), "(%d%d%d)", "%1.")))
 	if string.sub(out, 1, 1) == "." then
 		out = string.sub(out, 2)
+	end
+	if cents > 0 then
+		out ..= string.format(",%02d", cents)
 	end
 	return (if negative then "-" else "") .. out .. " €"
 end

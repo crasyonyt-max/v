@@ -1,130 +1,130 @@
 {
  "body_beetle": {
-  "assetId": 82240056236115,
-  "hash": "d3cc56e2a306632e"
+  "assetId": 119305819485644,
+  "hash": "b6a5ff7e603da56d"
  },
  "body_bigvan": {
-  "assetId": 88213929205309,
-  "hash": "85e0032bd030ce69"
+  "assetId": 105381180245951,
+  "hash": "7b456331a6e2df02"
  },
  "body_coupe": {
-  "assetId": 124622652658096,
-  "hash": "d0cd34817e0bff05"
+  "assetId": 92229150745673,
+  "hash": "8bea831d5a924dd1"
  },
  "body_coupe_sport": {
-  "assetId": 111765001361744,
-  "hash": "eac7e9a818d52290"
+  "assetId": 106325235463762,
+  "hash": "e59fd6837ffed97e"
  },
  "body_hatch": {
-  "assetId": 82066662047159,
-  "hash": "fb043a913c48e1ad"
+  "assetId": 80516405246542,
+  "hash": "134fc8244e32a168"
  },
  "body_hatch_small": {
-  "assetId": 70826974215257,
-  "hash": "a88c7626e5bfed30"
+  "assetId": 73876676010032,
+  "hash": "ab98d6a41f7ee98d"
  },
  "body_kombi": {
-  "assetId": 128203896029795,
-  "hash": "065419b359aeba42"
+  "assetId": 100511536026836,
+  "hash": "52e8d8f84a3cad7a"
  },
  "body_kombi_long": {
-  "assetId": 99459110598403,
-  "hash": "3c48d97eb64cf897"
+  "assetId": 118397686323849,
+  "hash": "65dfdb36af21e9ea"
  },
  "body_mpv": {
-  "assetId": 112532785298148,
-  "hash": "ac2c0ce2cf170146"
+  "assetId": 91673691402421,
+  "hash": "e7491e9ca51148ef"
  },
  "body_offroad": {
-  "assetId": 114078306020468,
-  "hash": "e0882fdd6df43748"
+  "assetId": 98870944667907,
+  "hash": "588204139fa8e436"
  },
  "body_offroad_long": {
-  "assetId": 135009263011804,
-  "hash": "7c6a2a439d490c3b"
+  "assetId": 128024782191979,
+  "hash": "02115b9c135742c6"
  },
  "body_pickup": {
-  "assetId": 138474686440401,
-  "hash": "f84c4aee87aa04f1"
+  "assetId": 129408670700367,
+  "hash": "04995de7cea99d70"
  },
  "body_rtw": {
-  "assetId": 80597300306363,
-  "hash": "82a7cf9fafd75d6a"
+  "assetId": 114265123828936,
+  "hash": "c21b0a9674ae60af"
  },
  "body_sedan": {
-  "assetId": 76494786825651,
-  "hash": "0b8fdbe558640ba8"
+  "assetId": 125740167468505,
+  "hash": "89778437a6663e44"
  },
  "body_sedan_long": {
-  "assetId": 98056245952566,
-  "hash": "17b0daca9196f4ba"
+  "assetId": 73834893072857,
+  "hash": "45d8b551d3440521"
  },
  "body_sedan_sport": {
-  "assetId": 102443225512356,
-  "hash": "58ac045817e8db73"
+  "assetId": 116049519180103,
+  "hash": "083e93093c12f9ce"
  },
  "body_sedan_xl": {
-  "assetId": 103760111414370,
-  "hash": "32ba1060b8a6a272"
+  "assetId": 136659153690411,
+  "hash": "8a23c574f79e58b5"
  },
  "body_semi": {
-  "assetId": 135751122147199,
-  "hash": "1feb52f4d2064f33"
+  "assetId": 78404566545664,
+  "hash": "a838f350a076eca0"
  },
  "body_super": {
-  "assetId": 86430234026380,
-  "hash": "1489c2dec35ae1f5"
+  "assetId": 73838306939800,
+  "hash": "137e3d1943802b2b"
  },
  "body_suv": {
-  "assetId": 131470908982771,
-  "hash": "05bf715fc3c19f84"
+  "assetId": 119264134606073,
+  "hash": "642541b6049d8b18"
  },
  "body_suv_long": {
-  "assetId": 81882292101899,
-  "hash": "802f1337f3feafce"
+  "assetId": 116344062075656,
+  "hash": "a60f24394c76fdba"
  },
  "body_tow": {
-  "assetId": 137422277686147,
-  "hash": "9ef9d6335ff3de6c"
+  "assetId": 101471929904740,
+  "hash": "e902b9d500f23e2d"
  },
  "body_tow_heavy": {
-  "assetId": 92789872705295,
-  "hash": "91e60894d54765cd"
+  "assetId": 85578107928831,
+  "hash": "c52c58b1b4ef9f4e"
  },
  "body_tow_small": {
-  "assetId": 114221538266446,
-  "hash": "fc03344973348e6b"
+  "assetId": 93079086449763,
+  "hash": "e84509f948346c5f"
  },
  "body_truck": {
-  "assetId": 98432232181585,
-  "hash": "f1d5e34fc0bf0c5b"
+  "assetId": 87151405840483,
+  "hash": "7e48960adcb16be0"
  },
  "body_truck_airport": {
-  "assetId": 135347117815813,
-  "hash": "351f7433c365f9c1"
+  "assetId": 87377076129103,
+  "hash": "bc3fbd406f4600a1"
  },
  "body_truck_box": {
-  "assetId": 93834864207404,
-  "hash": "16a576d2a7406d44"
+  "assetId": 113500839218365,
+  "hash": "77ca40948a667336"
  },
  "body_truck_ladder": {
-  "assetId": 124818322207744,
-  "hash": "1218859cd05b949a"
+  "assetId": 110710131707019,
+  "hash": "12dae12dc45caa02"
  },
  "body_unimug": {
-  "assetId": 140535309312824,
-  "hash": "adec68b2c7306f8e"
+  "assetId": 96753400614615,
+  "hash": "6bf5c6aa1c8866b9"
  },
  "body_van": {
-  "assetId": 140348163945626,
-  "hash": "ab3cbe4f4b827597"
+  "assetId": 91239131691164,
+  "hash": "67b0f498f4678a58"
  },
  "body_van_small": {
-  "assetId": 114175607773096,
-  "hash": "2739faf2ad171b03"
+  "assetId": 106842481169006,
+  "hash": "1288ab4edfc83c96"
  },
  "wheel": {
-  "assetId": 85543380773589,
-  "hash": "93660f6bb4b5d41c"
+  "assetId": 99007368257978,
+  "hash": "06c710701963e845"
  }
 }

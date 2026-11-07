@@ -275,8 +275,90 @@ def main():
                         return True
         return False
 
+    road_rows = []
+    for wid, (nd, t) in ways.items():
+        if ROAD_STYLE.get(t.get("highway"), (0, 0))[1] == 1 and t.get("highway") != "service":
+            pts = way_pts(wid)
+            if len(pts) >= 2:
+                road_rows.append([0, 0, 0, 0] + [v for p in pts for v in p])
+
+    # --- enterable stores: real supermarkets / bakeries / kiosks -------------------
+    BRANDS = [("REWE", "Rewo"), ("Rewe", "Rewo"), ("Lidl", "Lindl"), ("Aldi", "Alda"), ("ALDI", "Alda")]
+    store_points = []
+    for nid, (lat, lon, t) in nodes.items():
+        if not inside_area(lat, lon):
+            continue
+        name = t.get("brand") or t.get("name") or ""
+        kind = None
+        if t.get("shop") == "supermarket":
+            for real, parody in BRANDS:
+                if name.startswith(real):
+                    kind = parody
+        elif t.get("shop") == "bakery":
+            kind = "Baeckerei"
+        elif t.get("shop") == "kiosk":
+            kind = "Kiosk"
+        if kind:
+            store_points.append((kind, P[nid], t))
+    for wid, (nd, t) in ways.items():
+        if t.get("shop") == "supermarket" and "building" in t:
+            name = t.get("brand") or t.get("name") or ""
+            for real, parody in BRANDS:
+                if name.startswith(real):
+                    c = centre_ll(wid)
+                    if c and inside_area(*c):
+                        pts = way_pts(wid)
+                        store_points.append((parody, (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)), t))
+    building_polys = [(pts, t, wid) for pts, t, is_part, wid in polys if not is_part]
+    stores, store_ways = [], set()
+    per_kind = {"Rewo": 3, "Lindl": 2, "Alda": 2, "Baeckerei": 3, "Kiosk": 2}
+    for kind, (sx0, sz0), t in store_points:
+        if per_kind.get(kind, 0) <= 0:
+            continue
+        best = None
+        for pts, bt, wid in building_polys:
+            if wid in store_ways:
+                continue
+            xs = [p[0] for p in pts]
+            zs = [p[1] for p in pts]
+            if not (min(xs) <= sx0 <= max(xs) and min(zs) <= sz0 <= max(zs)):
+                continue
+            if point_in_poly(sx0, sz0, pts):
+                best = (pts, bt, wid)
+                break
+        if not best:
+            continue
+        pts, bt, wid = best
+        cx, cz, bx, bz, ang = min_rect(pts)
+        area_m2 = abs(poly_area(pts)) * M_PER_STUD**2
+        ratio = abs(poly_area(pts)) / max(bx * bz, 1e-6)
+        if ratio < 0.8 or not (60 <= area_m2 <= 1600) or min(bx, bz) * M_PER_STUD < 7:
+            continue
+        # door on the side that faces the nearest real street
+        best_side = None
+        for lx, lz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            c, s_ = math.cos(ang), math.sin(ang)
+            dx, dz = lx * c - lz * s_, lx * s_ + lz * c  # local axis -> world
+            half = bx / 2 if lx else bz / 2
+            mx, mz = cx + dx * half, cz + dz * half
+            d = min(
+                math.hypot(mx - x, mz - z)
+                for r in road_rows
+                for x, z in zip(r[4::2], r[5::2])
+            ) if road_rows else 0
+            if best_side is None or d < best_side[0]:
+                best_side = (d, dx, dz, (bz if lx else bx), (bx if lx else bz))
+        _, fx, fz, width, depth = best_side
+        yaw = math.degrees(math.atan2(-fx, -fz))
+        base, h = building_height(bt)
+        per_kind[kind] -= 1
+        store_ways.add(wid)
+        label = {"Baeckerei": "Bäckerei", "Kiosk": "Kiosk"}.get(kind, kind)
+        street = t.get("addr:street") or bt.get("addr:street") or ""
+        stores.append((kind, f"{label} {street}".strip(), r1(cx), r1(cz), r1(width), r1(depth), round(yaw, 2), r1(base + h)))
+
     n_rect = n_tri = n_build = 0
-    seen = set()
+    seen = set(store_ways)
     for pts, t, is_part, wid in polys:
         if wid in seen:
             continue
@@ -500,11 +582,19 @@ def main():
         "Locations.Jobs = {\n" + "\n".join(lines) + "\n}\n\n"
         "Locations.Shops = {\n" + "\n".join(shop_lines) + "\n}\n\n"
         "Locations.Fuel = {\n" + "\n".join(fuel_lines) + "\n}\n\n"
+        "-- Enterable stores: centre, width (door side), depth, yaw (door faces local -Z), building top\n"
+        "Locations.Stores = {\n"
+        + "\n".join(
+            f'\t{{ kind = "{k}", name = "{nm}", x = {x}, z = {z}, width = {w_}, depth = {d_}, yaw = {y}, top = {tp} }},'
+            for k, nm, x, z, w_, d_, y, tp in stores
+        )
+        + "\n}\n\n"
         f"Locations.Bounds = {{ {r1(project(SOUTH, WEST)[0])}, {r1(project(NORTH, WEST)[1])}, {r1(project(SOUTH, EAST)[0])}, {r1(project(SOUTH, WEST)[1])} }}\n\n"
         "return Locations\n",
         encoding="utf-8",
     )
 
+    print(f"stores: {[(st[0], st[1]) for st in stores]}")
     print(f"buildings {n_build} (rect {n_rect}, triangles {n_tri}), road segments {n_seg}, trees {n_trees}")
     print(f"chunks {len(chunks)}, data {total // 1024} KB")
 

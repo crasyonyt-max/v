@@ -50,6 +50,48 @@ local bar = New(
 	{ Make.Corner(4) }
 )
 
+-- Hunger / thirst
+local needs = {}
+for i, info in
+	{ { "Hunger", "🍔", Color3.fromRGB(230, 150, 40) }, { "Thirst", "💧", Color3.fromRGB(60, 150, 240) } }
+do
+	local row =
+		New("Frame", { LayoutOrder = 4 + i, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14), Parent = box })
+	Make.Label(info[2], 12, T.text, T.font, { Size = UDim2.fromOffset(18, 14), Parent = row })
+	local back = New(
+		"Frame",
+		{ Position = UDim2.fromOffset(20, 3), Size = UDim2.new(1, -20, 0, 8), BackgroundColor3 = T.card, Parent = row },
+		{ Make.Corner(4) }
+	)
+	needs[info[1]] = New(
+		"Frame",
+		{ Size = UDim2.fromScale(1, 1), BackgroundColor3 = info[3], Parent = back },
+		{ Make.Corner(4) }
+	)
+end
+local warned: { [string]: boolean } = {}
+local function updateNeeds()
+	local player = Players.LocalPlayer
+	for attr, bar in needs do
+		local v = (player:GetAttribute(attr) or 100) :: number
+		bar.Size = UDim2.fromScale(math.clamp(v / 100, 0, 1), 1)
+		bar.BackgroundTransparency = if v < 15 and (os.clock() % 1) < 0.5 then 0.6 else 0
+		if v < 15 and not warned[attr] then
+			warned[attr] = true
+			local Notify = require(script.Parent.Notify)
+			Notify.Show(Store.T(if attr == "Hunger" then "hungry" else "thirsty"), true, 6)
+		elseif v > 30 then
+			warned[attr] = false
+		end
+	end
+end
+task.spawn(function()
+	while true do
+		updateNeeds()
+		task.wait(0.5)
+	end
+end)
+
 -- Phone button (bottom right) – opens the phone on mobile and PC.
 HUD.PhoneButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 1),

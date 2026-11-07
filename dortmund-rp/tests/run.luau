@@ -220,6 +220,9 @@ test("euro format", function()
 	eq(Locale.Euro(1000), "1.000 €")
 	eq(Locale.Euro(3000000), "3.000.000 €")
 	eq(Locale.Euro(-12500), "-12.500 €")
+	eq(Locale.Euro(3.49), "3,49 €")
+	eq(Locale.Euro(1234.5), "1.234,50 €")
+	eq(Locale.Euro(0.99), "0,99 €")
 	eq(Locale.T("en", "paycheck", "250 €"), "Paycheck received: 250 €")
 	eq(Locale.T("de", "unknown_key"), "unknown_key")
 end)
@@ -256,6 +259,19 @@ test("phones", function()
 	eq(Phones.ById.poko_c85.price, 0)
 	eq(Phones.ById.samsong_zfold7.price, 2099)
 	assert(Phones.ById.nvdr_p1.adminOnly and not Phones.ById.nvdr_p1.shop, "NVDR P1 must be admin only")
+end)
+
+test("store catalog", function()
+	local Items = requirePath(RS.Shared.Items)
+	for kind, store in Items.Stores do
+		for _, id in store.items do
+			assert(Items.ById[id], kind .. " sells unknown item " .. id)
+			assert(Items.Price(kind, id), "no price")
+		end
+	end
+	eq(Items.Price("Rewo", "pizza_salami"), 3.49, "Rewo pizza")
+	assert(Items.Price("Lindl", "pizza_salami") < 3.49, "discounter cheaper")
+	eq(Items.Price("Rewo", "currywurst"), nil, "not sold there")
 end)
 
 test("config", function()
@@ -475,6 +491,25 @@ test("real city + map", function()
 		end
 	end
 	assert(uis.Handyland and uis.Dealership, "shops missing")
+
+	local StoreBuilder = requirePath(Server.StoreBuilder)
+	StoreBuilder.Build()
+	local stores = dataModel:GetService("Workspace"):FindFirstChild("Stores")
+	local Locations = requirePath(RS.Shared.Locations)
+	local built, markers = 0, 0
+	for _, m in stores:GetChildren() do
+		if m:FindFirstChild("Checkout") then
+			built += 1
+		end
+	end
+	for _, m in tagged.Interaction do
+		if m:GetAttribute("Interaction") == "Store" then
+			markers += 1
+		end
+	end
+	eq(built, #Locations.Stores, "every store has a checkout")
+	assert(markers >= #Locations.Stores, "every store has a cashier prompt")
+	print(string.format("  stores: %d walk-in shops", built))
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

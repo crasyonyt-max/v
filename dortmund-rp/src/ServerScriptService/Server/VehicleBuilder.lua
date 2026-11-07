@@ -466,6 +466,49 @@ local GLASS = Color3.fromRGB(25, 35, 45)
 local TRIM = Color3.fromRGB(20, 20, 22)
 local INTERIOR = Color3.fromRGB(35, 35, 38)
 
+-- Panel colours for the realistic bodies (MeshLibrary pieces by name).
+local SILVER = Color3.fromRGB(222, 224, 228)
+local POL_BLUE = Color3.fromRGB(0, 58, 150)
+local NEON_YELLOW = Color3.fromRGB(205, 230, 0)
+local SIGNAL_RED = Color3.fromRGB(200, 20, 20)
+local SNOW = Color3.fromRGB(242, 242, 242)
+local ADMC_YELLOW = Color3.fromRGB(250, 205, 0)
+local DXL_YELLOW = Color3.fromRGB(255, 204, 0)
+local SCHEMES: { [string]: { [string]: any } } = {
+	Police = {
+		Body = SILVER,
+		SideLow = SILVER,
+		SideMid = NEON_YELLOW,
+		SideHigh = POL_BLUE,
+		Hood = POL_BLUE,
+		Roof = SNOW,
+		Deck = POL_BLUE,
+		reflective = true,
+	},
+	Fire = {
+		Body = SIGNAL_RED,
+		SideLow = SIGNAL_RED,
+		SideMid = SNOW,
+		SideHigh = SIGNAL_RED,
+		Hood = SIGNAL_RED,
+		Roof = SNOW,
+		Deck = SIGNAL_RED,
+		reflective = true,
+	},
+	Rescue = {
+		Body = SNOW,
+		SideLow = NEON_YELLOW,
+		SideMid = Color3.fromRGB(235, 40, 30),
+		SideHigh = SNOW,
+		Hood = SNOW,
+		Roof = SNOW,
+		Deck = SNOW,
+		reflective = true,
+	},
+	ADMC = { Body = ADMC_YELLOW, SideLow = Color3.fromRGB(20, 20, 22) },
+	DXL = { Body = DXL_YELLOW, SideLow = Color3.fromRGB(210, 20, 30) },
+}
+
 local LIVERY = {
 	Police = {
 		stripe = Color3.fromRGB(20, 70, 170),
@@ -1266,6 +1309,10 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 			Roof = true,
 			PillarA = true,
 			PillarC = true,
+			Grille = true,
+			Mirror = true,
+			Stripe = true,
+			Stripe2 = true,
 		}
 		if body.rear == "box" then
 			replaced.Body = true
@@ -1277,23 +1324,153 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 			end
 		end
 		chassis.Transparency = 1
+		-- panel colours: civilian cars are one colour, service cars get their livery
+		local scheme = def.livery and SCHEMES[def.livery]
 		for _, piece in mesh.pieces do
 			local mp = MeshLibrary.Place(piece, model, CFrame.identity)
 			mp.Name = "Mesh" .. piece.name
-			if piece.name == "Body" then
-				mp.Color = paint
-				mp.Material = Enum.Material.SmoothPlastic
-				mp.Reflectance = 0.04
-				mp:SetAttribute("Paint", true)
-			elseif piece.name == "Glass" then
+			if piece.name == "Glass" then
 				mp.Color = GLASS
 				mp.Material = Enum.Material.Glass
 				mp.Transparency = 0.3
-			else
-				mp.Color = TRIM
+			elseif piece.name == "Trim" or piece.name == "Seams" then
+				mp.Color = if piece.name == "Seams" then Color3.fromRGB(15, 15, 16) else TRIM
 				mp.Material = Enum.Material.SmoothPlastic
+			else
+				local c = if scheme then scheme[piece.name] or scheme.Body else paint
+				local foil = scheme ~= nil
+					and scheme.reflective == true
+					and (piece.name == "SideMid" or piece.name == "SideLow")
+				mp.Color = if foil then c:Lerp(Color3.new(0, 0, 0), 0.35) else c
+				mp.Material = if foil then Enum.Material.Neon else Enum.Material.SmoothPlastic -- retro-reflective foil
+				mp.Reflectance = 0.05
+				if not scheme then
+					mp:SetAttribute("Paint", true)
+				end
 			end
 			weld(chassis, mp)
+		end
+
+		-- details on the curved body: brand grille, LED daytime lights, mirrors, door handles
+		local brand = string.match(def.name, "^(%S+)") or ""
+		local fy = A.frontBottom + (A.frontBelt - A.frontBottom) * 0.42
+		local fz = zFront - 0.04
+		local CHROME = Color3.fromRGB(200, 202, 206)
+		local function front(name: string, size: Vector3, x: number, y: number, color: Color3, material: Enum.Material?)
+			attach(
+				part(
+					model,
+					name,
+					size,
+					CFrame.new(x, y, fz - size.Z / 2),
+					color,
+					{ Material = material or Enum.Material.SmoothPlastic }
+				)
+			)
+		end
+		local function emblem(y: number, d: number)
+			attach(
+				part(
+					model,
+					"Emblem",
+					Vector3.new(0.1, d, d),
+					CFrame.new(0, y, fz - 0.16) * CFrame.Angles(0, math.rad(90), 0),
+					CHROME,
+					{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
+				)
+			)
+		end
+		if brand == "BMV" then
+			for _, sx in { -1, 1 } do
+				front("GrilleChrome", Vector3.new(1.0, 1.0, 0.06), sx * 0.58, fy, CHROME, Enum.Material.Metal)
+				front("GrilleMesh", Vector3.new(0.82, 0.82, 0.1), sx * 0.58, fy, TRIM)
+			end
+		elseif brand == "Audix" then
+			front("GrilleChrome", Vector3.new(2.4, 1.3, 0.06), 0, fy - 0.1, CHROME, Enum.Material.Metal)
+			front("GrilleMesh", Vector3.new(2.2, 1.12, 0.1), 0, fy - 0.1, TRIM)
+		elseif string.sub(brand, 1, 8) == "Mercator" then
+			front("GrilleMesh", Vector3.new(2.6, 0.95, 0.1), 0, fy, TRIM)
+			for i = -1, 1 do
+				front("GrilleBar", Vector3.new(2.5, 0.07, 0.14), 0, fy + i * 0.25, CHROME, Enum.Material.Metal)
+			end
+			emblem(fy, 0.55)
+		elseif brand == "Tesra" or brand == "Porsha" or brand == "Rimax" then
+			-- no grille
+		elseif W >= 7 then
+			front("GrilleMesh", Vector3.new(W * 0.55, 1.6, 0.1), 0, fy + 0.2, TRIM)
+			for i = -2, 2 do
+				front(
+					"GrilleBar",
+					Vector3.new(W * 0.54, 0.08, 0.14),
+					0,
+					fy + 0.2 + i * 0.3,
+					CHROME,
+					Enum.Material.Metal
+				)
+			end
+		else
+			front("GrilleMesh", Vector3.new(W * 0.42, 0.45, 0.1), 0, fy + 0.15, TRIM)
+			front("GrilleBar", Vector3.new(W * 0.42, 0.06, 0.14), 0, fy + 0.15, CHROME, Enum.Material.Metal)
+			emblem(fy + 0.15, 0.42)
+		end
+		front("LowerIntake", Vector3.new(W * 0.6, 0.35, 0.08), 0, A.frontBottom + 0.35, TRIM)
+		local doors = (A :: any).doors or {}
+		for _, side in { -1, 1 } do
+			attach(
+				part(
+					model,
+					"DRL",
+					Vector3.new(1.25, 0.08, 0.06),
+					CFrame.new(side * (headHalfW - 0.85), headY + 0.3, zFront - 0.07),
+					Color3.fromRGB(235, 245, 255),
+					{ Material = Enum.Material.Neon }
+				)
+			)
+			local mz = (doors[1] or (zFront + L * 0.35)) + 0.35
+			attach(
+				part(
+					model,
+					"MirrorArm",
+					Vector3.new(0.35, 0.12, 0.2),
+					CFrame.new(side * (sideHalfW + 0.12), sideBelt + 0.15, mz),
+					TRIM
+				)
+			)
+			local housing = part(
+				model,
+				"MirrorHousing",
+				Vector3.new(0.45, 0.4, 0.55),
+				CFrame.new(side * (sideHalfW + 0.45), sideBelt + 0.25, mz),
+				if scheme then scheme.Body else paint
+			)
+			if not scheme then
+				housing:SetAttribute("Paint", true)
+			end
+			attach(housing)
+			attach(
+				part(
+					model,
+					"MirrorGlass",
+					Vector3.new(0.38, 0.32, 0.04),
+					CFrame.new(side * (sideHalfW + 0.45), sideBelt + 0.25, mz + 0.29),
+					Color3.fromRGB(170, 190, 210),
+					{ Material = Enum.Material.Glass }
+				)
+			)
+			for i, dz in doors do
+				if i < #doors or #doors == 2 then
+					attach(
+						part(
+							model,
+							"DoorHandle",
+							Vector3.new(0.08, 0.12, 0.5),
+							CFrame.new(side * (sideHalfW + 0.03), sideBelt - 0.45, dz + 0.55),
+							CHROME,
+							{ Material = Enum.Material.Metal }
+						)
+					)
+				end
+			end
 		end
 		model:SetAttribute("Realistic", true)
 	end
