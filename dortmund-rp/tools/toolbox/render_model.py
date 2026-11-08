@@ -62,9 +62,15 @@ BOX = [(-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1), (-1, -1, 1), (1, -1, 
 BOX_F = [(0, 2, 1), (0, 3, 2), (4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4), (3, 7, 6), (3, 6, 2), (0, 4, 7), (0, 7, 3), (1, 2, 6), (1, 6, 5)]
 
 
+_MESH_CACHE = {}
+
+
 def load_model(path):
-    parts = json.loads(Path(path).read_text())
-    mesh_cache = {}
+    return load_model_parts(json.loads(Path(path).read_text()))
+
+
+def load_model_parts(parts):
+    mesh_cache = _MESH_CACHE
     tris = []  # (world pts, colour)
     for p in parts:
         if p["transparency"] >= 0.95:

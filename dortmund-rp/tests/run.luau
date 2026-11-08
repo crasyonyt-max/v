@@ -380,6 +380,67 @@ for _, v in Vehicles.List do
 	end)
 end
 
+-- Creator Store bodies: every mapped vehicle builds from its template at real size ----
+local ToolboxBuilder = requirePath(Server.ToolboxBuilder)
+local ToolboxCars = requirePath(pathProxy({ "ServerStorage", "ToolboxCars" }))
+local CarModels = requirePath(Server.CarModels)
+for modelId, info in ToolboxCars do
+	local car = roblox.Instance.new("Model")
+	car.Name = "Car"
+	local body = roblox.Instance.new("Part")
+	body.Size = roblox.Vector3.new(info.size[1], info.size[2] * 0.6, info.size[3])
+	body.CFrame = roblox.CFrame.new(0, info.size[2] * 0.5, 0)
+	body:SetAttribute("Paint", true)
+	body.Parent = car
+	for tag, w in info.wheels do
+		local wp = roblox.Instance.new("Part")
+		wp.Size = roblox.Vector3.new(1, w[4] * 2, w[4] * 2)
+		wp.CFrame = roblox.CFrame.new(w[1], w[2], w[3])
+		wp:SetAttribute("Wheel", tag)
+		wp.Parent = car
+	end
+	ToolboxBuilder._inject(modelId, car)
+end
+local heights = {}
+for id, m in CarModels do
+	test("toolbox body " .. id, function()
+		local def = Vehicles.ById[id]
+		assert(def, "unknown vehicle " .. id)
+		assert(ToolboxBuilder.Available(id), "template not available for " .. id)
+		local ok, built = pcall(ToolboxBuilder.Build, def, nil, VehicleBuilder, {}, {})
+		assert(ok and built, "toolbox build error: " .. tostring(built))
+		local model = VehicleBuilder.Build(def)
+		assert(model:GetAttribute("Toolbox") == tostring(m[1]), "toolbox body not used")
+		assert(model:FindFirstChild("DriveSeat"), "driver seat")
+		local motors = 0
+		for _, d in model:GetDescendants() do
+			if d.ClassName == "HingeConstraint" and d.Name == "Motor" then
+				motors += 1
+			end
+		end
+		eq(motors, 4, "motors")
+		local info = ToolboxCars[m[1]]
+		local s = m[2] / 0.28 / info.size[3]
+		heights[id] = info.size[2] * s * 0.28
+		model:Destroy()
+	end)
+end
+test("real proportions: hypercars lower than vans and SUVs", function()
+	assert(heights.koenigshaus_jesco < 1.45, "Jesko too tall: " .. heights.koenigshaus_jesco)
+	assert(heights.koenigshaus_jesco < heights.vk_tiguar, "Jesko taller than an SUV")
+	assert(heights.fw_lf10 > 2.6, "fire truck too low: " .. heights.fw_lf10)
+	print(
+		string.format(
+			"  heights (m): Jesko %.2f, Golfo %.2f, Tiguar %.2f, G-Klasse %.2f, LF 10 %.2f",
+			heights.koenigshaus_jesco,
+			heights.vk_golfo,
+			heights.vk_tiguar,
+			heights.mercator_g,
+			heights.fw_lf10
+		)
+	)
+end)
+
 -- Map builds -----------------------------------------------------------------------
 overrides["ServerScriptService/Server/InteractionService"] = {
 	Mark = function(part, kind, attrs)

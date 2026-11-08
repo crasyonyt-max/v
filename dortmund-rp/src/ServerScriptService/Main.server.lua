@@ -17,6 +17,7 @@ local State = require(Server.State)
 Remotes.IsReady = DataService.IsLoaded
 
 require(Server.MeshLibrary).Start()
+require(Server.ToolboxBuilder).Start()
 
 -- Nobody spawns until the city exists (otherwise they would fall).
 Players.CharacterAutoLoads = false

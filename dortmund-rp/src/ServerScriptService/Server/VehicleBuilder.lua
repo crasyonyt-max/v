@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local MeshLibrary = require(script.Parent.MeshLibrary)
+local ToolboxBuilder = require(script.Parent.ToolboxBuilder)
 
 local VehicleBuilder = {}
 
@@ -668,6 +669,9 @@ local function plate(model: Model, name: string, cf: CFrame, face: Enum.NormalId
 	return p
 end
 
+VehicleBuilder.MakePlate = plate
+VehicleBuilder.TextPanel = textPanel
+
 function VehicleBuilder.SetPlate(model: Model, text: string)
 	model:SetAttribute("Plate", text)
 	for _, name in { "PlateFront", "PlateRear" } do
@@ -688,8 +692,185 @@ function VehicleBuilder.SetColor(model: Model, color: Color3)
 	end
 end
 
+-- Wheels (front steered), motors, stabiliser and the attributes the client drives with.
+-- wheelSpecs: { name, x, y, z (model space centre), r (radius), w (width), front }
+function VehicleBuilder.AddPhysics(
+	model: Model,
+	chassis: BasePart,
+	def: any,
+	wheelSpecs: { any },
+	mass: number,
+	generatedWheels: boolean
+)
+	local wheelPhys = PhysicalProperties.new(1.2, 2, 0, 100, 1)
+
+	local motors: { HingeConstraint } = {}
+	local steering: { HingeConstraint } = {}
+
+	local function makeWheel(spec: any)
+		local name, x, y, z, front, r, wheelW = spec.name, spec.x, spec.y, spec.z, spec.front, spec.r, spec.w
+		local wheel = Instance.new("Part")
+		wheel.Name = name
+		wheel.Shape = Enum.PartType.Cylinder
+		wheel.Size = Vector3.new(wheelW, r * 2, r * 2)
+		wheel.CFrame = CFrame.new(x, y, z)
+		wheel.Color = TRIM
+		wheel.Material = Enum.Material.SmoothPlastic
+		wheel.CustomPhysicalProperties = wheelPhys
+		wheel.CanCollide = true
+		wheel.Parent = model
+		local wheelMesh = if generatedWheels then MeshLibrary.Wheel() else nil
+		if not generatedWheels then
+			wheel.Transparency = 1 -- the body model brings its own wheels
+		elseif wheelMesh then
+			-- realistic tyre + rim; the physics cylinder stays invisible underneath
+			wheel.Transparency = 1
+			local outward = if x < 0 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
+			for _, piece in wheelMesh.pieces do
+				local mp = MeshLibrary.Place(piece, model, wheel.CFrame * outward, Vector3.new(wheelW, r, r))
+				if piece.name == "Tire" then
+					mp.Color = Color3.fromRGB(22, 22, 24)
+					mp.Material = Enum.Material.Rubber
+				else
+					mp.Color = Color3.fromRGB(186, 188, 194)
+					mp.Material = Enum.Material.Metal
+				end
+				weld(wheel, mp)
+			end
+		else
+			local rim = part(
+				model,
+				"Rim",
+				Vector3.new(wheelW + 0.05, r * 1.2, r * 1.2),
+				wheel.CFrame,
+				Color3.fromRGB(180, 180, 185),
+				{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
+			)
+			weld(wheel, rim)
+		end
+
+		local noCol = Instance.new("NoCollisionConstraint")
+		noCol.Part0 = chassis
+		noCol.Part1 = wheel
+		noCol.Parent = wheel
+
+		local wheelAtt = Instance.new("Attachment")
+		wheelAtt.Name = "Axle"
+		wheelAtt.Parent = wheel
+
+		local hub: BasePart = chassis
+		if front then
+			local knuckle = Instance.new("Part")
+			knuckle.Name = "Knuckle"
+			knuckle.Size = Vector3.new(1, 1, 1)
+			knuckle.CFrame = CFrame.new(x, y, z)
+			knuckle.Transparency = 1
+			knuckle.CanCollide = false
+			knuckle.CanQuery = false
+			knuckle.CustomPhysicalProperties = PhysicalProperties.new(2, 0.3, 0)
+			knuckle.Parent = model
+			local nc2 = Instance.new("NoCollisionConstraint")
+			nc2.Part0 = knuckle
+			nc2.Part1 = wheel
+			nc2.Parent = wheel
+
+			local a0 = Instance.new("Attachment")
+			a0.Name = "SteerBase"
+			a0.Position = chassis.CFrame:PointToObjectSpace(Vector3.new(x, y, z))
+			a0.Axis = Vector3.new(0, 1, 0)
+			a0.SecondaryAxis = Vector3.new(1, 0, 0)
+			a0.Parent = chassis
+			local a1 = Instance.new("Attachment")
+			a1.Name = "SteerKnuckle"
+			a1.Axis = Vector3.new(0, 1, 0)
+			a1.SecondaryAxis = Vector3.new(1, 0, 0)
+			a1.Parent = knuckle
+			local servo = Instance.new("HingeConstraint")
+			servo.Name = "Steer"
+			servo.ActuatorType = Enum.ActuatorType.Servo
+			servo.Attachment0 = a0
+			servo.Attachment1 = a1
+			servo.ServoMaxTorque = 1e7
+			servo.AngularSpeed = 5
+			servo.TargetAngle = 0
+			servo.LimitsEnabled = true
+			servo.LowerAngle = -40
+			servo.UpperAngle = 40
+			servo.Parent = knuckle
+			table.insert(steering, servo)
+			hub = knuckle
+		end
+
+		local hubAtt = Instance.new("Attachment")
+		hubAtt.Name = "AxleBase_" .. name
+		hubAtt.Position = hub.CFrame:PointToObjectSpace(Vector3.new(x, y, z))
+		hubAtt.Parent = hub
+
+		local motor = Instance.new("HingeConstraint")
+		motor.Name = "Motor"
+		motor.ActuatorType = Enum.ActuatorType.Motor
+		motor.Attachment0 = hubAtt
+		motor.Attachment1 = wheelAtt
+		motor.AngularVelocity = 0
+		motor.MotorMaxTorque = 0 -- set below once total mass is known
+		motor.MotorMaxAcceleration = math.huge
+		motor.Parent = wheel
+		table.insert(motors, motor)
+	end
+
+	for _, spec in wheelSpecs do
+		makeWheel(spec)
+	end
+
+	-- Driving parameters for the client controller -----------------------------
+	local topSpeed = def.speed / 3.6 * Config.StudsPerMeter -- studs/s
+	local r = wheelSpecs[1].r
+	model:SetAttribute("WheelRadius", r)
+	model:SetAttribute("TopSpeed", topSpeed)
+	model:SetAttribute("Accel", def.accel or 1)
+	model:SetAttribute("Wheelbase", math.abs(wheelSpecs[3].z - wheelSpecs[1].z))
+	model:SetAttribute("Emergency", def.emergency == true)
+	model:SetAttribute("Headlights", false)
+	model:SetAttribute("Indicator", "")
+	model:SetAttribute("Bluelight", false)
+	model:SetAttribute("Siren", false)
+	model:SetAttribute("Brake", false)
+	model:SetAttribute("Fuel", 100)
+
+	-- Torque scales with mass so heavy trucks still move.
+	local torquePerWheel = mass * 60 * r * math.max(0.6, def.accel or 1) / 4
+	-- anti-roll stabiliser: keeps the car upright (does not affect steering / yaw)
+	local upAtt = Instance.new("Attachment")
+	upAtt.Name = "Upright"
+	upAtt.Axis = Vector3.new(0, 1, 0)
+	upAtt.SecondaryAxis = Vector3.new(1, 0, 0)
+	upAtt.Parent = chassis
+	local upright = Instance.new("AlignOrientation")
+	upright.Name = "Stabilizer"
+	upright.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
+	upright.PrimaryAxis = Vector3.new(0, 1, 0)
+	upright.Attachment0 = upAtt
+	upright.MaxTorque = mass * 400
+	upright.Responsiveness = 10
+	upright.Parent = chassis
+
+	for _, m in motors do
+		m.MotorMaxTorque = torquePerWheel
+		m:SetAttribute("BaseTorque", torquePerWheel)
+	end
+end
+
 -- Returns the model (unparented). `def` is a Vehicles catalog entry.
 function VehicleBuilder.Build(def: any, color: Color3?): Model
+	-- realistic Creator Store body when one is mapped and loaded
+	if ToolboxBuilder.Available(def.id) then
+		local ok, built = pcall(ToolboxBuilder.Build, def, color, VehicleBuilder, SCHEMES, LIVERY)
+		if ok and built then
+			return built
+		end
+		warn("[VehicleBuilder] toolbox body failed for " .. def.id .. ": " .. tostring(built))
+	end
 	local body: Body = VehicleBuilder.BodyTypes[def.body] or VehicleBuilder.BodyTypes.hatch
 	local paint = color or def.color
 	local model = Instance.new("Model")
@@ -1188,7 +1369,7 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		siren.Parent = chassis
 	end
 
-	-- Wheels ------------------------------------------------------------------
+	-- Wheels + drive physics (shared with the Creator Store bodies) -------------------
 	local r = body.wheelR
 	local wheelW = if body.L > 20 then 1.5 else 1.0
 	local overhangF = if isTruck then r * 1.3 else r * 1.7
@@ -1196,123 +1377,12 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	local axleF = zFront + overhangF
 	local axleR = zRear - overhangR
 	local wheelX = W / 2 - wheelW / 2 + 0.15
-	local wheelPhys = PhysicalProperties.new(1.2, 2, 0, 100, 1)
-
-	local motors: { HingeConstraint } = {}
-	local steering: { HingeConstraint } = {}
-
-	local function makeWheel(name: string, x: number, z: number, front: boolean)
-		local wheel = Instance.new("Part")
-		wheel.Name = name
-		wheel.Shape = Enum.PartType.Cylinder
-		wheel.Size = Vector3.new(wheelW, r * 2, r * 2)
-		wheel.CFrame = CFrame.new(x, r, z)
-		wheel.Color = TRIM
-		wheel.Material = Enum.Material.SmoothPlastic
-		wheel.CustomPhysicalProperties = wheelPhys
-		wheel.CanCollide = true
-		wheel.Parent = model
-		local wheelMesh = MeshLibrary.Wheel()
-		if wheelMesh then
-			-- realistic tyre + rim; the physics cylinder stays invisible underneath
-			wheel.Transparency = 1
-			local outward = if x < 0 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
-			for _, piece in wheelMesh.pieces do
-				local mp = MeshLibrary.Place(piece, model, wheel.CFrame * outward, Vector3.new(wheelW, r, r))
-				if piece.name == "Tire" then
-					mp.Color = Color3.fromRGB(22, 22, 24)
-					mp.Material = Enum.Material.Rubber
-				else
-					mp.Color = Color3.fromRGB(186, 188, 194)
-					mp.Material = Enum.Material.Metal
-				end
-				weld(wheel, mp)
-			end
-		else
-			local rim = part(
-				model,
-				"Rim",
-				Vector3.new(wheelW + 0.05, r * 1.2, r * 1.2),
-				wheel.CFrame,
-				Color3.fromRGB(180, 180, 185),
-				{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
-			)
-			weld(wheel, rim)
-		end
-
-		local noCol = Instance.new("NoCollisionConstraint")
-		noCol.Part0 = chassis
-		noCol.Part1 = wheel
-		noCol.Parent = wheel
-
-		local wheelAtt = Instance.new("Attachment")
-		wheelAtt.Name = "Axle"
-		wheelAtt.Parent = wheel
-
-		local hub: BasePart = chassis
-		if front then
-			local knuckle = Instance.new("Part")
-			knuckle.Name = "Knuckle"
-			knuckle.Size = Vector3.new(1, 1, 1)
-			knuckle.CFrame = CFrame.new(x, r, z)
-			knuckle.Transparency = 1
-			knuckle.CanCollide = false
-			knuckle.CanQuery = false
-			knuckle.CustomPhysicalProperties = PhysicalProperties.new(2, 0.3, 0)
-			knuckle.Parent = model
-			local nc2 = Instance.new("NoCollisionConstraint")
-			nc2.Part0 = knuckle
-			nc2.Part1 = wheel
-			nc2.Parent = wheel
-
-			local a0 = Instance.new("Attachment")
-			a0.Name = "SteerBase"
-			a0.Position = chassis.CFrame:PointToObjectSpace(Vector3.new(x, r, z))
-			a0.Axis = Vector3.new(0, 1, 0)
-			a0.SecondaryAxis = Vector3.new(1, 0, 0)
-			a0.Parent = chassis
-			local a1 = Instance.new("Attachment")
-			a1.Name = "SteerKnuckle"
-			a1.Axis = Vector3.new(0, 1, 0)
-			a1.SecondaryAxis = Vector3.new(1, 0, 0)
-			a1.Parent = knuckle
-			local servo = Instance.new("HingeConstraint")
-			servo.Name = "Steer"
-			servo.ActuatorType = Enum.ActuatorType.Servo
-			servo.Attachment0 = a0
-			servo.Attachment1 = a1
-			servo.ServoMaxTorque = 1e7
-			servo.AngularSpeed = 5
-			servo.TargetAngle = 0
-			servo.LimitsEnabled = true
-			servo.LowerAngle = -40
-			servo.UpperAngle = 40
-			servo.Parent = knuckle
-			table.insert(steering, servo)
-			hub = knuckle
-		end
-
-		local hubAtt = Instance.new("Attachment")
-		hubAtt.Name = "AxleBase_" .. name
-		hubAtt.Position = hub.CFrame:PointToObjectSpace(Vector3.new(x, r, z))
-		hubAtt.Parent = hub
-
-		local motor = Instance.new("HingeConstraint")
-		motor.Name = "Motor"
-		motor.ActuatorType = Enum.ActuatorType.Motor
-		motor.Attachment0 = hubAtt
-		motor.Attachment1 = wheelAtt
-		motor.AngularVelocity = 0
-		motor.MotorMaxTorque = 0 -- set below once total mass is known
-		motor.MotorMaxAcceleration = math.huge
-		motor.Parent = wheel
-		table.insert(motors, motor)
-	end
-
-	makeWheel("WheelFL", -wheelX, axleF, true)
-	makeWheel("WheelFR", wheelX, axleF, true)
-	makeWheel("WheelRL", -wheelX, axleR, false)
-	makeWheel("WheelRR", wheelX, axleR, false)
+	local wheelSpecs = {
+		{ name = "WheelFL", x = -wheelX, y = r, z = axleF, r = r, w = wheelW, front = true },
+		{ name = "WheelFR", x = wheelX, y = r, z = axleF, r = r, w = wheelW, front = true },
+		{ name = "WheelRL", x = -wheelX, y = r, z = axleR, r = r, w = wheelW, front = false },
+		{ name = "WheelRR", x = wheelX, y = r, z = axleR, r = r, w = wheelW, front = false },
+	}
 
 	-- Realistic body ---------------------------------------------------------------
 	if mesh then
@@ -1491,45 +1561,9 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		model:SetAttribute("Realistic", true)
 	end
 
-	-- Driving parameters for the client controller -----------------------------
-	local topSpeed = def.speed / 3.6 * Config.StudsPerMeter -- studs/s
-	model:SetAttribute("WheelRadius", r)
-	model:SetAttribute("TopSpeed", topSpeed)
-	model:SetAttribute("Accel", def.accel or 1)
-	model:SetAttribute("Wheelbase", axleR - axleF)
-	model:SetAttribute("Emergency", def.emergency == true)
-	model:SetAttribute("Headlights", false)
-	model:SetAttribute("Indicator", "")
-	model:SetAttribute("Bluelight", false)
-	model:SetAttribute("Siren", false)
-	model:SetAttribute("Brake", false)
-	model:SetAttribute("Fuel", 100)
-
-	-- Torque scales with mass so heavy trucks still move.
 	-- chassis density 0.6, wheel density 1.2, plus ~60 for occupants
 	local mass = W * body.lower * L * 0.6 + 4 * (math.pi * r * r * wheelW * 1.2) + 60
-	local torquePerWheel = mass * 60 * r * math.max(0.6, def.accel or 1) / 4
-	-- anti-roll stabiliser: keeps the car upright (does not affect steering / yaw)
-	local upAtt = Instance.new("Attachment")
-	upAtt.Name = "Upright"
-	upAtt.Axis = Vector3.new(0, 1, 0)
-	upAtt.SecondaryAxis = Vector3.new(1, 0, 0)
-	upAtt.Parent = chassis
-	local upright = Instance.new("AlignOrientation")
-	upright.Name = "Stabilizer"
-	upright.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
-	upright.PrimaryAxis = Vector3.new(0, 1, 0)
-	upright.Attachment0 = upAtt
-	upright.MaxTorque = mass * 400
-	upright.Responsiveness = 10
-	upright.Parent = chassis
-
-	for _, m in motors do
-		m.MotorMaxTorque = torquePerWheel
-		m:SetAttribute("BaseTorque", torquePerWheel)
-	end
-
+	VehicleBuilder.AddPhysics(model, chassis, def, wheelSpecs, mass, true)
 	return model
 end
 
