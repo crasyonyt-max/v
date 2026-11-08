@@ -104,6 +104,17 @@ Phone.Register({
 		sorted(stations)
 
 		header("navi_places")
+		local sites = (Locations :: any).Sites or {}
+		if sites.Tower then
+			local t = sites.Tower
+			local front = CFrame.new(t.x, 0, t.z) * CFrame.Angles(0, math.rad(t.yaw), 0) * CFrame.new(0, 0, -50)
+			local mine = Players.LocalPlayer:GetAttribute("Apartment")
+			entry(
+				if typeof(mine) == "number" then Store.T("my_apartment", mine) else Store.T("tower"),
+				front.Position,
+				Color3.fromRGB(57, 160, 20)
+			)
+		end
 		entry("🚉 Dortmund Hbf", Vector3.new(Locations.Spawn[1], 0, Locations.Spawn[2]), Color3.fromRGB(0, 60, 140))
 		entry(
 			"🏥 " .. special.Hospital.title,

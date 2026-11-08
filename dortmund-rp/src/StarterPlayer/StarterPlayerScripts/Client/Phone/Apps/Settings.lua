@@ -93,6 +93,15 @@ Phone.Register({
 				{ LayoutOrder = 9, Parent = root }
 			)
 
+			local apt = game:GetService("Players").LocalPlayer:GetAttribute("Apartment")
+			if typeof(apt) == "number" then
+				local home = Make.Card({ LayoutOrder = 5, Parent = root })
+				Make.Label(Store.T("my_apartment", apt), 14, T.text, T.bold, { Parent = home })
+				Make.Button(Store.T("move_out"), T.bad, function()
+					req("Housing.MoveOut")
+				end, { Parent = home })
+			end
+
 			local mine = Make.Card({ LayoutOrder = 4, Parent = root })
 			Make.Label(Store.T("my_phones"), 14, T.text, T.bold, { Parent = mine })
 			for _, id in state.phones or {} do

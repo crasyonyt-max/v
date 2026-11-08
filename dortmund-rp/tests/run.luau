@@ -481,6 +481,14 @@ test("real city + map", function()
 		kinds[k] = (kinds[k] or 0) + 1
 	end
 	eq(kinds.JobStart, 7, "job start markers (one per job)")
+	eq(kinds.AptDoor, 32, "32 apartment doors in the tower")
+	eq(kinds.Elevator, 17, "elevator on every floor + lobby")
+	local TowerBuilder = requirePath(Server.TowerBuilder)
+	eq(#TowerBuilder.Units, 32, "tower units")
+	local StationBuilder = requirePath(Server.StationBuilder)
+	eq(#StationBuilder.Bays.Police, 4, "police garage bays")
+	eq(#StationBuilder.Bays.Fire, 3, "fire bays")
+	assert(StationBuilder.Jobs.Rettungsdienst and StationBuilder.Jobs.Notarzt, "rescue shares the fire station")
 	eq(kinds.JobGarage, 7, "job garages")
 	assert((kinds.Refuel or 0) >= 3, "petrol stations")
 	local uis = {}

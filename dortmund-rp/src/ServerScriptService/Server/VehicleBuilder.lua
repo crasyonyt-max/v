@@ -1493,6 +1493,22 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 	-- chassis density 0.6, wheel density 1.2, plus ~60 for occupants
 	local mass = W * body.lower * L * 0.6 + 4 * (math.pi * r * r * wheelW * 1.2) + 60
 	local torquePerWheel = mass * 60 * r * math.max(0.6, def.accel or 1) / 4
+	-- anti-roll stabiliser: keeps the car upright (does not affect steering / yaw)
+	local upAtt = Instance.new("Attachment")
+	upAtt.Name = "Upright"
+	upAtt.Axis = Vector3.new(0, 1, 0)
+	upAtt.SecondaryAxis = Vector3.new(1, 0, 0)
+	upAtt.Parent = chassis
+	local upright = Instance.new("AlignOrientation")
+	upright.Name = "Stabilizer"
+	upright.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
+	upright.PrimaryAxis = Vector3.new(0, 1, 0)
+	upright.Attachment0 = upAtt
+	upright.MaxTorque = mass * 400
+	upright.Responsiveness = 10
+	upright.Parent = chassis
+
 	for _, m in motors do
 		m.MotorMaxTorque = torquePerWheel
 		m:SetAttribute("BaseTorque", torquePerWheel)

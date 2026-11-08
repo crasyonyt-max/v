@@ -357,6 +357,106 @@ def main():
         street = t.get("addr:street") or bt.get("addr:street") or ""
         stores.append((kind, f"{label} {street}".strip(), r1(cx), r1(cz), r1(width), r1(depth), round(yaw, 2), r1(base + h)))
 
+    # --- custom building sites (stations, tower): cleared of OSM buildings / trees ----
+    def nearest_on_roads(x, z):
+        best = None
+        for r in road_rows:
+            pts = list(zip(r[4::2], r[5::2]))
+            for (x1, z1), (x2, z2) in zip(pts, pts[1:]):
+                dx, dz = x2 - x1, z2 - z1
+                L2 = dx * dx + dz * dz or 1e-9
+                u = max(0, min(1, ((x - x1) * dx + (z - z1) * dz) / L2))
+                px, pz = x1 + u * dx, z1 + u * dz
+                d = math.hypot(px - x, pz - z)
+                if best is None or d < best[0]:
+                    best = (d, px, pz, math.atan2(dz, dx))
+        return best
+
+    road_samples = []  # dense points along drivable roads (x, z, half width)
+    for wid, (nd, t) in ways.items():
+        hw = t.get("highway")
+        if ROAD_STYLE.get(hw, (0, 0))[1] == 1 and hw != "service" and t.get("tunnel") != "yes":
+            half = ROAD_STYLE[hw][0] / 2 / M_PER_STUD
+            pts = way_pts(wid)
+            for (x1, z1), (x2, z2) in zip(pts, pts[1:]):
+                n_ = max(1, int(math.hypot(x2 - x1, z2 - z1) / 6))
+                for k in range(n_ + 1):
+                    road_samples.append((x1 + (x2 - x1) * k / n_, z1 + (z2 - z1) * k / n_, half))
+
+    def in_site(site, x, z, margin=0.0):
+        cx, cz, yaw, w, d = site
+        a = math.radians(yaw)
+        # local axes: right = (cos, -sin) ... (Roblox CFrame.Angles(0, yaw, 0))
+        lx = (x - cx) * math.cos(a) - (z - cz) * math.sin(a)
+        lz = (x - cx) * math.sin(a) + (z - cz) * math.cos(a)
+        return abs(lx) <= w / 2 + margin and abs(lz) <= d / 2 + margin
+
+    def site_clear(site):
+        return not any(in_site(site, x, z, h) for x, z, h in road_samples)
+
+    def site_at_road(px, pz, sizes_m):
+        """Site whose front edge is on the pavement at (px, pz), facing the nearest road."""
+        d, rx, rz, ang = nearest_on_roads(px, pz)
+        nx, nz = px - rx, pz - rz
+        ln = math.hypot(nx, nz) or 1
+        nx, nz = nx / ln, nz / ln  # road -> place
+        yaw = math.degrees(math.atan2(nx, nz))  # local -Z (front) points back to the road
+        for wm, dm in sizes_m:
+            w, dd = wm / M_PER_STUD, dm / M_PER_STUD
+            for shift in (0, 1, -1, 2, -2):
+                ox, oz = -nz * shift * w * 0.25, nx * shift * w * 0.25  # slide along the road
+                cx = rx + nx * (d + dd / 2 + 1.5 / M_PER_STUD) + ox
+                cz = rz + nz * (d + dd / 2 + 1.5 / M_PER_STUD) + oz
+                site = (cx, cz, yaw, w, dd)
+                if site_clear(site):
+                    return site
+        return None
+
+    def poi(name, key=None):
+        for wid, (nd, t) in ways.items():
+            if t.get("name") == name and (key is None or key in t):
+                pts = way_pts(wid)
+                return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+        raise SystemExit("not found: " + name)
+
+    sites = {}
+    sizes = [(64, 48), (56, 44), (50, 40), (44, 34), (38, 30)]
+    for key, name in (("Police", "Polizeipräsidium Dortmund"), ("FireRescue", "Feuer- und Rettungswache 1 - Stadtmitte")):
+        site = site_at_road(*poi(name, "amenity" if key == "Police" else None), sizes)
+        if site:
+            sites[key] = site
+        else:
+            print("no clear site for", key)
+    # residential tower on the biggest surface car park near the Hbf (not real, wished for)
+    hbf_x, hbf_z = 0.0, 0.0
+    best_tower = None
+    for wid, (nd, t) in ways.items():
+        if t.get("amenity") == "parking" and t.get("parking", "surface") == "surface" and len(nd) > 3:
+            c = centre_ll(wid)
+            if not c or not inside_area(*c):
+                continue
+            pts = way_pts(wid)[:-1]
+            cx, cz, sx, sz, ang = min_rect(pts)
+            dist = math.hypot(cx - hbf_x, cz - hbf_z)
+            side = 32 / M_PER_STUD
+            if min(sx, sz) < side or dist > 2600:
+                continue
+            site = (cx, cz, -math.degrees(ang), side, side)
+            if site_clear(site) and (best_tower is None or dist < best_tower[0]):
+                best_tower = (dist, site)
+    if best_tower:
+        tx, tz, tyaw, tw, td = best_tower[1]
+        # front towards the nearest road
+        dd, rx, rz, _ = nearest_on_roads(tx, tz)
+        nx, nz = tx - rx, tz - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["Tower"] = (tx, tz, yaw, tw, td)
+    else:
+        print("no tower site found")
+
+    def in_any_site(x, z):
+        return any(in_site(st, x, z, 2 / M_PER_STUD) for st in sites.values())
+
     n_rect = n_tri = n_build = 0
     seen = set(store_ways)
     for pts, t, is_part, wid in polys:
@@ -364,6 +464,8 @@ def main():
             continue
         seen.add(wid)
         if not is_part and part_grid and has_parts(pts):
+            continue
+        if any(in_any_site(x, z) for x, z in pts) or in_any_site(sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)):
             continue
         pts = simplify(pts, 0.35 / M_PER_STUD, closed=True)
         area = abs(poly_area(pts))
@@ -455,13 +557,27 @@ def main():
         if flat:
             chunks[chunk_of(*pts[0])]["a"].append([kind] + flat)
 
-    # --- trees ---------------------------------------------------------------
-    n_trees = 0
+    # --- trees (never on a driving lane or a building site) ----------------------------
+    n_trees = n_dropped = 0
+    tree_grid = defaultdict(list)
+    for x, z, h in road_samples:
+        tree_grid[(int(x // 60), int(z // 60))].append((x, z, h))
     for i, (lat, lon, t) in nodes.items():
         if t.get("natural") == "tree" and inside_area(lat, lon):
             x, z = P[i]
+            on_road = False
+            for gx in (int(x // 60) - 1, int(x // 60), int(x // 60) + 1):
+                for gz in (int(z // 60) - 1, int(z // 60), int(z // 60) + 1):
+                    for rx, rz, h in tree_grid.get((gx, gz), []):
+                        if math.hypot(rx - x, rz - z) < h + 0.4 / M_PER_STUD:
+                            on_road = True
+                            break
+            if on_road or in_any_site(x, z):
+                n_dropped += 1
+                continue
             chunks[chunk_of(x, z)]["t"].append([r1(x), r1(z)])
             n_trees += 1
+    print(f"trees kept {n_trees}, removed from roads/sites {n_dropped}")
 
     # --- write data modules -----------------------------------------------------
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -588,6 +704,10 @@ def main():
             f'\t{{ kind = "{k}", name = "{nm}", x = {x}, z = {z}, width = {w_}, depth = {d_}, yaw = {y}, top = {tp} }},'
             for k, nm, x, z, w_, d_, y, tp in stores
         )
+        + "\n}\n\n"
+        "-- Custom building sites: centre x/z, yaw (front = local -Z faces the road), width, depth\n"
+        "Locations.Sites = {\n"
+        + "\n".join(f"\t{k} = {{ x = {r1(v[0])}, z = {r1(v[1])}, yaw = {round(v[2], 2)}, width = {r1(v[3])}, depth = {r1(v[4])} }}," for k, v in sites.items())
         + "\n}\n\n"
         f"Locations.Bounds = {{ {r1(project(SOUTH, WEST)[0])}, {r1(project(NORTH, WEST)[1])}, {r1(project(SOUTH, EAST)[0])}, {r1(project(SOUTH, WEST)[1])} }}\n\n"
         "return Locations\n",

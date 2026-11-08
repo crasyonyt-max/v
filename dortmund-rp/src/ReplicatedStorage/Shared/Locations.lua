@@ -42,6 +42,13 @@ Locations.Stores = {
 	{ kind = "Alda", name = "Alda Märkische Straße", x = 4244.4, z = 5065.8, width = 75.1, depth = 186.7, yaw = 136.75, top = 15.0 },
 }
 
+-- Custom building sites: centre x/z, yaw (front = local -Z faces the road), width, depth
+Locations.Sites = {
+	Police = { x = 396.1, z = 7093.3, yaw = 87.18, width = 228.6, depth = 171.4 },
+	FireRescue = { x = 463.1, z = -1031.2, yaw = -70.82, width = 228.6, depth = 171.4 },
+	Tower = { x = -503.1, z = 463.7, yaw = -163.99, width = 114.3, depth = 114.3 },
+}
+
 Locations.Bounds = { -3285.4, -1820.0, 6610.4, 7260.1 }
 
 return Locations

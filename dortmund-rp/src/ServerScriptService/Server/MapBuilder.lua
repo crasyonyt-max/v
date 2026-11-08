@@ -9,6 +9,7 @@ local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locations = require(ReplicatedStorage.Shared.Locations)
 local CityBuilder = require(script.Parent.CityBuilder)
 local Interaction = require(script.Parent.InteractionService)
+local StationBuilder = require(script.Parent.StationBuilder)
 
 local MapBuilder = {}
 
@@ -82,9 +83,11 @@ function MapBuilder.Build()
 	for _, f in Locations.Fuel do
 		used[string.format("%d,%d", f[1] // 10, f[2] // 10)] = 1
 	end
+	StationBuilder.Build()
+	require(script.Parent.TowerBuilder).Build()
 	for _, job in Jobs.List do
 		local loc = (Locations.Jobs :: any)[job.id]
-		if loc then
+		if loc and not StationBuilder.Jobs[job.id] then
 			local key = string.format("%d,%d", loc.marker[1] // 10, loc.marker[2] // 10)
 			local n = used[key] or 0
 			used[key] = n + 1

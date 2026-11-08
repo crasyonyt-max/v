@@ -16,6 +16,7 @@ local JobService = require(script.Parent.JobService)
 local Remotes = require(script.Parent.Remotes)
 local Roles = require(script.Parent.Roles)
 local State = require(script.Parent.State)
+local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
 local XPService = require(script.Parent.XPService)
@@ -253,7 +254,8 @@ local function spawnModel(
 	VehicleService.Despawn(player)
 	local model = VehicleBuilder.Build(def, color)
 	local built = model.PrimaryPart :: BasePart
-	local cf = spawnCFrame(player, built.Size.X)
+	local cf = meta.SpawnAt or spawnCFrame(player, built.Size.X)
+	meta.SpawnAt = nil
 	if not cf then
 		model:Destroy()
 		return false, "no_space"
@@ -443,7 +445,27 @@ function VehicleService.Start()
 		if not Interaction.IsNear(player, "JobGarage", 40, "JobId", job) then
 			return Remotes.Fail("not_near")
 		end
-		local ok, err = spawnModel(player, def, nil, Plate.Random(Config.DefaultCityCode, rng), { Job = job })
+		-- spawn in a free garage bay if the job has a proper station
+		local bay: CFrame? = nil
+		for _, b in StationBuilder.Bays[job] or {} do
+			local taken = false
+			for _, other in folder:GetChildren() do
+				if
+					other:IsA("Model")
+					and other.PrimaryPart
+					and (other.PrimaryPart.Position - b.Position).Magnitude < 9
+				then
+					taken = true
+					break
+				end
+			end
+			if not taken then
+				bay = b
+				break
+			end
+		end
+		local ok, err =
+			spawnModel(player, def, nil, Plate.Random(Config.DefaultCityCode, rng), { Job = job, SpawnAt = bay })
 		return if ok then Remotes.Ok() else Remotes.Fail(err or "error")
 	end, { rate = 4 })
 

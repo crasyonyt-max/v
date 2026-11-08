@@ -40,6 +40,7 @@ local services = {
 	require(Server.VehicleService),
 	require(Server.AdminService),
 	require(Server.StoreService),
+	require(Server.HousingService),
 }
 for _, service in services do
 	service.Start()

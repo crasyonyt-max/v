@@ -313,6 +313,42 @@ renderers.Store = function(kind: any)
 	end
 end
 
+renderers.Elevator = function(current: any)
+	title.Text = "🛗 " .. Store.T("elevator")
+	Make.Clear(tabBar)
+	local g = New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = body,
+	})
+	New("UIGridLayout", {
+		CellSize = UDim2.new(0.25, -6, 0, 54),
+		CellPadding = UDim2.fromOffset(6, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = g,
+	})
+	local mine = Players.LocalPlayer:GetAttribute("Apartment")
+	local myFloor = if typeof(mine) == "number" then math.ceil(mine / 2) else nil
+	for f = 16, 0, -1 do
+		local label = if f == 0 then Store.T("lobby") else Store.T("floor", f)
+		if f == myFloor then
+			label ..= " 🏠"
+		end
+		Make.Button(label, if f == current then T.panel else (if f == myFloor then T.good else T.accent), function()
+			if f == current then
+				return
+			end
+			local r = Net.Request("Tower.Go", f)
+			if r.ok then
+				Shops.Close()
+			else
+				Notify.Error(r.err)
+			end
+		end, { LayoutOrder = 16 - f, Parent = g })
+	end
+end
+
 renderers.Housing = function()
 	title.Text = "🏠 Ferdinandstraße 24"
 	Make.Clear(tabBar)

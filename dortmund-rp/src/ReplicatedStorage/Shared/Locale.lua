@@ -76,6 +76,22 @@ local S: { [string]: { de: string, en: string } } = {
 	navi_shops = { de = "Einkaufen", en = "Shopping" },
 	navi_jobs = { de = "Dienststellen", en = "Stations" },
 	navi_places = { de = "Orte", en = "Places" },
+	apt_taken = { de = "Diese Wohnung gehört %s.", en = "This apartment belongs to %s." },
+	apt_have_one = { de = "Du wohnst schon in Wohnung %d.", en = "You already live in apartment %d." },
+	apt_moved_in = {
+		de = "🏠 Willkommen zu Hause! Wohnung %d gehört jetzt dir.",
+		en = "🏠 Welcome home! Apartment %d is yours now.",
+	},
+	no_apartment = { de = "Du hast keine Wohnung.", en = "You don't have an apartment." },
+	my_apartment = { de = "🏠 Meine Wohnung %d (Dortmund Tower)", en = "🏠 My apartment %d (Dortmund Tower)" },
+	tower = {
+		de = "🏙️ Dortmund Tower (32 Wohnungen, gratis)",
+		en = "🏙️ Dortmund Tower (32 apartments, free)",
+	},
+	move_out = { de = "Ausziehen", en = "Move out" },
+	elevator = { de = "Aufzug", en = "Elevator" },
+	floor = { de = "Etage %d", en = "Floor %d" },
+	lobby = { de = "Lobby (EG)", en = "Lobby" },
 	no_space = {
 		de = "Hier ist kein Platz zum Ausparken. Stell dich an die Straße.",
 		en = "No space here. Stand next to a road.",

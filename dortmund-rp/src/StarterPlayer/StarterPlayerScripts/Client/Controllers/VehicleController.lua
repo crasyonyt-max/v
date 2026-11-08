@@ -32,6 +32,7 @@ local gui = New("ScreenGui", {
 })
 
 local dash = New("Frame", {
+	Name = "Dash",
 	AnchorPoint = Vector2.new(0.5, 1),
 	Position = UDim2.new(0.5, 0, 1, -10),
 	Size = UDim2.fromOffset(340, 118),
@@ -201,6 +202,136 @@ local function buildButtons()
 	end
 end
 
+-- Input ------------------------------------------------------------------------------
+-- Touch: transparent pedals + steering buttons. Keyboard: W/S/A/D or arrows.
+-- Gamepad: the seat's own values. Steering is smoothed and re-centres by itself.
+local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local touch = { gas = false, brake = false, left = false, right = false }
+local steerState, throttleState = 0, 0
+
+local touchGui = New("ScreenGui", {
+	Name = "DriveButtons",
+	ResetOnSpawn = false,
+	DisplayOrder = 9,
+	Enabled = false,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+local function pedal(name: string, text: string, size: Vector2, position: UDim2, anchor: Vector2, key: string)
+	local b = New("TextButton", {
+		Name = name,
+		AnchorPoint = anchor,
+		Position = position,
+		Size = UDim2.fromOffset(size.X, size.Y),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.82,
+		Text = text,
+		TextSize = 30,
+		Font = T.black,
+		TextColor3 = Color3.new(1, 1, 1),
+		TextTransparency = 0.25,
+		AutoButtonColor = false,
+		Parent = touchGui,
+	}, { Make.Corner(18), Make.Stroke(Color3.new(1, 1, 1), 2, 0.6) })
+	b.InputBegan:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1
+		then
+			(touch :: any)[key] = true
+			b.BackgroundTransparency = 0.6
+		end
+	end)
+	b.InputEnded:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1
+		then
+			(touch :: any)[key] = false
+			b.BackgroundTransparency = 0.82
+		end
+	end)
+	return b
+end
+pedal("Left", "◀", Vector2.new(96, 96), UDim2.new(0, 20, 1, -24), Vector2.new(0, 1), "left")
+pedal("Right", "▶", Vector2.new(96, 96), UDim2.new(0, 128, 1, -24), Vector2.new(0, 1), "right")
+pedal("Gas", "GAS", Vector2.new(92, 150), UDim2.new(1, -20, 1, -24), Vector2.new(1, 1), "gas")
+pedal("Brake", "BREMSE", Vector2.new(92, 96), UDim2.new(1, -124, 1, -24), Vector2.new(1, 1), "brake")
+local exitButton = New("TextButton", {
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -20, 0, 70),
+	Size = UDim2.fromOffset(120, 40),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	BackgroundTransparency = 0.5,
+	Text = "🚪 Aussteigen",
+	TextSize = 16,
+	Font = T.bold,
+	TextColor3 = Color3.new(1, 1, 1),
+	Parent = touchGui,
+}, { Make.Corner(12) })
+exitButton.Activated:Connect(function()
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Jump = true
+	end
+end)
+
+local controls: any = nil
+local function setDefaultControls(enabled: boolean)
+	if not isTouch then
+		return
+	end
+	if not controls then
+		local ok, module = pcall(function()
+			return require((player:WaitForChild("PlayerScripts") :: any):WaitForChild("PlayerModule")):GetControls()
+		end)
+		controls = if ok then module else false
+	end
+	if controls then
+		if enabled then
+			controls:Enable()
+		else
+			controls:Disable()
+		end
+	end
+end
+
+local function keyDown(...: Enum.KeyCode): boolean
+	if UserInputService:GetFocusedTextBox() then
+		return false
+	end
+	for _, k in { ... } do
+		if UserInputService:IsKeyDown(k) then
+			return true
+		end
+	end
+	return false
+end
+
+local function readInput(vseat: VehicleSeat, dt: number, speedRatio: number): (number, number)
+	local rawT, rawS = 0, 0
+	if isTouch then
+		rawT = (if touch.gas then 1 else 0) - (if touch.brake then 1 else 0)
+		rawS = (if touch.right then 1 else 0) - (if touch.left then 1 else 0)
+	else
+		local kT = (if keyDown(Enum.KeyCode.W, Enum.KeyCode.Up) then 1 else 0)
+			- (if keyDown(Enum.KeyCode.S, Enum.KeyCode.Down) then 1 else 0)
+		local kS = (if keyDown(Enum.KeyCode.D, Enum.KeyCode.Right) then 1 else 0)
+			- (if keyDown(Enum.KeyCode.A, Enum.KeyCode.Left) then 1 else 0)
+		rawT = if kT ~= 0 then kT else vseat.ThrottleFloat
+		rawS = if kS ~= 0 then kS else vseat.SteerFloat
+	end
+	-- steering eases in (slower at speed) and springs back to centre
+	local inRate = 2.6 - 1.4 * speedRatio
+	local outRate = 4.0
+	local rate = if rawS == 0 or math.sign(rawS) ~= math.sign(steerState) then outRate else inRate
+	steerState += math.clamp(rawS - steerState, -rate * dt, rate * dt)
+	throttleState += math.clamp(rawT - throttleState, -4 * dt, 4 * dt)
+	if rawT == 0 and math.abs(throttleState) < 0.05 then
+		throttleState = 0
+	end
+	return throttleState, steerState
+end
+
 local function stop()
 	if conn then
 		conn:Disconnect()
@@ -219,6 +350,9 @@ local function stop()
 	car, seat = nil, nil
 	motors, steers = {}, {}
 	gui.Enabled = false
+	touchGui.Enabled = false
+	setDefaultControls(true)
+	steerState, throttleState = 0, 0
 end
 
 local function drive(dt: number)
@@ -233,8 +367,8 @@ local function drive(dt: number)
 	local fuel = (model:GetAttribute("Fuel") or 100) :: number
 	local reverseTop = REVERSE_KMH / 3.6 * Config.StudsPerMeter
 
-	local throttle = vseat.ThrottleFloat
-	local steer = vseat.SteerFloat
+	local speedNow = chassis.AssemblyLinearVelocity:Dot(chassis.CFrame.LookVector)
+	local throttle, steer = readInput(vseat, dt, math.clamp(math.abs(speedNow) / top, 0, 1))
 	if fuel <= 0 then
 		if throttle ~= 0 and not warnedFuel then
 			warnedFuel = true
@@ -318,7 +452,6 @@ local function drive(dt: number)
 		then Color3.fromRGB(60, 230, 90)
 		else Color3.fromRGB(60, 60, 60)
 	lightIcon.TextTransparency = if model:GetAttribute("Headlights") then 0 else 0.7
-	local _ = dt
 end
 
 local function start(vseat: VehicleSeat)
@@ -339,6 +472,8 @@ local function start(vseat: VehicleSeat)
 	end
 	buildButtons()
 	gui.Enabled = true
+	touchGui.Enabled = isTouch
+	setDefaultControls(false)
 	conn = RunService.Heartbeat:Connect(drive)
 end
 
