@@ -347,25 +347,104 @@ function VehicleService.GiveVehicle(player: Player, vehicleId: string): boolean
 	return true
 end
 
--- Every car that was bought is refunded at full price and replaced by the free motorbike.
+-- The car refund is paid ONCE per player, ever. Besides a flag in the player's data,
+-- a separate store records who was paid (claimed atomically), so a failed save,
+-- an old server or a second join can never pay it again.
+local REFUND_REASON = "Erstattung Fahrzeuge"
+local refundStore: DataStore? = nil
+pcall(function()
+	refundStore = DataStoreService:GetDataStore(Config.DataStoreName .. "_CarRefunds")
+end)
+
+-- "new" = first time, pay it · "paid" = already paid before · "error" = try next join
+local function claimRefund(userId: number, amount: number): string
+	if not refundStore then
+		return "error"
+	end
+	local result = "error"
+	local ok = pcall(function()
+		(refundStore :: DataStore):UpdateAsync("u_" .. userId, function(old: any)
+			if old ~= nil then
+				result = "paid"
+				return nil
+			end
+			result = "new"
+			return { amount = amount, t = os.time() }
+		end)
+	end)
+	return if ok then result else "error"
+end
+
+-- Takes back refunds that were paid more than once (before this fix). Runs once.
+local function correctDuplicates(player: Player, data: { [string]: any })
+	if data.refundChecked then
+		return
+	end
+	local count, extra = 0, 0
+	for _, tx in data.tx do
+		if typeof(tx) == "table" and tx.reason == REFUND_REASON and typeof(tx.amount) == "number" then
+			count += 1
+			if count > 1 then
+				extra += tx.amount
+			end
+		end
+	end
+	if count > 0 then
+		data.carsRefunded = true
+		-- record the first refund so it can never be paid again
+		claimRefund(player.UserId, 0)
+	end
+	if extra > 0 then
+		local take = math.min(extra, math.max(0, data.bank))
+		if take > 0 then
+			Economy.TrySpend(player, take, "Korrektur: doppelte Erstattung")
+		end
+		warn(string.format("[Vehicles] took back %.2f duplicate refund from %s", take, player.Name))
+	end
+	data.refundChecked = true
+end
+
+-- Every car that was bought is refunded at full price (once) and replaced by the free motorbike.
 local function migrate(player: Player, data: { [string]: any })
+	correctDuplicates(player, data)
 	local refund = 0
 	local hasBike = false
+	local oldCars: { string } = {}
 	for uid, entry in data.vehicles do
 		local def = Vehicles.ById[entry.id]
 		if def and def.category == "Starter" then
 			hasBike = true
 		else
 			refund += Vehicles.LegacyPrices[entry.id] or 0
-			data.vehicles[uid] = nil
-			if typeof(entry.plate) == "string" then
-				task.spawn(releasePlate, entry.plate, player.UserId)
-			end
+			table.insert(oldCars, uid)
 		end
 	end
 	data.starterChosen = true
-	if refund > 0 then
-		Economy.Add(player, refund, "Erstattung Fahrzeuge")
+
+	local pay = false
+	if #oldCars > 0 then
+		if refund > 0 and not data.carsRefunded then
+			local claim = claimRefund(player.UserId, refund)
+			if claim == "error" then
+				-- can't check right now: keep the cars, decide on the next join
+				oldCars = {}
+			elseif claim == "new" then
+				pay = true
+			end
+		end
+		for _, uid in oldCars do
+			local entry = data.vehicles[uid]
+			data.vehicles[uid] = nil
+			if entry and typeof(entry.plate) == "string" then
+				task.spawn(releasePlate, entry.plate, player.UserId)
+			end
+		end
+		if #oldCars > 0 then
+			data.carsRefunded = true
+		end
+	end
+	if pay then
+		Economy.Add(player, refund, REFUND_REASON)
 		task.delay(6, function()
 			if player.Parent then
 				Remotes.Push(player, "Notify", { key = "cars_refunded", args = { Locale.Euro(refund) } })
@@ -376,7 +455,11 @@ local function migrate(player: Player, data: { [string]: any })
 		addOwned(player, Vehicles.BikeId)
 	end
 	State.MarkDirty(player)
+	-- save right away so the removed cars stay removed
+	task.spawn(DataService.Save, player, false)
 end
+
+VehicleService._migrate = migrate -- tests
 
 function VehicleService.Start()
 	DataService.Loaded:Connect(function(player, data)

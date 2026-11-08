@@ -283,6 +283,129 @@ test("config", function()
 	eq(Config.AdminPhoneId, "nvdr_p1")
 end)
 
+-- Car refund: paid once, never again (even if the cars come back) ---------------
+test("car refund is paid only once", function()
+	local stores = {}
+	fakeServices.DataStoreService = {
+		GetDataStore = function(_, name)
+			stores[name] = stores[name] or {}
+			local mem = stores[name]
+			return {
+				UpdateAsync = function(_, key, fn)
+					local new = fn(mem[key])
+					if new ~= nil then
+						mem[key] = new
+					end
+					return new
+				end,
+				GetAsync = function(_, key)
+					return mem[key]
+				end,
+				RemoveAsync = function(_, key)
+					mem[key] = nil
+				end,
+			}
+		end,
+	}
+	local data
+	local function add(amount, reason)
+		data.bank += amount
+		table.insert(data.tx, { amount = amount, reason = reason, t = 0 })
+		return true
+	end
+	local stub = function()
+		return setmetatable({}, {
+			__index = function()
+				return function() end
+			end,
+		})
+	end
+	overrides["ServerScriptService/Server/DataService"] = {
+		Get = function()
+			return data
+		end,
+		Save = function() end,
+	}
+	overrides["ServerScriptService/Server/EconomyService"] = {
+		Add = function(_, amount, reason)
+			return add(amount, reason)
+		end,
+		TrySpend = function(_, amount, reason)
+			return add(-amount, reason)
+		end,
+	}
+	overrides["ServerScriptService/Server/Remotes"] = stub()
+	overrides["ServerScriptService/Server/State"] = stub()
+	overrides["ServerScriptService/Server/InteractionService"] = stub()
+	overrides["ServerScriptService/Server/JobService"] = stub()
+	overrides["ServerScriptService/Server/Roles"] = stub()
+	overrides["ServerScriptService/Server/StationBuilder"] = stub()
+	overrides["ServerScriptService/Server/XPService"] = stub()
+	local VS = requirePath(Server.VehicleService)
+	-- the stubs are only for VehicleService: later tests use the real modules
+	for _, name in
+		{
+			"DataService",
+			"EconomyService",
+			"Remotes",
+			"State",
+			"InteractionService",
+			"JobService",
+			"Roles",
+			"StationBuilder",
+			"XPService",
+		}
+	do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	fakeServices.DataStoreService = nil
+	local player = { UserId = 42, Name = "Tester", Parent = nil }
+	local function oldSave()
+		return {
+			bank = 1000,
+			tx = {},
+			nextUid = 3,
+			vehicles = {
+				v1 = { id = "lambardini_uros", plate = "DO-A 1" },
+				v2 = { id = "vk_golfo4", plate = "DO-A 2" },
+			},
+		}
+	end
+	data = oldSave()
+	VS._migrate(player, data)
+	eq(data.bank, 251000, "first join: full refund")
+	local n = 0
+	for _, e in data.vehicles do
+		n += 1
+		eq(e.id, Vehicles.BikeId, "only the bike is left")
+	end
+	eq(n, 1, "one bike")
+	-- the cars come back (failed save / old server): no second refund
+	data = oldSave()
+	VS._migrate(player, data)
+	eq(data.bank, 1000, "no second refund")
+	data.vehicles.v9 = { id = "bmv_m3", plate = "DO-A 9" }
+	VS._migrate(player, data)
+	eq(data.bank, 1000, "no refund on a later join")
+	assert(data.vehicles.v9 == nil, "old car removed")
+	-- someone already paid three times before the fix: two get taken back
+	data = {
+		bank = 800000,
+		tx = {
+			{ amount = 250000, reason = "Erstattung Fahrzeuge", t = 1 },
+			{ amount = 250000, reason = "Erstattung Fahrzeuge", t = 2 },
+			{ amount = 250000, reason = "Erstattung Fahrzeuge", t = 3 },
+		},
+		nextUid = 2,
+		vehicles = { v1 = { id = Vehicles.BikeId, plate = "DO-B 1" } },
+	}
+	player.UserId = 43
+	VS._migrate(player, data)
+	eq(data.bank, 300000, "duplicates taken back")
+	VS._migrate(player, data)
+	eq(data.bank, 300000, "correction runs once")
+end)
+
 -- Every bike builds ---------------------------------------------------------------
 for _, v in Vehicles.List do
 	test("build " .. v.id, function()
