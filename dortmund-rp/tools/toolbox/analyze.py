@@ -34,11 +34,51 @@ def cross(a, b):
 
 
 def wheel_tag(path):
-    p = path.lower().replace("_", ".").split(".")
-    for tag in ("fl", "fr", "rl", "rr"):
-        if tag in p:
-            return tag.upper()
+    import re
+    toks = re.split(r"[._\s/\-()]+", path.lower())
+    for tok in toks:
+        if tok in ("fl", "lf"):
+            return "FL"
+        if tok in ("fr", "rf"):
+            return "FR"
+        if tok in ("rl", "lr", "bl"):
+            return "RL"
+        if tok in ("rr", "br"):
+            return "RR"
     return None
+
+
+WHEEL_WORDS = ("wheel", "tire", "tyre", "rim")
+# sign of the forward direction along the wheel set's long axis, for models without seats
+FORWARD_SIGN = {9180325239: -1, 11921126659: -1, 13038895984: -1}
+
+
+def geometric_groups(parts, seat):
+    """Cluster wheel-named parts into FL/FR/RL/RR by position."""
+    wh = [p for p in parts if any(w in p["path"].lower() for w in WHEEL_WORDS) and p["transparency"] < 0.95]
+    if len(wh) < 4:
+        return None, None
+    cx = sum(p["cf"][0] for p in wh) / len(wh)
+    cz = sum(p["cf"][2] for p in wh) / len(wh)
+    ex = max(p["cf"][0] for p in wh) - min(p["cf"][0] for p in wh)
+    ez = max(p["cf"][2] for p in wh) - min(p["cf"][2] for p in wh)
+    long_axis = (1, 0, 0) if ex > ez else (0, 0, 1)
+    if seat is not None:
+        c = seat["cf"]
+        look = (-c[5], 0, -c[11])
+        sign = 1 if dot(look, long_axis) >= 0 else -1
+    else:
+        sign = FORWARD_SIGN.get(None, 1)
+    fwd = tuple(sign * a for a in long_axis)
+    right = cross(fwd, (0, 1, 0))
+    groups = {}
+    for p in wh:
+        d = (p["cf"][0] - cx, 0, p["cf"][2] - cz)
+        front = dot(d, fwd) > 0
+        rgt = dot(d, right) > 0
+        tag = ("F" if front else "R") + ("R" if rgt else "L")
+        groups.setdefault(tag, []).append(p)
+    return (groups if len(groups) == 4 else None), fwd
 
 
 def analyse(aid):
@@ -48,7 +88,7 @@ def analyse(aid):
     # wheel groups by FL/FR/RL/RR in the path (A-Chassis layout)
     groups = {}
     for p in vis:
-        if any(w in p["path"].lower() for w in ("wheel", "tire", "tyre", "rim")) or wheel_tag(p["path"]):
+        if any(w in p["path"].lower() for w in WHEEL_WORDS):
             t = wheel_tag(p["path"])
             if t:
                 groups.setdefault(t, []).append(p)
@@ -58,8 +98,17 @@ def analyse(aid):
         return (sum(xs) / len(xs), sum(ys) / len(ys), sum(zs) / len(zs))
 
     up = (0.0, 1.0, 0.0)
+    seat = next((p for p in parts if p["class"] == "VehicleSeat"), None)
+    geo_fwd = None
+    if not all(k in groups for k in ("FL", "FR", "RL", "RR")):
+        FORWARD_SIGN[None] = FORWARD_SIGN.get(aid, 1)
+        g, geo_fwd = geometric_groups(parts, seat)
+        if g:
+            groups = g
     if aid in FORWARD_OVERRIDE:
         fwd = norm(FORWARD_OVERRIDE[aid])
+    elif geo_fwd is not None and all(k in groups for k in ("FL", "FR", "RL", "RR")):
+        fwd = norm(geo_fwd)
     elif all(k in groups for k in ("FL", "FR", "RL", "RR")):
         front = tuple((a + b) / 2 for a, b in zip(centre(groups["FL"]), centre(groups["FR"])))
         rear = tuple((a + b) / 2 for a, b in zip(centre(groups["RL"]), centre(groups["RR"])))

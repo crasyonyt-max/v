@@ -12,8 +12,7 @@ LUA = ROOT / "src" / "ServerStorage" / "ToolboxCars.lua"
 LUNE = str(Path.home() / ".cargo/bin/lune")
 GROUP = "35947661"
 
-MODELS = [12765708197, 1268658815, 16536903413, 9809341494, 117276253886376, 18169494881, 18171159918, 4872481462,
-          14484304958, 17057409668, 16641418932, 1327624473, 6173263330, 5233465872, 16100723406, 3499202310]
+MODELS = json.loads((ROOT / "data" / "toolbox" / "publish_models.json").read_text())
 
 
 def curl(*args):
