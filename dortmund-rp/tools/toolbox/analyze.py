@@ -68,7 +68,7 @@ def analyse(aid):
     else:
         seat = next((p for p in parts if p["class"] == "VehicleSeat"), None)
         if not seat:
-            raise SystemExit(f"{aid}: no wheels/seat, add FORWARD_OVERRIDE")
+            raise RuntimeError(f"{aid}: no wheels/seat")
         c = seat["cf"]
         fwd = norm((-c[5], 0, -c[11]))
     right = cross(fwd, up)  # forward x up = right (right-handed, y up)
