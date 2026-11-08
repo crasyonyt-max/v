@@ -446,6 +446,19 @@ for id, m in CarModels do
 				wheels[d] = d.CFrame.Position
 			end
 		end
+		local drive = model:FindFirstChild("DriveSeat")
+		assert(drive, "no driver seat")
+		local seatsLeftOf = 0
+		for _, d in model:GetChildren() do
+			if
+				d.Name == "Seat"
+				and math.abs(d.CFrame.Position.Z - drive.CFrame.Position.Z) < 2.5
+				and d.CFrame.Position.X < drive.CFrame.Position.X - 0.5
+			then
+				seatsLeftOf += 1
+			end
+		end
+		eq(seatsLeftOf, 0, id .. ": driver must be the front-left seat")
 		local height = 0
 		for _, d in model:GetDescendants() do
 			if d.ClassName == "WeldConstraint" then

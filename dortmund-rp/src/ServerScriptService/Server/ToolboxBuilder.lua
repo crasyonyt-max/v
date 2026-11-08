@@ -230,8 +230,24 @@ function ToolboxBuilder.Build(
 
 	-- seats where the model had them (invisible; the model's own seats are visible)
 	local driverPlaced = false
+	-- Germany drives on the right: the driver always gets the front-left seat,
+	-- whatever the model marked (some models put their drive seat on the right)
+	local driverIndex: number? = nil
+	do
+		local frontZ = math.huge
+		for _, st in info.seats do
+			frontZ = math.min(frontZ, st[3])
+		end
+		local bestX = math.huge
+		for i, st in info.seats do
+			if st[3] < frontZ + 2.5 and st[1] < bestX then
+				bestX = st[1]
+				driverIndex = i
+			end
+		end
+	end
 	for i, st in info.seats do
-		local isDriver = st[4] == 1 and not driverPlaced
+		local isDriver = i == driverIndex and not driverPlaced
 		local seat = Instance.new(if isDriver then "VehicleSeat" else "Seat") :: BasePart
 		seat.Name = if isDriver then "DriveSeat" else "Seat"
 		seat.Size = Vector3.new(1.6, 0.4, 1.6)
