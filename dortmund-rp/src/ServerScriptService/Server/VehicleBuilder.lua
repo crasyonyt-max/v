@@ -1,559 +1,114 @@
 --!strict
--- Builds a drivable vehicle from parts (no meshes needed), including interior.
+-- Builds the motorbike from parts, in the civilian paint colour or a job livery.
 -- Model space: forward = -Z, right = +X, ground = y 0.
 --
--- Physics layout
---   Chassis (lower body, PrimaryPart) <- everything decorative is welded to it (Massless)
---   rear wheels  : HingeConstraint (Motor) chassis -> wheel
---   front wheels : HingeConstraint (Servo, vertical) chassis -> knuckle, then Motor knuckle -> wheel
+-- Physics layout (a two-wheeler that can't fall over)
+--   Chassis (invisible, PrimaryPart) <- everything decorative is welded to it (Massless)
+--   four hidden physics wheels in two narrow pairs (front pair steered, see AddPhysics)
+--   plus the Stabilizer that keeps it upright. The visible front wheel, fork and
+--   handlebar are welded to the left front wheel / knuckle, so they spin and steer.
 -- The driver's client sets motor speed + steering angle (it owns the physics);
 -- see StarterPlayerScripts/Client/Controllers/VehicleController.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local MeshLibrary = require(script.Parent.MeshLibrary)
-local ToolboxBuilder = require(script.Parent.ToolboxBuilder)
 
 local VehicleBuilder = {}
 
-type Body = {
-	L: number, -- length
-	W: number, -- width
-	lower: number, -- lower body height
-	cab: number, -- cabin (glass area) height
-	cabStart: number, -- cabin start (fraction of length from the front)
-	cabEnd: number, -- cabin end
-	ws: number, -- windshield slope length
-	rs: number, -- rear window slope length
-	wheelR: number,
-	clear: number, -- ground clearance (bottom of body)
-	seats: number,
-	glassEnd: number?, -- vans: glass stops here, solid box behind
-	rear: string?, -- "box" | "bed" | "flat" | "fifth" | "ladder"
-	rearH: number?, -- height of box body
-}
-
-local function b(t: Body): Body
-	return t
-end
-
-VehicleBuilder.BodyTypes = {
-	hatch = b({
-		L = 13,
-		W = 6,
-		lower = 2.4,
-		cab = 2.4,
-		cabStart = 0.36,
-		cabEnd = 0.97,
-		ws = 2.6,
-		rs = 1.0,
-		wheelR = 1.25,
-		clear = 0.9,
-		seats = 5,
-	}),
-	hatch_small = b({
-		L = 12,
-		W = 5.6,
-		lower = 2.3,
-		cab = 2.4,
-		cabStart = 0.34,
-		cabEnd = 0.97,
-		ws = 2.4,
-		rs = 0.9,
-		wheelR = 1.15,
-		clear = 0.85,
-		seats = 4,
-	}),
-	sedan = b({
-		L = 14.5,
-		W = 6.2,
-		lower = 2.3,
-		cab = 2.2,
-		cabStart = 0.33,
-		cabEnd = 0.78,
-		ws = 2.8,
-		rs = 2.0,
-		wheelR = 1.3,
-		clear = 0.9,
-		seats = 5,
-	}),
-	sedan_long = b({
-		L = 15.5,
-		W = 6.3,
-		lower = 2.3,
-		cab = 2.2,
-		cabStart = 0.32,
-		cabEnd = 0.79,
-		ws = 3.0,
-		rs = 2.2,
-		wheelR = 1.35,
-		clear = 0.9,
-		seats = 5,
-	}),
-	sedan_sport = b({
-		L = 15,
-		W = 6.4,
-		lower = 2.0,
-		cab = 1.9,
-		cabStart = 0.33,
-		cabEnd = 0.82,
-		ws = 3.2,
-		rs = 3.0,
-		wheelR = 1.35,
-		clear = 0.7,
-		seats = 4,
-	}),
-	sedan_xl = b({
-		L = 17,
-		W = 6.5,
-		lower = 2.5,
-		cab = 2.3,
-		cabStart = 0.32,
-		cabEnd = 0.8,
-		ws = 2.8,
-		rs = 1.8,
-		wheelR = 1.45,
-		clear = 0.9,
-		seats = 4,
-	}),
-	kombi = b({
-		L = 14.5,
-		W = 6.2,
-		lower = 2.3,
-		cab = 2.3,
-		cabStart = 0.33,
-		cabEnd = 0.97,
-		ws = 2.8,
-		rs = 0.6,
-		wheelR = 1.3,
-		clear = 0.9,
-		seats = 5,
-	}),
-	kombi_long = b({
-		L = 15.5,
-		W = 6.3,
-		lower = 2.3,
-		cab = 2.3,
-		cabStart = 0.32,
-		cabEnd = 0.97,
-		ws = 3.0,
-		rs = 0.7,
-		wheelR = 1.35,
-		clear = 0.9,
-		seats = 5,
-	}),
-	mpv = b({
-		L = 14.5,
-		W = 6.3,
-		lower = 2.6,
-		cab = 2.9,
-		cabStart = 0.28,
-		cabEnd = 0.97,
-		ws = 3.6,
-		rs = 0.5,
-		wheelR = 1.35,
-		clear = 0.95,
-		seats = 7,
-	}),
-	suv = b({
-		L = 14.5,
-		W = 6.6,
-		lower = 2.9,
-		cab = 2.5,
-		cabStart = 0.33,
-		cabEnd = 0.96,
-		ws = 2.8,
-		rs = 0.8,
-		wheelR = 1.5,
-		clear = 1.3,
-		seats = 5,
-	}),
-	suv_long = b({
-		L = 16.5,
-		W = 6.8,
-		lower = 3.0,
-		cab = 2.6,
-		cabStart = 0.32,
-		cabEnd = 0.96,
-		ws = 2.8,
-		rs = 0.6,
-		wheelR = 1.6,
-		clear = 1.3,
-		seats = 5,
-	}),
-	coupe = b({
-		L = 14,
-		W = 6.3,
-		lower = 2.1,
-		cab = 1.9,
-		cabStart = 0.38,
-		cabEnd = 0.8,
-		ws = 3.0,
-		rs = 2.6,
-		wheelR = 1.3,
-		clear = 0.8,
-		seats = 4,
-	}),
-	coupe_sport = b({
-		L = 14,
-		W = 6.5,
-		lower = 1.9,
-		cab = 1.7,
-		cabStart = 0.38,
-		cabEnd = 0.84,
-		ws = 3.2,
-		rs = 3.0,
-		wheelR = 1.35,
-		clear = 0.65,
-		seats = 2,
-	}),
-	super = b({
-		L = 14.5,
-		W = 6.8,
-		lower = 1.7,
-		cab = 1.6,
-		cabStart = 0.35,
-		cabEnd = 0.7,
-		ws = 3.2,
-		rs = 2.2,
-		wheelR = 1.35,
-		clear = 0.55,
-		seats = 2,
-	}),
-	beetle = b({
-		L = 12.5,
-		W = 5.8,
-		lower = 2.2,
-		cab = 2.3,
-		cabStart = 0.3,
-		cabEnd = 0.8,
-		ws = 2.6,
-		rs = 3.2,
-		wheelR = 1.2,
-		clear = 0.9,
-		seats = 4,
-	}),
-	offroad = b({
-		L = 14,
-		W = 6.5,
-		lower = 3.0,
-		cab = 2.8,
-		cabStart = 0.32,
-		cabEnd = 0.95,
-		ws = 0.8,
-		rs = 0,
-		wheelR = 1.7,
-		clear = 1.6,
-		seats = 5,
-	}),
-	offroad_long = b({
-		L = 15.5,
-		W = 6.5,
-		lower = 3.0,
-		cab = 2.8,
-		cabStart = 0.3,
-		cabEnd = 0.95,
-		ws = 0.8,
-		rs = 0,
-		wheelR = 1.7,
-		clear = 1.6,
-		seats = 7,
-	}),
-	pickup = b({
-		L = 18,
-		W = 7,
-		lower = 3.1,
-		cab = 2.6,
-		cabStart = 0.3,
-		cabEnd = 0.6,
-		ws = 2.4,
-		rs = 0,
-		wheelR = 1.8,
-		clear = 1.6,
-		seats = 5,
-		rear = "bed",
-	}),
-	unimug = b({
-		L = 17,
-		W = 7.2,
-		lower = 3.2,
-		cab = 3.0,
-		cabStart = 0.04,
-		cabEnd = 0.36,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.4,
-		clear = 2.4,
-		seats = 2,
-		rear = "bed",
-	}),
-	van_small = b({
-		L = 14.5,
-		W = 6.2,
-		lower = 2.6,
-		cab = 3.4,
-		cabStart = 0.26,
-		cabEnd = 0.98,
-		ws = 3.0,
-		rs = 0.3,
-		wheelR = 1.3,
-		clear = 0.95,
-		seats = 2,
-		glassEnd = 0.5,
-	}),
-	van = b({
-		L = 16.5,
-		W = 6.8,
-		lower = 2.8,
-		cab = 3.8,
-		cabStart = 0.2,
-		cabEnd = 0.99,
-		ws = 3.0,
-		rs = 0,
-		wheelR = 1.4,
-		clear = 1.0,
-		seats = 3,
-		glassEnd = 0.42,
-	}),
-	bigvan = b({
-		L = 21,
-		W = 7,
-		lower = 2.8,
-		cab = 5,
-		cabStart = 0.17,
-		cabEnd = 0.99,
-		ws = 2.6,
-		rs = 0,
-		wheelR = 1.5,
-		clear = 1.0,
-		seats = 3,
-		glassEnd = 0.32,
-	}),
-	rtw = b({
-		L = 21,
-		W = 7.4,
-		lower = 2.8,
-		cab = 3.6,
-		cabStart = 0.15,
-		cabEnd = 0.36,
-		ws = 2.4,
-		rs = 0,
-		wheelR = 1.5,
-		clear = 1.0,
-		seats = 3,
-		rear = "box",
-		rearH = 6.2,
-	}),
-	truck = b({
-		L = 26,
-		W = 8,
-		lower = 3.4,
-		cab = 4.2,
-		cabStart = 0.0,
-		cabEnd = 0.26,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.0,
-		clear = 2.0,
-		seats = 6,
-		rear = "box",
-		rearH = 6.5,
-	}),
-	truck_box = b({
-		L = 26,
-		W = 8,
-		lower = 3.4,
-		cab = 4.0,
-		cabStart = 0.0,
-		cabEnd = 0.24,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.0,
-		clear = 2.0,
-		seats = 3,
-		rear = "box",
-		rearH = 8,
-	}),
-	truck_ladder = b({
-		L = 30,
-		W = 8,
-		lower = 3.4,
-		cab = 4.0,
-		cabStart = 0.0,
-		cabEnd = 0.22,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.0,
-		clear = 2.0,
-		seats = 3,
-		rear = "ladder",
-		rearH = 3.5,
-	}),
-	truck_airport = b({
-		L = 36,
-		W = 10,
-		lower = 4.2,
-		cab = 4.4,
-		cabStart = 0.02,
-		cabEnd = 0.24,
-		ws = 1.2,
-		rs = 0,
-		wheelR = 2.6,
-		clear = 2.6,
-		seats = 3,
-		rear = "box",
-		rearH = 7.5,
-	}),
-	tow_small = b({
-		L = 22,
-		W = 7,
-		lower = 2.8,
-		cab = 3.6,
-		cabStart = 0.12,
-		cabEnd = 0.36,
-		ws = 2.4,
-		rs = 0,
-		wheelR = 1.5,
-		clear = 1.0,
-		seats = 3,
-		rear = "flat",
-	}),
-	tow = b({
-		L = 27,
-		W = 8,
-		lower = 3.4,
-		cab = 4.0,
-		cabStart = 0.0,
-		cabEnd = 0.25,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.0,
-		clear = 2.0,
-		seats = 3,
-		rear = "flat",
-	}),
-	tow_heavy = b({
-		L = 32,
-		W = 8.4,
-		lower = 3.8,
-		cab = 4.4,
-		cabStart = 0.0,
-		cabEnd = 0.24,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.3,
-		clear = 2.3,
-		seats = 3,
-		rear = "flat",
-	}),
-	semi = b({
-		L = 21,
-		W = 8,
-		lower = 3.6,
-		cab = 5.2,
-		cabStart = 0.0,
-		cabEnd = 0.4,
-		ws = 0.6,
-		rs = 0,
-		wheelR = 2.0,
-		clear = 2.0,
-		seats = 2,
-		rear = "fifth",
-	}),
-}
-
 local GLASS = Color3.fromRGB(25, 35, 45)
 local TRIM = Color3.fromRGB(20, 20, 22)
-local INTERIOR = Color3.fromRGB(35, 35, 38)
+local METAL = Color3.fromRGB(150, 152, 158)
+local CHROME = Color3.fromRGB(205, 208, 214)
 
--- Panel colours for the realistic bodies (MeshLibrary pieces by name).
 local SILVER = Color3.fromRGB(222, 224, 228)
 local POL_BLUE = Color3.fromRGB(0, 58, 150)
 local NEON_YELLOW = Color3.fromRGB(205, 230, 0)
 local SIGNAL_RED = Color3.fromRGB(200, 20, 20)
 local SNOW = Color3.fromRGB(242, 242, 242)
-local ADMC_YELLOW = Color3.fromRGB(250, 205, 0)
-local DXL_YELLOW = Color3.fromRGB(255, 204, 0)
-local SCHEMES: { [string]: { [string]: any } } = {
-	Police = {
-		ToolboxPaint = POL_BLUE,
-		Body = SILVER,
-		SideLow = SILVER,
-		SideMid = NEON_YELLOW,
-		SideHigh = POL_BLUE,
-		Hood = POL_BLUE,
-		Roof = SNOW,
-		Deck = POL_BLUE,
-		reflective = true,
-	},
-	Fire = {
-		ToolboxPaint = SIGNAL_RED,
-		Body = SIGNAL_RED,
-		SideLow = SIGNAL_RED,
-		SideMid = SNOW,
-		SideHigh = SIGNAL_RED,
-		Hood = SIGNAL_RED,
-		Roof = SNOW,
-		Deck = SIGNAL_RED,
-		reflective = true,
-	},
-	Rescue = {
-		ToolboxPaint = SNOW,
-		Body = SNOW,
-		SideLow = NEON_YELLOW,
-		SideMid = Color3.fromRGB(235, 40, 30),
-		SideHigh = SNOW,
-		Hood = SNOW,
-		Roof = SNOW,
-		Deck = SNOW,
-		reflective = true,
-	},
-	ADMC = { Body = ADMC_YELLOW, SideLow = Color3.fromRGB(20, 20, 22) },
-	DXL = { Body = DXL_YELLOW, SideLow = Color3.fromRGB(210, 20, 30) },
-	Admin = {
-		ToolboxPaint = Color3.fromRGB(255, 115, 0),
-		Body = Color3.fromRGB(255, 115, 0),
-		SideLow = Color3.fromRGB(20, 20, 22),
-		SideMid = Color3.fromRGB(255, 160, 40),
-		SideHigh = Color3.fromRGB(255, 115, 0),
-		Hood = Color3.fromRGB(20, 20, 22),
-		Roof = Color3.fromRGB(20, 20, 22),
-		Deck = Color3.fromRGB(255, 115, 0),
-		reflective = true,
-	},
-}
+local ORANGE = Color3.fromRGB(255, 115, 0)
 
-local LIVERY = {
+-- body: tank, tail, fenders · fairing: front cowl · panel: side panels + top case
+-- stripe: reflective band · text: written on the top case
+type Scheme = {
+	body: Color3,
+	fairing: Color3,
+	panel: Color3,
+	stripe: Color3?,
+	stripe2: Color3?,
+	reflective: boolean?,
+	text: string?,
+	textColor: Color3?,
+}
+local SCHEMES: { [string]: Scheme } = {
 	Police = {
-		stripe = Color3.fromRGB(20, 70, 170),
+		body = SILVER,
+		fairing = POL_BLUE,
+		panel = SILVER,
+		stripe = NEON_YELLOW,
+		stripe2 = POL_BLUE,
+		reflective = true,
 		text = "POLIZEI",
-		textColor = Color3.fromRGB(20, 70, 170),
-		roof = true,
+		textColor = POL_BLUE,
 	},
 	Fire = {
-		stripe = Color3.fromRGB(240, 240, 240),
+		body = SIGNAL_RED,
+		fairing = SIGNAL_RED,
+		panel = SIGNAL_RED,
+		stripe = SNOW,
+		reflective = true,
 		text = "FEUERWEHR",
-		textColor = Color3.fromRGB(240, 240, 240),
-		roof = true,
+		textColor = SNOW,
 	},
 	Rescue = {
-		stripe = Color3.fromRGB(230, 30, 30),
-		stripe2 = Color3.fromRGB(250, 200, 0),
-		text = "RETTUNGSDIENST · DRH",
+		body = SNOW,
+		fairing = SNOW,
+		panel = SNOW,
+		stripe = NEON_YELLOW,
+		stripe2 = Color3.fromRGB(235, 40, 30),
+		reflective = true,
+		text = "RETTUNGSDIENST",
 		textColor = Color3.fromRGB(200, 20, 20),
-		roof = true,
 	},
-	ADMC = { stripe = TRIM, text = "ADMC Pannenhilfe", textColor = TRIM, roof = true },
-	DXL = { stripe = Color3.fromRGB(210, 20, 30), text = "DXL", textColor = Color3.fromRGB(210, 20, 30), roof = false },
+	ADMC = {
+		body = Color3.fromRGB(250, 205, 0),
+		fairing = Color3.fromRGB(250, 205, 0),
+		panel = Color3.fromRGB(250, 205, 0),
+		stripe = TRIM,
+		text = "ADMC",
+		textColor = TRIM,
+	},
+	DXL = {
+		body = Color3.fromRGB(255, 204, 0),
+		fairing = Color3.fromRGB(255, 204, 0),
+		panel = Color3.fromRGB(255, 204, 0),
+		stripe = Color3.fromRGB(210, 20, 30),
+		text = "DXL",
+		textColor = Color3.fromRGB(210, 20, 30),
+	},
+	LKW = {
+		body = Color3.fromRGB(40, 90, 60),
+		fairing = Color3.fromRGB(40, 90, 60),
+		panel = SNOW,
+		stripe = Color3.fromRGB(240, 170, 30),
+		text = "SPEDITION",
+		textColor = Color3.fromRGB(40, 90, 60),
+	},
 	Admin = {
-		stripe = Color3.fromRGB(20, 20, 22),
+		body = ORANGE,
+		fairing = TRIM,
+		panel = ORANGE,
+		stripe = TRIM,
+		stripe2 = Color3.fromRGB(255, 160, 40),
+		reflective = true,
 		text = "ADMIN",
-		textColor = Color3.fromRGB(20, 20, 22),
-		roof = false,
+		textColor = TRIM,
 	},
-	Unmarked = { roof = false },
 }
+VehicleBuilder.Schemes = SCHEMES
+
+-- extra text per job (both rescue jobs share one livery)
+local TEXT_BY_JOB: { [string]: string } = { Notarzt = "NOTARZT" }
 
 local function part(
 	model: Model,
@@ -723,34 +278,8 @@ function VehicleBuilder.AddPhysics(
 		wheel.CustomPhysicalProperties = wheelPhys
 		wheel.CanCollide = true
 		wheel.Parent = model
-		local wheelMesh = if generatedWheels then MeshLibrary.Wheel() else nil
 		if not generatedWheels then
-			wheel.Transparency = 1 -- the body model brings its own wheels
-		elseif wheelMesh then
-			-- realistic tyre + rim; the physics cylinder stays invisible underneath
-			wheel.Transparency = 1
-			local outward = if x < 0 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
-			for _, piece in wheelMesh.pieces do
-				local mp = MeshLibrary.Place(piece, model, wheel.CFrame * outward, Vector3.new(wheelW, r, r))
-				if piece.name == "Tire" then
-					mp.Color = Color3.fromRGB(22, 22, 24)
-					mp.Material = Enum.Material.Rubber
-				else
-					mp.Color = Color3.fromRGB(186, 188, 194)
-					mp.Material = Enum.Material.Metal
-				end
-				weld(wheel, mp)
-			end
-		else
-			local rim = part(
-				model,
-				"Rim",
-				Vector3.new(wheelW + 0.05, r * 1.2, r * 1.2),
-				wheel.CFrame,
-				Color3.fromRGB(180, 180, 185),
-				{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
-			)
-			weld(wheel, rim)
+			wheel.Transparency = 1 -- the body brings its own (visual) wheels
 		end
 
 		local noCol = Instance.new("NoCollisionConstraint")
@@ -865,504 +394,268 @@ function VehicleBuilder.AddPhysics(
 	end
 end
 
+-- A cylinder part from a to b (its axis is X).
+local function tube(
+	model: Model,
+	name: string,
+	a: Vector3,
+	b: Vector3,
+	d: number,
+	color: Color3,
+	props: { [string]: any }?
+)
+	local dir = b - a
+	local up = if math.abs(dir.Unit.Y) > 0.98 then Vector3.xAxis else Vector3.yAxis
+	local cf = CFrame.lookAt((a + b) / 2, b, up) * CFrame.Angles(0, math.pi / 2, 0)
+	local p = part(model, name, Vector3.new(dir.Magnitude, d, d), cf, color, props)
+	p.Shape = Enum.PartType.Cylinder
+	return p
+end
+
+-- A wheel (tyre, rim, hub, brake disc) centred on x = 0, welded to `to` so it spins with it.
+local function visualWheel(model: Model, to: BasePart, y: number, z: number, r: number, front: boolean)
+	local axle = CFrame.new(0, y, z)
+	local function disc(name: string, w: number, d: number, x: number, color: Color3, material: Enum.Material)
+		local p = part(model, name, Vector3.new(w, d, d), axle * CFrame.new(x, 0, 0), color, {
+			Shape = Enum.PartType.Cylinder,
+			Material = material,
+		})
+		weld(to, p)
+		return p
+	end
+	disc("Tyre", 0.55, r * 2, 0, Color3.fromRGB(22, 22, 24), Enum.Material.Rubber)
+	disc("Rim", 0.6, r * 1.45, 0, Color3.fromRGB(40, 42, 46), Enum.Material.Metal)
+	disc("Hub", 0.66, r * 0.4, 0, CHROME, Enum.Material.Metal)
+	-- spokes so you can see the wheel turn
+	for i = 0, 2 do
+		local spoke = part(
+			model,
+			"Spoke",
+			Vector3.new(0.12, r * 1.4, 0.16),
+			axle * CFrame.Angles(i * math.pi / 3, 0, 0),
+			CHROME,
+			{ Material = Enum.Material.Metal }
+		)
+		weld(to, spoke)
+	end
+	if front then
+		disc("BrakeDisc", 0.06, r * 1.15, -0.34, METAL, Enum.Material.Metal)
+		disc("BrakeDisc", 0.06, r * 1.15, 0.34, METAL, Enum.Material.Metal)
+	else
+		disc("Sprocket", 0.06, r * 0.9, -0.34, TRIM, Enum.Material.Metal)
+	end
+end
+
 -- Returns the model (unparented). `def` is a Vehicles catalog entry.
 function VehicleBuilder.Build(def: any, color: Color3?): Model
-	-- realistic Creator Store body when one is mapped and loaded
-	if ToolboxBuilder.Available(def.id) then
-		local ok, built = pcall(ToolboxBuilder.Build, def, color, VehicleBuilder, SCHEMES, LIVERY)
-		if ok and built then
-			return built
-		end
-		warn("[VehicleBuilder] toolbox body failed for " .. def.id .. ": " .. tostring(built))
-	end
-	local body: Body = VehicleBuilder.BodyTypes[def.body] or VehicleBuilder.BodyTypes.hatch
+	local scheme: Scheme? = if def.livery then SCHEMES[def.livery] else nil
 	local paint = color or def.color
 	local model = Instance.new("Model")
 	model.Name = def.name
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 
-	local L, W = body.L, body.W
-	local y0 = body.clear
-	local y1 = y0 + body.lower -- top of lower body
-	local zFront = -L / 2
-	local zRear = L / 2
-	local cabFront = zFront + body.cabStart * L
-	local cabRear = zFront + body.cabEnd * L
-	local isTruck = body.rear ~= nil and body.cabStart <= 0.05
+	local R = 1.15 -- wheel radius (≈ 0.32 m)
+	local zF, zR = -2.65, 2.65 -- axles (wheelbase ≈ 1.5 m)
 
-	-- Realistic body mesh (if loaded) + where lights / plates / stripes sit on it
-	local mesh = MeshLibrary.Body(def.body)
-	local A = if mesh then mesh.anchors else nil
-	local headY = if A then A.frontBottom + (A.frontBelt - A.frontBottom) * 0.68 else y0 + body.lower * 0.72
-	local headHalfW = if A then A.frontHalfWidth else W / 2
-	local tailY = if A then A.rearBottom + (A.rearBelt - A.rearBottom) * 0.72 else y0 + body.lower * 0.72
-	local tailHalfW = if A then A.rearHalfWidth else W / 2
-	local sideHalfW = if A then A.sideHalfWidth else W / 2
-	local sideBottom = if A then A.sideBottom else y0
-	local sideBelt = if A then A.sideBelt else y1
-
-	-- Chassis / lower body (collides, carries all the mass)
-	local chassis =
-		part(model, "Chassis", Vector3.new(W, body.lower, L), CFrame.new(0, y0 + body.lower / 2, 0), paint, {
-			CanCollide = true,
-			Massless = false,
-			CustomPhysicalProperties = PhysicalProperties.new(0.6, 0.3, 0.1),
-		})
-	chassis:SetAttribute("Paint", true)
+	-- Chassis (invisible, collides, carries the mass)
+	local chassis = part(model, "Chassis", Vector3.new(1.4, 0.8, 5), CFrame.new(0, 1.7, 0), TRIM, {
+		CanCollide = true,
+		Massless = false,
+		Transparency = 1,
+		CustomPhysicalProperties = PhysicalProperties.new(3, 0.3, 0.1),
+	})
 	model.PrimaryPart = chassis
 
-	local function attach(p: BasePart)
+	local function attach(p: BasePart): BasePart
 		weld(chassis, p)
+		return p
+	end
+	-- civilian: one paint colour (repaintable) · on duty: the job livery
+	local function painted(p: BasePart, which: string): BasePart
+		if scheme then
+			p.Color = (scheme :: any)[which]
+		else
+			p.Color = paint
+			p:SetAttribute("Paint", true)
+		end
+		p.Reflectance = 0.05
+		return p
+	end
+	local function stripe(name: string, size: Vector3, cf: CFrame, c: Color3)
+		local reflective = scheme ~= nil and scheme.reflective == true
+		attach(part(model, name, size, cf, if reflective then c:Lerp(Color3.new(0, 0, 0), 0.25) else c, {
+			Material = if reflective then Enum.Material.Neon else Enum.Material.SmoothPlastic,
+		}))
 	end
 
-	-- Bumpers, grille, lights -------------------------------------------------
-	attach(part(model, "BumperFront", Vector3.new(W + 0.1, 0.7, 0.5), CFrame.new(0, y0 + 0.35, zFront - 0.15), TRIM))
-	attach(part(model, "BumperRear", Vector3.new(W + 0.1, 0.7, 0.5), CFrame.new(0, y0 + 0.35, zRear + 0.15), TRIM))
+	-- Engine + frame -------------------------------------------------------------------
+	local ENGINE = Color3.fromRGB(58, 60, 64)
+	attach(part(model, "Engine", Vector3.new(1.1, 1.1, 1.4), CFrame.new(0, 1.75, -0.35), ENGINE, {
+		Material = Enum.Material.Metal,
+	}))
 	attach(
 		part(
 			model,
-			"Grille",
-			Vector3.new(W * 0.45, body.lower * 0.35, 0.1),
-			CFrame.new(0, y0 + body.lower * 0.55, zFront - 0.05),
-			TRIM
+			"Cylinders",
+			Vector3.new(1.5, 0.55, 0.7),
+			CFrame.new(0, 2.3, -0.85) * CFrame.Angles(math.rad(20), 0, 0),
+			METAL,
+			{ Material = Enum.Material.Metal }
 		)
 	)
+	for _, sx in { -1, 1 } do
+		attach(tube(model, "Frame", Vector3.new(sx * 0.3, 3.5, -1.85), Vector3.new(sx * 0.35, 1.9, 0.6), 0.2, TRIM))
+		attach(tube(model, "SubFrame", Vector3.new(sx * 0.3, 2.3, 0.4), Vector3.new(sx * 0.3, 2.85, 2.3), 0.14, TRIM))
+		attach(tube(model, "Swingarm", Vector3.new(sx * 0.42, 1.75, 0.55), Vector3.new(sx * 0.42, R, zR), 0.24, METAL, {
+			Material = Enum.Material.Metal,
+		}))
+	end
+	attach(part(model, "Footpegs", Vector3.new(1.7, 0.12, 0.12), CFrame.new(0, 1.45, 0.35), TRIM))
+	-- exhaust on the right
+	attach(tube(model, "Exhaust", Vector3.new(0.4, 1.3, -0.5), Vector3.new(0.55, 1.55, 1.2), 0.22, CHROME, {
+		Material = Enum.Material.Metal,
+	}))
+	attach(tube(model, "Muffler", Vector3.new(0.55, 1.55, 1.2), Vector3.new(0.62, 2.05, 2.55), 0.45, CHROME, {
+		Material = Enum.Material.Metal,
+	}))
 
-	for _, side in { -1, 1 } do
-		local hx = side * (headHalfW - 0.85)
-		local tx = side * (tailHalfW - 0.8)
-		local head = part(
+	-- Bodywork --------------------------------------------------------------------------
+	attach(painted(part(model, "Tank", Vector3.new(1.35, 0.85, 1.7), CFrame.new(0, 3.2, -0.85), paint), "body"))
+	attach(painted(part(model, "TankTop", Vector3.new(1.1, 0.25, 1.4), CFrame.new(0, 3.72, -0.8), paint), "body"))
+	attach(part(model, "SeatPad", Vector3.new(1.05, 0.3, 1.5), CFrame.new(0, 2.95, 0.55), TRIM, {
+		Material = Enum.Material.Leather,
+	}))
+	attach(part(model, "PillionPad", Vector3.new(0.95, 0.3, 1.0), CFrame.new(0, 3.1, 1.65), TRIM, {
+		Material = Enum.Material.Leather,
+	}))
+	attach(painted(part(model, "Tail", Vector3.new(0.9, 0.5, 1.4), CFrame.new(0, 2.72, 2.1), paint), "body"))
+	attach(painted(part(model, "RearFender", Vector3.new(0.7, 0.12, 1.1), CFrame.new(0, 2.42, 2.9), paint), "body"))
+	for _, sx in { -1, 1 } do
+		attach(
+			painted(
+				part(model, "SidePanel", Vector3.new(0.1, 0.75, 1.6), CFrame.new(sx * 0.6, 2.45, 0.9), paint),
+				"panel"
+			)
+		)
+	end
+	-- front cowl (frame mounted, like a touring bike) + windscreen
+	attach(painted(part(model, "Fairing", Vector3.new(1.6, 1.25, 0.9), CFrame.new(0, 3.35, -2.15), paint), "fairing"))
+	for _, sx in { -1, 1 } do
+		attach(
+			painted(
+				part(model, "FairingSide", Vector3.new(0.1, 1.0, 1.2), CFrame.new(sx * 0.8, 3.0, -1.6), paint),
+				"fairing"
+			)
+		)
+	end
+	attach(wedge(model, "Windshield", Vector3.new(1.4, 0.9, 0.5), CFrame.new(0, 4.42, -2.35), GLASS, {
+		Transparency = 0.45,
+		Material = Enum.Material.Glass,
+	}))
+
+	-- Lights + plate --------------------------------------------------------------------
+	local head = attach(
+		part(
 			model,
 			"Headlight",
-			Vector3.new(1.3, 0.45, 0.1),
-			CFrame.new(hx, headY, zFront - 0.06),
+			Vector3.new(0.9, 0.45, 0.1),
+			CFrame.new(0, 3.4, -2.62),
 			Color3.fromRGB(230, 230, 220),
-			{ Material = Enum.Material.Glass }
+			{
+				Material = Enum.Material.Glass,
+			}
 		)
-		attach(head)
-		local spot = Instance.new("SpotLight")
-		spot.Face = Enum.NormalId.Front
-		spot.Range = 60
-		spot.Angle = 70
-		spot.Brightness = 3
-		spot.Enabled = false
-		spot.Parent = head
-
-		local tail = part(
-			model,
-			"Taillight",
-			Vector3.new(1.2, 0.45, 0.1),
-			CFrame.new(tx, tailY, zRear + 0.06),
-			Color3.fromRGB(120, 0, 0),
-			{ Material = Enum.Material.Glass }
-		)
-		attach(tail)
-
-		for _, spot2 in { { zFront - 0.06, headHalfW, headY }, { zRear + 0.06, tailHalfW, tailY } } do
-			local ind = part(
-				model,
-				if side < 0 then "IndicatorL" else "IndicatorR",
-				Vector3.new(0.45, 0.3, 0.1),
-				CFrame.new(side * (spot2[2] - 0.15), spot2[3], spot2[1]),
-				Color3.fromRGB(120, 70, 0),
-				{ Material = Enum.Material.Glass }
-			)
-			attach(ind)
-		end
-	end
-
-	plate(model, "PlateFront", CFrame.new(0, y0 + 0.75, zFront - 0.45), Enum.NormalId.Front)
-	attach(model:FindFirstChild("PlateFront") :: BasePart)
-	plate(
-		model,
-		"PlateRear",
-		CFrame.new(
-			0,
-			if A then A.rearBottom + (A.rearBelt - A.rearBottom) * 0.38 else y0 + body.lower * 0.4,
-			zRear + 0.06
-		),
-		Enum.NormalId.Back
 	)
-	attach(model:FindFirstChild("PlateRear") :: BasePart)
+	local spot = Instance.new("SpotLight")
+	spot.Face = Enum.NormalId.Front
+	spot.Range = 60
+	spot.Angle = 60
+	spot.Brightness = 3
+	spot.Enabled = false
+	spot.Parent = head
+	attach(part(model, "Taillight", Vector3.new(0.7, 0.25, 0.1), CFrame.new(0, 2.8, 2.82), Color3.fromRGB(120, 0, 0), {
+		Material = Enum.Material.Glass,
+	}))
+	for _, sx in { -1, 1 } do
+		local name = if sx < 0 then "IndicatorL" else "IndicatorR"
+		local amber = Color3.fromRGB(120, 70, 0)
+		attach(part(model, name, Vector3.new(0.25, 0.2, 0.3), CFrame.new(sx * 0.92, 3.3, -2.3), amber, {
+			Material = Enum.Material.Glass,
+		}))
+		attach(part(model, name, Vector3.new(0.25, 0.2, 0.25), CFrame.new(sx * 0.45, 2.55, 2.85), amber, {
+			Material = Enum.Material.Glass,
+		}))
+		-- mirrors on the cowl
+		attach(
+			tube(model, "MirrorArm", Vector3.new(sx * 0.7, 3.9, -2.0), Vector3.new(sx * 0.95, 4.15, -2.0), 0.08, TRIM)
+		)
+		attach(part(model, "Mirror", Vector3.new(0.45, 0.28, 0.12), CFrame.new(sx * 1.05, 4.2, -2.0), TRIM))
+	end
+	local rearPlate =
+		plate(model, "PlateRear", CFrame.new(0, 2.25, 3.0) * CFrame.Angles(math.rad(-10), 0, 0), Enum.NormalId.Back)
+	rearPlate.Size = Vector3.new(1.5, 0.62, 0.08)
+	attach(rearPlate)
 
-	-- Cabin -------------------------------------------------------------------
-	local cabH = body.cab
-	local cy = y1 + cabH / 2
-	-- keep at least 1 stud of flat roof: shrink both window slopes if the cabin is short
-	local slopeFit = math.min(1, (cabRear - cabFront - 1) / math.max(body.ws + body.rs, 0.01))
-	local ws, rs = body.ws * slopeFit, body.rs * slopeFit
-	local coreFront = cabFront + ws
-	local coreRear = cabRear - rs
-	local glassProps = { Transparency = 0.45, Material = Enum.Material.Glass }
-
-	-- windshield
-	if ws > 0.1 then
-		attach(
-			wedge(
-				model,
-				"Windshield",
-				Vector3.new(W - 0.4, cabH, ws),
-				CFrame.new(0, cy, cabFront + ws / 2),
-				GLASS,
-				glassProps
+	-- Livery: side cases + top case with the job's name, reflective bands ------------------
+	if scheme then
+		local text = TEXT_BY_JOB[def.job or ""] or scheme.text
+		local top = attach(
+			painted(part(model, "TopCase", Vector3.new(1.4, 1.0, 1.1), CFrame.new(0, 3.75, 2.45), paint), "panel")
+		)
+		attach(part(model, "CaseRack", Vector3.new(1.0, 0.12, 1.0), CFrame.new(0, 3.2, 2.45), TRIM))
+		for _, sx in { -1, 1 } do
+			local case = attach(
+				painted(
+					part(model, "Pannier", Vector3.new(0.5, 1.0, 1.4), CFrame.new(sx * 0.95, 2.6, 1.9), paint),
+					"panel"
+				)
 			)
-		)
-	end
-	-- rear window
-	if rs > 0.1 then
-		attach(
-			wedge(
-				model,
-				"RearWindow",
-				Vector3.new(W - 0.4, cabH, rs),
-				CFrame.new(0, cy, cabRear - rs / 2) * CFrame.Angles(0, math.pi, 0),
-				GLASS,
-				glassProps
-			)
-		)
-	end
-
-	local glassEndZ = if body.glassEnd then zFront + body.glassEnd * L else coreRear
-	glassEndZ = math.clamp(glassEndZ, coreFront, coreRear)
-	-- glass core (side windows) and solid box (vans)
-	if glassEndZ - coreFront > 0.1 then
-		attach(
-			part(
-				model,
-				"Windows",
-				Vector3.new(W - 0.3, cabH - 0.25, glassEndZ - coreFront),
-				CFrame.new(0, cy - 0.125, (coreFront + glassEndZ) / 2),
-				GLASS,
-				glassProps
-			)
-		)
-	end
-	if coreRear - glassEndZ > 0.1 then
-		local box = part(
-			model,
-			"CargoBox",
-			Vector3.new(W - 0.1, cabH, coreRear - glassEndZ),
-			CFrame.new(0, cy, (glassEndZ + coreRear) / 2),
-			paint
-		)
-		box:SetAttribute("Paint", true)
-		attach(box)
-	end
-	-- roof
-	local roof = part(
-		model,
-		"Roof",
-		Vector3.new(W - 0.2, 0.25, coreRear - coreFront + 0.2),
-		CFrame.new(0, y1 + cabH - 0.125, (coreFront + coreRear) / 2),
-		paint
-	)
-	roof:SetAttribute("Paint", true)
-	attach(roof)
-	-- pillars
-	for _, side in { -1, 1 } do
-		local x = side * (W / 2 - 0.2)
-		attach(
-			part(
-				model,
-				"PillarA",
-				Vector3.new(0.25, cabH, 0.3),
-				CFrame.new(x, cy, coreFront),
-				paint,
-				{ Name = "PillarA" }
-			)
-		)
-		attach(part(model, "PillarC", Vector3.new(0.25, cabH, 0.4), CFrame.new(x, cy, coreRear - 0.2), paint))
-		-- side mirrors
-		attach(
-			part(
-				model,
-				"Mirror",
-				Vector3.new(0.7, 0.45, 0.25),
-				CFrame.new(side * (W / 2 + 0.3), y1 + 0.35, coreFront + 0.2),
-				paint
-			)
-		)
-	end
-
-	-- Rear bodies (trucks etc.) --------------------------------------------------
-	local rearStart = cabRear + 0.2
-	local rearLen = zRear - rearStart
-	if body.rear == "box" and rearLen > 1 then
-		local h = body.rearH or 6
-		local box = part(
-			model,
-			"Body",
-			Vector3.new(W, h, rearLen),
-			CFrame.new(0, y1 + h / 2 - 0.2, rearStart + rearLen / 2),
-			paint
-		)
-		box:SetAttribute("Paint", true)
-		attach(box)
-		for i = 1, 3 do
-			local shutterZ = rearStart + rearLen * (i / 4)
-			for _, side in { -1, 1 } do
-				attach(
-					part(
-						model,
-						"Shutter",
-						Vector3.new(0.05, h * 0.7, rearLen / 5),
-						CFrame.new(side * (W / 2 + 0.03), y1 + h / 2 - 0.2, shutterZ),
-						Color3.fromRGB(200, 200, 205)
-					)
+			if scheme.stripe then
+				stripe("Stripe", Vector3.new(0.06, 0.22, 1.4), CFrame.new(sx * 1.23, 2.35, 1.9), scheme.stripe)
+				stripe("Stripe", Vector3.new(0.06, 0.18, 1.2), CFrame.new(sx * 0.87, 2.75, -1.6), scheme.stripe)
+			end
+			if scheme.stripe2 then
+				stripe("Stripe2", Vector3.new(0.06, 0.12, 1.2), CFrame.new(sx * 0.87, 3.2, -1.6), scheme.stripe2)
+			end
+			if text then
+				textPanel(
+					case,
+					if sx < 0 then Enum.NormalId.Left else Enum.NormalId.Right,
+					text,
+					scheme.textColor or TRIM
 				)
 			end
 		end
-	elseif body.rear == "bed" and rearLen > 1 then
-		for _, side in { -1, 1 } do
-			attach(
-				part(
-					model,
-					"BedWall",
-					Vector3.new(0.3, 1.2, rearLen),
-					CFrame.new(side * (W / 2 - 0.15), y1 + 0.6, rearStart + rearLen / 2),
-					paint
-				)
-			)
-		end
-		attach(part(model, "Tailgate", Vector3.new(W, 1.2, 0.3), CFrame.new(0, y1 + 0.6, zRear - 0.15), paint))
-	elseif body.rear == "flat" and rearLen > 1 then
-		attach(
-			part(
-				model,
-				"Flatbed",
-				Vector3.new(W, 0.4, rearLen),
-				CFrame.new(0, y1 + 0.2, rearStart + rearLen / 2),
-				Color3.fromRGB(70, 70, 75),
-				{ Material = Enum.Material.DiamondPlate }
-			)
-		)
-		local tow = part(model, "TowHook", Vector3.new(0.6, 0.6, 0.6), CFrame.new(0, y0 + 0.3, zRear + 0.5), TRIM)
-		attach(tow)
-	elseif body.rear == "ladder" and rearLen > 1 then
-		local h = body.rearH or 3.5
-		local base = part(
-			model,
-			"Body",
-			Vector3.new(W, h, rearLen),
-			CFrame.new(0, y1 + h / 2 - 0.2, rearStart + rearLen / 2),
-			paint
-		)
-		base:SetAttribute("Paint", true)
-		attach(base)
-		local ladderLen = L * 0.85
-		local ladderZ = zFront + ladderLen / 2 + 1
-		for _, side in { -1, 1 } do
-			attach(
-				part(
-					model,
-					"LadderRail",
-					Vector3.new(0.3, 0.4, ladderLen),
-					CFrame.new(side * 1.3, y1 + math.max(h, body.cab) + 0.6, ladderZ),
-					Color3.fromRGB(200, 200, 205),
-					{ Material = Enum.Material.Metal }
-				)
-			)
-		end
-		for i = 0, math.floor(ladderLen / 1.5) do
-			attach(
-				part(
-					model,
-					"LadderRung",
-					Vector3.new(2.6, 0.15, 0.15),
-					CFrame.new(0, y1 + math.max(h, body.cab) + 0.6, zFront + 1 + i * 1.5),
-					Color3.fromRGB(200, 200, 205),
-					{ Material = Enum.Material.Metal }
-				)
-			)
-		end
-	elseif body.rear == "fifth" and rearLen > 1 then
-		attach(
-			part(
-				model,
-				"Frame",
-				Vector3.new(W * 0.6, 0.6, rearLen),
-				CFrame.new(0, y1 - 0.3, rearStart + rearLen / 2),
-				TRIM
-			)
-		)
-		attach(
-			part(
-				model,
-				"FifthWheel",
-				Vector3.new(3, 0.3, 3),
-				CFrame.new(0, y1 + 0.15, rearStart + rearLen * 0.55),
-				Color3.fromRGB(60, 60, 60),
-				{ Material = Enum.Material.Metal }
-			)
-		)
-	end
-
-	-- Interior ------------------------------------------------------------------
-	local seatY = y1 - 0.55
-	local frontRowZ = coreFront + (if isTruck then 1.4 else 1.6)
-	local driverX = -W / 4 + 0.15 -- left-hand drive
-	local dash =
-		part(model, "Dashboard", Vector3.new(W - 0.6, 0.8, 1.0), CFrame.new(0, y1 + 0.1, coreFront - 0.1), INTERIOR)
-	attach(dash)
-	local screen = part(
-		model,
-		"NaviScreen",
-		Vector3.new(1.2, 0.7, 0.08),
-		CFrame.new(0, y1 + 0.55, coreFront + 0.35) * CFrame.Angles(math.rad(-15), 0, 0),
-		Color3.fromRGB(10, 10, 10),
-		{ Material = Enum.Material.Neon }
-	)
-	attach(screen)
-	local wheelCf = CFrame.new(driverX, y1 + 0.55, coreFront + 0.65) * CFrame.Angles(math.rad(-25), 0, 0)
-	local steer =
-		part(model, "SteeringWheel", Vector3.new(1.3, 1.3, 0.15), wheelCf, TRIM, { Shape = Enum.PartType.Cylinder })
-	-- cylinder axis is X; turn it so the wheel faces the driver
-	steer.CFrame = wheelCf * CFrame.Angles(0, math.rad(90), 0)
-	steer.Size = Vector3.new(0.15, 1.3, 1.3)
-	attach(steer)
-
-	local driverSeat = Instance.new("VehicleSeat")
-	driverSeat.Name = "DriveSeat"
-	driverSeat.Size = Vector3.new(1.8, 0.4, 1.8)
-	driverSeat.CFrame = CFrame.new(driverX, seatY, frontRowZ)
-	driverSeat.Color = INTERIOR
-	driverSeat.Transparency = 0
-	driverSeat.Massless = true
-	driverSeat.CanCollide = false
-	driverSeat.MaxSpeed = 0 -- legacy drive disabled; our controller drives
-	driverSeat.Torque = 0
-	driverSeat.HeadsUpDisplay = false
-	driverSeat.Parent = model
-	attach(driverSeat)
-
-	local seatCount = math.max(1, body.seats)
-	local rows = {}
-	table.insert(rows, { z = frontRowZ, xs = { W / 4 - 0.15 } })
-	local glassLimit = if body.glassEnd then glassEndZ else coreRear
-	local rowZ = frontRowZ + 3
-	local placed = 1
-	while placed < seatCount and rowZ < glassLimit - 0.6 do
-		local xs = { -W / 4 + 0.15, W / 4 - 0.15 }
-		if W >= 6.2 and seatCount - placed >= 3 then
-			table.insert(xs, 0)
-		end
-		table.insert(rows, { z = rowZ, xs = xs })
-		placed += #xs
-		rowZ += 2.8
-	end
-	for _, row in rows do
-		for _, x in row.xs do
-			local seat = Instance.new("Seat")
-			seat.Name = "Seat"
-			seat.Size = Vector3.new(1.6, 0.4, 1.6)
-			seat.CFrame = CFrame.new(x, seatY, row.z)
-			seat.Color = INTERIOR
-			seat.Massless = true
-			seat.CanCollide = false
-			seat.Parent = model
-			attach(seat)
-		end
-	end
-	-- seat backs (driver + every seat)
-	for _, s in model:GetChildren() do
-		if s:IsA("Seat") or s:IsA("VehicleSeat") then
-			local sp = s :: BasePart
-			attach(
-				part(
-					model,
-					"SeatBack",
-					Vector3.new(sp.Size.X, 2.2, 0.35),
-					sp.CFrame * CFrame.new(0, 1.1, sp.Size.Z / 2 + 0.1),
-					INTERIOR
-				)
-			)
+		if text then
+			textPanel(top, Enum.NormalId.Back, text, scheme.textColor or TRIM)
+			textPanel(top, Enum.NormalId.Left, text, scheme.textColor or TRIM)
+			textPanel(top, Enum.NormalId.Right, text, scheme.textColor or TRIM)
 		end
 	end
 
-	-- Livery ------------------------------------------------------------------
-	local livery = def.livery and LIVERY[def.livery]
-	if livery and livery.stripe then
-		for _, side in { -1, 1 } do
-			local face = if side < 0 then Enum.NormalId.Left else Enum.NormalId.Right
-			local stripe = part(
-				model,
-				"Stripe",
-				Vector3.new(0.06, (sideBelt - sideBottom) * 0.3, L * (if mesh then 0.8 else 1) - 0.4),
-				CFrame.new(side * (sideHalfW + 0.03), sideBottom + (sideBelt - sideBottom) * 0.58, 0),
-				livery.stripe
-			)
-			attach(stripe)
-			if livery.stripe2 then
-				attach(
-					part(
-						model,
-						"Stripe2",
-						Vector3.new(0.06, (sideBelt - sideBottom) * 0.15, L * (if mesh then 0.8 else 1) - 0.4),
-						CFrame.new(side * (sideHalfW + 0.035), sideBottom + (sideBelt - sideBottom) * 0.34, 0),
-						livery.stripe2
-					)
-				)
-			end
-			if livery.text then
-				local panelZ = if body.rear == "box" then rearStart + rearLen / 2 else (coreFront + coreRear) / 2
-				local panelH = if body.rear == "box" then 1.6 else body.lower * 0.3
-				local panelY = if body.rear == "box" then y1 + (body.rearH or 6) * 0.6 else y0 + body.lower * 0.85
-				local panel = part(
-					model,
-					"LiveryText",
-					Vector3.new(0.05, panelH, math.min(L * 0.5, 9)),
-					CFrame.new(side * (sideHalfW + 0.06), panelY, panelZ),
-					Color3.new(1, 1, 1),
-					{ Transparency = 1 }
-				)
-				attach(panel)
-				textPanel(panel, face, livery.text, livery.textColor)
-			end
-		end
-	end
-
-	-- Emergency lights --------------------------------------------------------
+	-- Blue lights + siren ----------------------------------------------------------------
 	if def.emergency then
-		local roofY = y1 + cabH
-		if body.rear == "box" then
-			roofY = math.max(roofY, y1 + (body.rearH or 6) - 0.2)
-		end
-		local barZ = coreFront + 0.8
-		if def.livery ~= "Unmarked" then
-			attach(
-				part(model, "LightbarBase", Vector3.new(W * 0.7, 0.2, 0.9), CFrame.new(0, y1 + cabH + 0.1, barZ), TRIM)
-			)
-			for _, side in { -1, 1 } do
-				local bl = part(
-					model,
-					"Bluelight",
-					Vector3.new(W * 0.3, 0.4, 0.8),
-					CFrame.new(side * W * 0.18, y1 + cabH + 0.4, barZ),
-					Color3.fromRGB(20, 40, 120),
-					{ Material = Enum.Material.Glass, Transparency = 0.1 }
-				)
-				bl:SetAttribute("Side", side)
-				attach(bl)
-				local light = Instance.new("PointLight")
-				light.Color = Color3.fromRGB(40, 90, 255)
-				light.Range = 22
-				light.Brightness = 4
-				light.Enabled = false
-				light.Parent = bl
+		local function blue(cf: CFrame, size: Vector3, side: number, light: boolean)
+			local bl = attach(part(model, "Bluelight", size, cf, Color3.fromRGB(20, 40, 120), {
+				Material = Enum.Material.Glass,
+				Transparency = 0.1,
+			}))
+			bl:SetAttribute("Side", side)
+			if light then
+				local pl = Instance.new("PointLight")
+				pl.Color = Color3.fromRGB(40, 90, 255)
+				pl.Range = 18
+				pl.Brightness = 4
+				pl.Enabled = false
+				pl.Parent = bl
 			end
 		end
-		-- grille flashers (also on unmarked cars)
-		for _, side in { -1, 1 } do
-			local fl = part(
-				model,
-				"Bluelight",
-				Vector3.new(0.6, 0.25, 0.1),
-				CFrame.new(side * W * 0.15, y0 + body.lower * 0.45, zFront - 0.1),
-				Color3.fromRGB(20, 40, 120),
-				{ Material = Enum.Material.Glass }
+		for _, sx in { -1, 1 } do
+			blue(CFrame.new(sx * 0.55, 3.88, -2.62), Vector3.new(0.3, 0.22, 0.1), sx, false) -- front flashers
+			attach(
+				tube(model, "LightPole", Vector3.new(sx * 0.4, 4.25, 2.6), Vector3.new(sx * 0.4, 4.8, 2.6), 0.08, TRIM)
 			)
-			fl:SetAttribute("Side", -side)
-			attach(fl)
+			blue(CFrame.new(sx * 0.4, 4.95, 2.6), Vector3.new(0.32, 0.32, 0.32), -sx, true)
 		end
 		local siren = Instance.new("Sound")
 		siren.Name = "Siren"
@@ -1373,201 +666,70 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		siren.Parent = chassis
 	end
 
-	-- Wheels + drive physics (shared with the Creator Store bodies) -------------------
-	local r = body.wheelR
-	local wheelW = if body.L > 20 then 1.5 else 1.0
-	local overhangF = if isTruck then r * 1.3 else r * 1.7
-	local overhangR = if body.rear == "fifth" then r * 1.5 else r * 1.8
-	local axleF = zFront + overhangF
-	local axleR = zRear - overhangR
-	local wheelX = W / 2 - wheelW / 2 + 0.15
+	-- Seats ------------------------------------------------------------------------------
+	local driverSeat = Instance.new("VehicleSeat")
+	driverSeat.Name = "DriveSeat"
+	driverSeat.Size = Vector3.new(1.0, 0.3, 1.2)
+	driverSeat.CFrame = CFrame.new(0, 3.0, 0.45)
+	driverSeat.Transparency = 1
+	driverSeat.Massless = true
+	driverSeat.CanCollide = false
+	driverSeat.MaxSpeed = 0 -- legacy drive disabled; our controller drives
+	driverSeat.Torque = 0
+	driverSeat.HeadsUpDisplay = false
+	driverSeat.Parent = model
+	attach(driverSeat)
+	local pillion = Instance.new("Seat")
+	pillion.Name = "Seat"
+	pillion.Size = Vector3.new(0.9, 0.3, 0.9)
+	pillion.CFrame = CFrame.new(0, 3.15, 1.65)
+	pillion.Transparency = 1
+	pillion.Massless = true
+	pillion.CanCollide = false
+	pillion.Parent = model
+	attach(pillion)
+
+	-- Physics: two narrow pairs of hidden wheels -------------------------------------------
+	local px, pw = 0.45, 0.6
 	local wheelSpecs = {
-		{ name = "WheelFL", x = -wheelX, y = r, z = axleF, r = r, w = wheelW, front = true },
-		{ name = "WheelFR", x = wheelX, y = r, z = axleF, r = r, w = wheelW, front = true },
-		{ name = "WheelRL", x = -wheelX, y = r, z = axleR, r = r, w = wheelW, front = false },
-		{ name = "WheelRR", x = wheelX, y = r, z = axleR, r = r, w = wheelW, front = false },
+		{ name = "WheelFL", x = -px, y = R, z = zF, r = R, w = pw, front = true },
+		{ name = "WheelFR", x = px, y = R, z = zF, r = R, w = pw, front = true },
+		{ name = "WheelRL", x = -px, y = R, z = zR, r = R, w = pw, front = false },
+		{ name = "WheelRR", x = px, y = R, z = zR, r = R, w = pw, front = false },
 	}
+	local mass = 1.4 * 0.8 * 5 * 3 + 4 * (math.pi * R * R * pw * 1.2) + 60
+	VehicleBuilder.AddPhysics(model, chassis, def, wheelSpecs, mass, false)
 
-	-- Realistic body ---------------------------------------------------------------
-	if mesh then
-		-- the block bodywork is only a fallback; the mesh replaces it
-		local replaced = {
-			Windshield = true,
-			RearWindow = true,
-			Windows = true,
-			CargoBox = true,
-			Roof = true,
-			PillarA = true,
-			PillarC = true,
-			Grille = true,
-			Mirror = true,
-			Stripe = true,
-			Stripe2 = true,
-		}
-		if body.rear == "box" then
-			replaced.Body = true
-			replaced.Shutter = true
+	-- Steering parts follow the left front knuckle, wheels spin with the left wheels
+	local knuckle: BasePart? = nil
+	for _, k in model:GetChildren() do
+		if k.Name == "Knuckle" and k:IsA("BasePart") and k.CFrame.Position.X < 0 then
+			knuckle = k
 		end
-		for _, child in model:GetChildren() do
-			if replaced[child.Name] then
-				child:Destroy()
-			end
-		end
-		chassis.Transparency = 1
-		-- panel colours: civilian cars are one colour, service cars get their livery
-		local scheme = def.livery and SCHEMES[def.livery]
-		for _, piece in mesh.pieces do
-			local mp = MeshLibrary.Place(piece, model, CFrame.identity)
-			mp.Name = "Mesh" .. piece.name
-			if piece.name == "Glass" then
-				mp.Color = GLASS
-				mp.Material = Enum.Material.Glass
-				mp.Transparency = 0.3
-			elseif piece.name == "Trim" or piece.name == "Seams" then
-				mp.Color = if piece.name == "Seams" then Color3.fromRGB(15, 15, 16) else TRIM
-				mp.Material = Enum.Material.SmoothPlastic
-			else
-				local c = if scheme then scheme[piece.name] or scheme.Body else paint
-				local foil = scheme ~= nil
-					and scheme.reflective == true
-					and (piece.name == "SideMid" or piece.name == "SideLow")
-				mp.Color = if foil then c:Lerp(Color3.new(0, 0, 0), 0.35) else c
-				mp.Material = if foil then Enum.Material.Neon else Enum.Material.SmoothPlastic -- retro-reflective foil
-				mp.Reflectance = 0.05
-				if not scheme then
-					mp:SetAttribute("Paint", true)
-				end
-			end
-			weld(chassis, mp)
-		end
-
-		-- details on the curved body: brand grille, LED daytime lights, mirrors, door handles
-		local brand = string.match(def.name, "^(%S+)") or ""
-		local fy = A.frontBottom + (A.frontBelt - A.frontBottom) * 0.42
-		local fz = zFront - 0.04
-		local CHROME = Color3.fromRGB(200, 202, 206)
-		local function front(name: string, size: Vector3, x: number, y: number, color: Color3, material: Enum.Material?)
-			attach(
-				part(
-					model,
-					name,
-					size,
-					CFrame.new(x, y, fz - size.Z / 2),
-					color,
-					{ Material = material or Enum.Material.SmoothPlastic }
-				)
-			)
-		end
-		local function emblem(y: number, d: number)
-			attach(
-				part(
-					model,
-					"Emblem",
-					Vector3.new(0.1, d, d),
-					CFrame.new(0, y, fz - 0.16) * CFrame.Angles(0, math.rad(90), 0),
-					CHROME,
-					{ Shape = Enum.PartType.Cylinder, Material = Enum.Material.Metal }
-				)
-			)
-		end
-		if brand == "BMV" then
-			for _, sx in { -1, 1 } do
-				front("GrilleChrome", Vector3.new(1.0, 1.0, 0.06), sx * 0.58, fy, CHROME, Enum.Material.Metal)
-				front("GrilleMesh", Vector3.new(0.82, 0.82, 0.1), sx * 0.58, fy, TRIM)
-			end
-		elseif brand == "Audix" then
-			front("GrilleChrome", Vector3.new(2.4, 1.3, 0.06), 0, fy - 0.1, CHROME, Enum.Material.Metal)
-			front("GrilleMesh", Vector3.new(2.2, 1.12, 0.1), 0, fy - 0.1, TRIM)
-		elseif string.sub(brand, 1, 8) == "Mercator" then
-			front("GrilleMesh", Vector3.new(2.6, 0.95, 0.1), 0, fy, TRIM)
-			for i = -1, 1 do
-				front("GrilleBar", Vector3.new(2.5, 0.07, 0.14), 0, fy + i * 0.25, CHROME, Enum.Material.Metal)
-			end
-			emblem(fy, 0.55)
-		elseif brand == "Tesra" or brand == "Porsha" or brand == "Rimax" then
-			-- no grille
-		elseif W >= 7 then
-			front("GrilleMesh", Vector3.new(W * 0.55, 1.6, 0.1), 0, fy + 0.2, TRIM)
-			for i = -2, 2 do
-				front(
-					"GrilleBar",
-					Vector3.new(W * 0.54, 0.08, 0.14),
-					0,
-					fy + 0.2 + i * 0.3,
-					CHROME,
-					Enum.Material.Metal
-				)
-			end
-		else
-			front("GrilleMesh", Vector3.new(W * 0.42, 0.45, 0.1), 0, fy + 0.15, TRIM)
-			front("GrilleBar", Vector3.new(W * 0.42, 0.06, 0.14), 0, fy + 0.15, CHROME, Enum.Material.Metal)
-			emblem(fy + 0.15, 0.42)
-		end
-		front("LowerIntake", Vector3.new(W * 0.6, 0.35, 0.08), 0, A.frontBottom + 0.35, TRIM)
-		local doors = (A :: any).doors or {}
-		for _, side in { -1, 1 } do
-			attach(
-				part(
-					model,
-					"DRL",
-					Vector3.new(1.25, 0.08, 0.06),
-					CFrame.new(side * (headHalfW - 0.85), headY + 0.3, zFront - 0.07),
-					Color3.fromRGB(235, 245, 255),
-					{ Material = Enum.Material.Neon }
-				)
-			)
-			local mz = (doors[1] or (zFront + L * 0.35)) + 0.35
-			attach(
-				part(
-					model,
-					"MirrorArm",
-					Vector3.new(0.35, 0.12, 0.2),
-					CFrame.new(side * (sideHalfW + 0.12), sideBelt + 0.15, mz),
-					TRIM
-				)
-			)
-			local housing = part(
-				model,
-				"MirrorHousing",
-				Vector3.new(0.45, 0.4, 0.55),
-				CFrame.new(side * (sideHalfW + 0.45), sideBelt + 0.25, mz),
-				if scheme then scheme.Body else paint
-			)
-			if not scheme then
-				housing:SetAttribute("Paint", true)
-			end
-			attach(housing)
-			attach(
-				part(
-					model,
-					"MirrorGlass",
-					Vector3.new(0.38, 0.32, 0.04),
-					CFrame.new(side * (sideHalfW + 0.45), sideBelt + 0.25, mz + 0.29),
-					Color3.fromRGB(170, 190, 210),
-					{ Material = Enum.Material.Glass }
-				)
-			)
-			for i, dz in doors do
-				if i < #doors or #doors == 2 then
-					attach(
-						part(
-							model,
-							"DoorHandle",
-							Vector3.new(0.08, 0.12, 0.5),
-							CFrame.new(side * (sideHalfW + 0.03), sideBelt - 0.45, dz + 0.55),
-							CHROME,
-							{ Material = Enum.Material.Metal }
-						)
-					)
-				end
-			end
-		end
-		model:SetAttribute("Realistic", true)
 	end
+	local steer = knuckle :: BasePart
+	local function onFork(p: BasePart)
+		weld(steer, p)
+	end
+	for _, sx in { -1, 1 } do
+		onFork(tube(model, "Fork", Vector3.new(sx * 0.38, R, zF), Vector3.new(sx * 0.32, 3.75, -2.0), 0.22, CHROME, {
+			Material = Enum.Material.Metal,
+		}))
+		onFork(part(model, "Grip", Vector3.new(0.4, 0.2, 0.2), CFrame.new(sx * 1.0, 3.95, -1.7), TRIM, {
+			Material = Enum.Material.Rubber,
+		}))
+	end
+	onFork(part(model, "TripleClamp", Vector3.new(0.9, 0.2, 0.35), CFrame.new(0, 3.75, -1.98), METAL, {
+		Material = Enum.Material.Metal,
+	}))
+	onFork(tube(model, "Handlebar", Vector3.new(-1.15, 3.95, -1.7), Vector3.new(1.15, 3.95, -1.7), 0.14, TRIM))
+	local fender =
+		painted(part(model, "FrontFender", Vector3.new(0.6, 0.12, 1.0), CFrame.new(0, R * 2 + 0.15, zF), paint), "body")
+	onFork(fender)
+	visualWheel(model, model:FindFirstChild("WheelFL") :: BasePart, R, zF, R, true)
+	visualWheel(model, model:FindFirstChild("WheelRL") :: BasePart, R, zR, R, false)
 
-	-- chassis density 0.6, wheel density 1.2, plus ~60 for occupants
-	local mass = W * body.lower * L * 0.6 + 4 * (math.pi * r * r * wheelW * 1.2) + 60
-	VehicleBuilder.AddPhysics(model, chassis, def, wheelSpecs, mass, true)
+	model:SetAttribute("Bike", true)
 	return model
 end
 

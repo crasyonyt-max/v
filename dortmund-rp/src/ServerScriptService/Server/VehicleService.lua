@@ -1,5 +1,6 @@
 --!strict
--- Owned cars, dealership, gamepass packs, job vehicles, plates, colours, fuel, lights.
+-- The motorbike: everyone owns one (free), job bikes in livery, plates, paint, fuel, lights.
+-- The old cars were removed; their owners get the price back once (see migrate).
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -7,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Locale = require(ReplicatedStorage.Shared.Locale)
 local Plate = require(ReplicatedStorage.Shared.Plate)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
 local DataService = require(script.Parent.DataService)
@@ -18,7 +20,6 @@ local Roles = require(script.Parent.Roles)
 local State = require(script.Parent.State)
 local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
-local ToolboxBuilder = require(script.Parent.ToolboxBuilder)
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
 local XPService = require(script.Parent.XPService)
 
@@ -26,7 +27,6 @@ local VehicleService = {}
 
 local PLATE_FEE = 250
 local PAINT_FEE = 500
-local SELL_BACK = 0.5 -- dealer buys cars back at 50 %
 
 local folder = Instance.new("Folder")
 folder.Name = "Vehicles"
@@ -253,7 +253,6 @@ local function spawnModel(
 	meta: { [string]: any }
 ): (boolean, string?)
 	VehicleService.Despawn(player)
-	ToolboxBuilder.WaitFor(def.id, 10)
 	local model = VehicleBuilder.Build(def, color)
 	local built = model.PrimaryPart :: BasePart
 	local cf = meta.SpawnAt or spawnCFrame(player, built.Size.X)
@@ -340,7 +339,41 @@ function VehicleService.GiveVehicle(player: Player, vehicleId: string): boolean
 	return true
 end
 
+-- Every car that was bought is refunded at full price and replaced by the free motorbike.
+local function migrate(player: Player, data: { [string]: any })
+	local refund = 0
+	local hasBike = false
+	for uid, entry in data.vehicles do
+		local def = Vehicles.ById[entry.id]
+		if def and def.category == "Starter" then
+			hasBike = true
+		else
+			refund += Vehicles.LegacyPrices[entry.id] or 0
+			data.vehicles[uid] = nil
+			if typeof(entry.plate) == "string" then
+				task.spawn(releasePlate, entry.plate, player.UserId)
+			end
+		end
+	end
+	data.starterChosen = true
+	if refund > 0 then
+		Economy.Add(player, refund, "Erstattung Fahrzeuge")
+		task.delay(6, function()
+			if player.Parent then
+				Remotes.Push(player, "Notify", { key = "cars_refunded", args = { Locale.Euro(refund) } })
+			end
+		end)
+	end
+	if not hasBike then
+		addOwned(player, Vehicles.BikeId)
+	end
+	State.MarkDirty(player)
+end
+
 function VehicleService.Start()
+	DataService.Loaded:Connect(function(player, data)
+		task.spawn(migrate, player, data)
+	end)
 	Players.PlayerRemoving:Connect(VehicleService.Despawn)
 
 	JobService.Changed:Connect(function(player)
@@ -349,69 +382,6 @@ function VehicleService.Start()
 			VehicleService.Despawn(player)
 		end
 	end)
-
-	Remotes.Handle("Vehicle.ChooseStarter", function(player, vehicleId: any)
-		local data = DataService.Get(player) :: { [string]: any }
-		if data.starterChosen then
-			return Remotes.Fail("already_owned")
-		end
-		if typeof(vehicleId) ~= "string" or not table.find(Vehicles.StarterIds, vehicleId) then
-			return Remotes.Fail("bad_item")
-		end
-		data.starterChosen = true
-		addOwned(player, vehicleId)
-		return Remotes.Ok()
-	end, { rate = 3 })
-
-	Remotes.Handle("Vehicle.Buy", function(player, vehicleId: any)
-		local data = DataService.Get(player) :: { [string]: any }
-		local def = typeof(vehicleId) == "string" and Vehicles.ById[vehicleId] or nil
-		if not def or (def.category ~= "Dealer" and def.category ~= "Pack") then
-			return Remotes.Fail("bad_item")
-		end
-		if not Interaction.IsNear(player, "Shop", 40, "UI", "Dealership") then
-			return Remotes.Fail("not_near")
-		end
-		if def.category == "Pack" and not State.OwnsPack(player, def.pack :: string) then
-			return Remotes.Fail("pack_locked")
-		end
-		local count = 0
-		for _ in data.vehicles do
-			count += 1
-		end
-		if count >= 40 then
-			return Remotes.Fail("garage_full")
-		end
-		if not Economy.TrySpend(player, def.price, "Autohaus: " .. def.name) then
-			return Remotes.Fail("no_money")
-		end
-		addOwned(player, def.id)
-		return Remotes.Ok()
-	end, { rate = 5 })
-
-	Remotes.Handle("Vehicle.Sell", function(player, uid: any)
-		local data = DataService.Get(player) :: { [string]: any }
-		local entry = typeof(uid) == "string" and data.vehicles[uid] or nil
-		if not entry then
-			return Remotes.Fail("not_owned")
-		end
-		if not Interaction.IsNear(player, "Shop", 40, "UI", "Dealership") then
-			return Remotes.Fail("not_near")
-		end
-		local def = Vehicles.ById[entry.id]
-		local spawnedModel = spawned[player]
-		if spawnedModel and spawnedModel:GetAttribute("Uid") == uid then
-			VehicleService.Despawn(player)
-		end
-		data.vehicles[uid] = nil
-		task.spawn(releasePlate, entry.plate, player.UserId)
-		local value = if def then math.floor(def.price * SELL_BACK) else 0
-		if value > 0 then
-			Economy.Add(player, value, "Autohaus Ankauf: " .. (def and def.name or "?"))
-		end
-		State.MarkDirty(player)
-		return Remotes.Ok({ value = value })
-	end, { rate = 3 })
 
 	Remotes.Handle("Vehicle.Spawn", function(player, uid: any)
 		local data = DataService.Get(player) :: { [string]: any }

@@ -2,11 +2,9 @@
 -- Shop windows opened by the server when a player uses a ProximityPrompt:
 -- Handyland, Autohaus (dealer + gamepass packs + sell), job vehicle garages.
 
-local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
@@ -157,98 +155,6 @@ renderers.Handyland = function()
 	end
 end
 
--- Autohaus -----------------------------------------------------------------------
-local function ownsAny(state: { [string]: any }, vehicleId: string): boolean
-	for _, entry in state.vehicles or {} do
-		if entry.id == vehicleId then
-			return true
-		end
-	end
-	return false
-end
-
-renderers.Dealership = function()
-	title.Text = "🚗 " .. Store.T("dealership")
-	tabs({ "dealer_tab", "packs_tab", "sell_tab" })
-	local s = Store.Get()
-	if not s.starterChosen then
-		Make.Label(Store.T("starter_needed"), 13, T.warn, T.bold, { Parent = body })
-	end
-	if currentTab == 1 then
-		local g = grid()
-		for i, v in Vehicles.ByCategory("Dealer") do
-			local line = Locale.Euro(v.price)
-				.. "\n"
-				.. v.speed
-				.. " km/h"
-				.. (if ownsAny(s, v.id) then "  ·  " .. Store.T("owned") else "")
-			itemCard(g, i, v.color, v.name, line, Store.T("buy"), T.good, function()
-				result(Net.Request("Vehicle.Buy", v.id))
-			end)
-		end
-	elseif currentTab == 2 then
-		for p, packId in Vehicles.PackOrder do
-			local unlocked = (s.packs or {})[packId] == true
-			local header = Make.Card({ LayoutOrder = p * 2, Parent = body })
-			Make.Label(
-				packId .. "  ·  " .. (Config.GamepassRobux :: any)[packId] .. " R$",
-				16,
-				T.text,
-				T.black,
-				{ Parent = header }
-			)
-			if not unlocked then
-				local passId = (Config.Gamepasses :: any)[packId]
-				Make.Button(
-					Store.T("unlock_pack", (Config.GamepassRobux :: any)[packId]),
-					Color3.fromRGB(0, 170, 90),
-					function()
-						if passId and passId ~= 0 then
-							MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, passId)
-						else
-							Notify.Error("pack_not_setup")
-						end
-					end,
-					{ Parent = header }
-				)
-			end
-			local g = grid()
-			g.LayoutOrder = p * 2 + 1
-			for i, v in Vehicles.ByCategory("Pack", packId) do
-				local line = Locale.Euro(v.price) .. "\n" .. v.speed .. " km/h"
-				if unlocked then
-					itemCard(g, i, v.color, v.name, line, Store.T("buy"), T.good, function()
-						result(Net.Request("Vehicle.Buy", v.id))
-					end)
-				else
-					itemCard(g, i, v.color, v.name, line, "🔒", T.panel, nil)
-				end
-			end
-		end
-	else
-		local g = grid()
-		local i = 0
-		for uid, entry in s.vehicles or {} do
-			local v = Vehicles.ById[entry.id]
-			if v and v.category ~= "Starter" then
-				i += 1
-				itemCard(
-					g,
-					i,
-					v.color,
-					v.name,
-					entry.plate .. "\n" .. Locale.Euro(math.floor(v.price * 0.5)),
-					Store.T("sell"),
-					T.bad,
-					function()
-						result(Net.Request("Vehicle.Sell", uid))
-					end
-				)
-			end
-		end
-	end
-end
-
 -- Job garage ---------------------------------------------------------------------
 renderers.JobGarage = function(jobId: any)
 	local job = Jobs.ById[jobId] or Jobs.ById.Police
@@ -263,14 +169,23 @@ renderers.JobGarage = function(jobId: any)
 	for i, v in Vehicles.ForJob(job.id) do
 		local need = v.xp or 0
 		if xp >= need or Store.Rank() >= 3 then
-			itemCard(g, i, v.color, v.name, Store.T("requires_xp", need), Store.T("spawn"), T.good, function()
-				local r = Net.Request("Vehicle.SpawnJob", v.id)
-				if r.ok then
-					Shops.Close()
-				else
-					Notify.Error(r.err)
+			itemCard(
+				g,
+				i,
+				v.color,
+				v.name,
+				if need == 0 then "🏍️" else Store.T("requires_xp", need),
+				Store.T("spawn"),
+				T.good,
+				function()
+					local r = Net.Request("Vehicle.SpawnJob", v.id)
+					if r.ok then
+						Shops.Close()
+					else
+						Notify.Error(r.err)
+					end
 				end
-			end)
+			)
 		else
 			itemCard(
 				g,

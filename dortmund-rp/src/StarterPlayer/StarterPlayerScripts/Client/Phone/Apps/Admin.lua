@@ -152,21 +152,6 @@ local function playerDetail(root: ScrollingFrame, info: { [string]: any }, back:
 			end),
 		}).Parent =
 			give
-		local sellable = {}
-		for _, v in Vehicles.List do
-			if v.category ~= "Job" and v.category ~= "Admin" then
-				table.insert(sellable, v)
-			end
-		end
-		local vIndex = 1
-		local vBtn: TextButton
-		vBtn = Make.Button("🚗 " .. sellable[1].name, T.panel, function()
-			vIndex = vIndex % #sellable + 1
-			vBtn.Text = "🚗 " .. sellable[vIndex].name
-		end, { Parent = give })
-		Make.Button("Auto schenken", T.good, function()
-			act("give_vehicle", { userId = id, vehicleId = sellable[vIndex].id })
-		end, { Parent = give })
 	end
 end
 
@@ -292,7 +277,7 @@ end
 local function vehiclesTab(root: ScrollingFrame)
 	local isGA = Store.Rank() >= GAME_ADMIN
 	local order = 0
-	for _, category in { "Admin", "Pack", "Dealer", "Starter", "Job" } do
+	for _, category in { "Admin", "Starter", "Job" } do
 		order += 1
 		local card = section(root, order, category)
 		for _, v in Vehicles.ByCategory(category) do

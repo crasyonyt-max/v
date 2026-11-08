@@ -82,11 +82,6 @@ Phone.Register({
 			pos = Vector3.new(special.Handyland.marker[1], 0, special.Handyland.marker[2]),
 			color = Color3.fromRGB(0, 110, 220),
 		})
-		table.insert(shops, {
-			title = "🚗 Autohaus",
-			pos = Vector3.new(special.Dealership.marker[1], 0, special.Dealership.marker[2]),
-			color = Color3.fromRGB(60, 60, 60),
-		})
 		sorted(shops)
 
 		header("navi_jobs")

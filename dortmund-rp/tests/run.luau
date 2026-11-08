@@ -229,21 +229,24 @@ end)
 
 local Vehicles = requirePath(RS.Shared.Vehicles)
 local VehicleBuilder = requirePath(Server.VehicleBuilder)
-test("vehicle catalog", function()
-	eq(#Vehicles.ByCategory("Dealer"), 20, "dealer cars")
-	eq(#Vehicles.ByCategory("Starter"), 3, "starters")
-	eq(#Vehicles.ByCategory("Pack"), 25, "pack cars")
-	eq(#Vehicles.ByCategory("Admin"), 10, "admin cars")
+test("vehicle catalog: one motorbike", function()
+	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
+	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
+	eq(#Vehicles.ByCategory("Admin"), 1, "admin bike")
+	eq(#Vehicles.ByCategory("Dealer"), 0, "dealership closed")
 	for _, job in { "Police", "Fire", "Rettungsdienst", "Notarzt", "ADMC", "DXL", "LKW" } do
 		local list = Vehicles.ForJob(job)
-		assert(#list > 0 and (list[1].xp or 0) == 0, job .. " needs a 0 XP starter")
+		eq(#list, 1, job .. " bike")
+		eq(list[1].xp or 0, 0, job .. " bike free")
+		assert(VehicleBuilder.Schemes[list[1].livery], job .. " has no livery")
 	end
 	for _, v in Vehicles.List do
-		assert(VehicleBuilder.BodyTypes[v.body], v.id .. " has unknown body " .. v.body)
-		assert(v.category ~= "Pack" or table.find(Vehicles.PackOrder, v.pack), v.id .. " bad pack")
+		eq(v.body, "bike", v.id)
 	end
-	eq(Vehicles.ById.lambardini_uros.price, 250000)
-	eq(Vehicles.ById.bugarti_chiran.price, 3000000)
+	-- refunds for the removed cars
+	eq(Vehicles.LegacyPrices.lambardini_uros, 250000)
+	eq(Vehicles.LegacyPrices.bugarti_chiran, 3000000)
+	eq(Vehicles.LegacyPrices.vk_golfo4, nil, "free starter cars are not refunded")
 end)
 
 test("phones", function()
@@ -280,50 +283,14 @@ test("config", function()
 	eq(Config.AdminPhoneId, "nvdr_p1")
 end)
 
--- Mesh alignment: a fake import rotated 180°, scaled x3.57 and moved must map back ------
-local MeshLibrary = requirePath(Server.MeshLibrary)
-test("mesh import alignment", function()
-	local V3, CF = roblox.Vector3, roblox.CFrame
-	local L, markerY = 13, 2.1
-	local importScale = 3.57
-	local importCF = CF.new(50, 10, -20) * CF.Angles(0, math.pi, 0) -- flipped front/back
-	local root = roblox.Instance.new("Model")
-	local function mp(name, ourPos: Vector3, size: Vector3)
-		local p = roblox.Instance.new("MeshPart")
-		p.Name = name
-		p.Size = size * importScale
-		p.CFrame = importCF * CF.new((ourPos - V3.new(0, markerY, 0)) * importScale)
-		p.Parent = root
-	end
-	mp("MarkerFront", V3.new(0, markerY, -L / 2), V3.one * 0.1)
-	mp("MarkerRear", V3.new(0, markerY, L / 2), V3.one * 0.1)
-	mp("MarkerTop", V3.new(0, markerY + 4, 0), V3.one * 0.1)
-	mp("Body", V3.new(0.2, 2.5, -1), V3.new(6, 3, 13))
-	local pieces = MeshLibrary._align(root, L, markerY)
-	assert(pieces and #pieces == 1, "one body piece")
-	local b = pieces[1]
-	local pos = b.cf.Position
-	assert((pos - V3.new(0.2, 2.5, -1)).Magnitude < 1e-3, "position " .. tostring(pos))
-	assert((b.size - V3.new(6, 3, 13)).Magnitude < 1e-3, "size " .. tostring(b.size))
-	assert(b.cf.LookVector:Dot(V3.new(0, 0, -1)) > 0.999, "orientation restored")
-end)
-
--- Every vehicle builds (blocks fallback and with meshes) ------------------------------
-local CarMeshes = requirePath(pathProxy({ "ServerStorage", "CarMeshes" }))
-test("car mesh data", function()
-	for _, v in Vehicles.List do
-		local info = CarMeshes["body_" .. v.body]
-		assert(info and info.assetId > 0, "no uploaded mesh for body " .. v.body)
-	end
-	assert(CarMeshes.wheel.assetId > 0, "wheel mesh")
-end)
-
--- Every vehicle builds -----------------------------------------------------------
+-- Every bike builds ---------------------------------------------------------------
 for _, v in Vehicles.List do
 	test("build " .. v.id, function()
 		local model = VehicleBuilder.Build(v)
 		assert(model.PrimaryPart, "no primary part")
-		assert(model:FindFirstChild("DriveSeat"), "no driver seat")
+		local seat = model:FindFirstChild("DriveSeat")
+		assert(seat, "no driver seat")
+		assert(math.abs(seat.CFrame.Position.X) < 0.01, "rider sits in the middle")
 		local motors, steers = 0, 0
 		for _, d in model:GetDescendants() do
 			if d.ClassName == "HingeConstraint" then
@@ -337,165 +304,58 @@ for _, v in Vehicles.List do
 		end
 		eq(motors, 4, "motors")
 		eq(steers, 2, "steering")
-		if v.emergency and v.livery ~= "Unmarked" then
-			assert(model:FindFirstChild("Bluelight"), "emergency car without blue lights")
+		assert(model.PrimaryPart:FindFirstChild("Stabilizer"), "no stabiliser")
+		-- the visible wheels spin with the physics wheels, the fork steers with the knuckle
+		local wheelFL, wheelRL = model:FindFirstChild("WheelFL"), model:FindFirstChild("WheelRL")
+		local tyres, forks = 0, 0
+		for _, d in model:GetDescendants() do
+			if d.ClassName == "WeldConstraint" then
+				if d.Part1.Name == "Tyre" then
+					assert(d.Part0 == wheelFL or d.Part0 == wheelRL, "tyre not on a wheel")
+					tyres += 1
+				elseif d.Part1.Name == "Fork" or d.Part1.Name == "Handlebar" then
+					eq(d.Part0.Name, "Knuckle", "fork must steer")
+					forks += 1
+				end
+			end
+		end
+		eq(tyres, 2, "two visible tyres")
+		eq(forks, 3, "fork legs + handlebar")
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then
+				local p = d.CFrame.Position
+				assert(p.Y > -0.1 and p.Y < 6, string.format("%s at y=%.1f", d.Name, p.Y))
+				assert(math.abs(p.Z) < 4.2 and math.abs(p.X) < 1.6, d.Name .. " sticks out")
+				if d ~= model.PrimaryPart and d.Name ~= "Knuckle" and not string.match(d.Name, "^Wheel") then
+					assert(d.Massless and not d.CanCollide, d.Name .. " must be massless decoration")
+				end
+			end
+		end
+		if v.emergency then
+			assert(model:FindFirstChild("Bluelight"), "emergency bike without blue lights")
+			assert(model.PrimaryPart:FindFirstChild("Siren"), "no siren")
+		else
+			assert(not model:FindFirstChild("Bluelight"), "blue lights on a non-emergency bike")
+		end
+		if v.livery then
+			assert(model:FindFirstChild("TopCase"), "livery top case")
+		else
+			local painted = 0
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") and d:GetAttribute("Paint") then
+					painted += 1
+				end
+			end
+			assert(painted >= 5, "civilian paint parts")
+			local c = roblox.Color3.fromRGB(0, 140, 200)
+			VehicleBuilder.SetColor(model, c)
+			eq((model:FindFirstChild("Tank") :: any).Color, c, "repaint")
 		end
 		VehicleBuilder.SetPlate(model, "DO-AB 1234")
 		eq(model:GetAttribute("Plate"), "DO-AB 1234")
 		model:Destroy()
 	end)
 end
-
-local function fakeEntry(key, info)
-	local pieces = {}
-	local names = if key == "wheel" then { "Tire", "Rim", "Spokes" } else { "Body", "Glass", "Trim" }
-	for _, n in names do
-		local t = roblox.Instance.new("MeshPart")
-		t.Name = n
-		table.insert(
-			pieces,
-			{ name = n, template = t, cf = roblox.CFrame.new(0, 2, 0), size = roblox.Vector3.new(2, 2, 2) }
-		)
-	end
-	return { pieces = pieces, anchors = info.anchors }
-end
-for key, info in CarMeshes do
-	MeshLibrary._inject(key, fakeEntry(key, info))
-end
-for _, v in Vehicles.List do
-	test("build with meshes " .. v.id, function()
-		local model = VehicleBuilder.Build(v)
-		assert(model:GetAttribute("Realistic"), "mesh not used")
-		assert(model:FindFirstChild("MeshBody") and model:FindFirstChild("MeshGlass"), "mesh pieces")
-		assert(not model:FindFirstChild("Windshield"), "block windshield should be replaced")
-		eq(model.PrimaryPart.Transparency, 1, "chassis hidden")
-		local tires = 0
-		for _, d in model:GetChildren() do
-			if d.Name == "Tire" then
-				tires += 1
-			end
-		end
-		eq(tires, 4, "tyres")
-		model:Destroy()
-	end)
-end
-
--- Creator Store bodies: every mapped vehicle builds from its template at real size ----
-local ToolboxBuilder = requirePath(Server.ToolboxBuilder)
-local ToolboxCars = requirePath(pathProxy({ "ServerStorage", "ToolboxCars" }))
-local CarModels = requirePath(Server.CarModels)
-for modelId, info in ToolboxCars do
-	local car = roblox.Instance.new("Model")
-	car.Name = "Car"
-	local body = roblox.Instance.new("Part")
-	body.Size = roblox.Vector3.new(info.size[1], info.size[2] * 0.6, info.size[3])
-	body.CFrame = roblox.CFrame.new(0, info.size[2] * 0.5, 0)
-	body:SetAttribute("Paint", true)
-	body.Parent = car
-	for tag, w in info.wheels do
-		local wp = roblox.Instance.new("Part")
-		wp.Size = roblox.Vector3.new(1, w[4] * 2, w[4] * 2)
-		wp.CFrame = roblox.CFrame.new(w[1], w[2], w[3])
-		wp:SetAttribute("Wheel", tag)
-		wp.Parent = car
-	end
-	ToolboxBuilder._inject(modelId, car)
-end
-local heights = {}
-for id, m in CarModels do
-	test("toolbox body " .. id, function()
-		local def = Vehicles.ById[id]
-		assert(def, "unknown vehicle " .. id)
-		assert(ToolboxBuilder.Available(id), "template not available for " .. id)
-		local ok, built = pcall(ToolboxBuilder.Build, def, nil, VehicleBuilder, {}, {})
-		assert(ok and built, "toolbox build error: " .. tostring(built))
-		local model = VehicleBuilder.Build(def)
-		assert(model:GetAttribute("Toolbox") == tostring(m[1]), "toolbox body not used")
-		assert(model:FindFirstChild("DriveSeat"), "driver seat")
-		local motors = 0
-		for _, d in model:GetDescendants() do
-			if d.ClassName == "HingeConstraint" and d.Name == "Motor" then
-				motors += 1
-			end
-		end
-		eq(motors, 4, "motors")
-		local info = ToolboxCars[m[1]]
-		local s = m[2] / 0.28 / info.size[3]
-		heights[id] = info.size[2] * s * 0.28
-		model:Destroy()
-	end)
-end
--- Real cleaned models (build/cars/*.rbxm, made by tools/toolbox/publish_cars.py)
-for modelId in ToolboxCars do
-	local path = "build/cars/" .. tostring(modelId) .. ".rbxm"
-	if fs.isFile(path) then
-		local ok, insts = pcall(roblox.deserializeModel, fs.readFile(path))
-		if ok and insts[1] then
-			ToolboxBuilder._inject(modelId, insts[1])
-		end
-	end
-end
-for id, m in CarModels do
-	test("real body sane " .. id, function()
-		local def = Vehicles.ById[id]
-		local model = ToolboxBuilder.Build(def, nil, VehicleBuilder, {}, {})
-		assert(model, "build failed")
-		local wheels = {}
-		for _, d in model:GetChildren() do
-			if string.match(d.Name, "^Wheel[FR][LR]$") then
-				wheels[d] = d.CFrame.Position
-			end
-		end
-		local drive = model:FindFirstChild("DriveSeat")
-		assert(drive, "no driver seat")
-		local seatsLeftOf = 0
-		for _, d in model:GetChildren() do
-			if
-				d.Name == "Seat"
-				and math.abs(d.CFrame.Position.Z - drive.CFrame.Position.Z) < 2.5
-				and d.CFrame.Position.X < drive.CFrame.Position.X - 0.5
-			then
-				seatsLeftOf += 1
-			end
-		end
-		eq(seatsLeftOf, 0, id .. ": driver must be the front-left seat")
-		local height = 0
-		for _, d in model:GetDescendants() do
-			if d.ClassName == "WeldConstraint" then
-				local base, piece = d.Part0, d.Part1
-				if wheels[base] then
-					local dist = (piece.CFrame.Position - wheels[base]).Magnitude
-					assert(
-						dist < base.Size.Y * 0.6,
-						string.format("%s: piece %s %.1f studs from its wheel", id, piece.Name, dist)
-					)
-				end
-			end
-			if d:IsA("BasePart") then
-				local y = d.CFrame.Position.Y
-				assert(y > -2 and y < 40, string.format("%s: part %s at y=%.1f", id, d.Name, y))
-				height = math.max(height, y)
-			end
-		end
-		model:Destroy()
-	end)
-end
-
-test("real proportions: hypercars lower than vans and SUVs", function()
-	assert(heights.koenigshaus_jesco < 1.45, "Jesko too tall: " .. heights.koenigshaus_jesco)
-	assert(heights.koenigshaus_jesco < heights.vk_tiguar, "Jesko taller than an SUV")
-	assert(heights.fw_lf10 > 2.6, "fire truck too low: " .. heights.fw_lf10)
-	print(
-		string.format(
-			"  heights (m): Jesko %.2f, Golfo %.2f, Tiguar %.2f, G-Klasse %.2f, LF 10 %.2f",
-			heights.koenigshaus_jesco,
-			heights.vk_golfo,
-			heights.vk_tiguar,
-			heights.mercator_g,
-			heights.fw_lf10
-		)
-	)
-end)
 
 -- Map builds -----------------------------------------------------------------------
 overrides["ServerScriptService/Server/InteractionService"] = {
@@ -618,7 +478,7 @@ test("real city + map", function()
 			uis[ui] = true
 		end
 	end
-	assert(uis.Handyland and uis.Dealership, "shops missing")
+	assert(uis.Handyland and not uis.Dealership, "shops: Handyland yes, Autohaus closed")
 
 	local StoreBuilder = requirePath(Server.StoreBuilder)
 	StoreBuilder.Build()

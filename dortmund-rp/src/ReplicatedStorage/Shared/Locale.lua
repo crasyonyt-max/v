@@ -135,7 +135,7 @@ local S: { [string]: { de: string, en: string } } = {
 	app_chatsapp = { de = "ChatsApp", en = "ChatsApp" },
 	app_bank = { de = "Bank", en = "Bank" },
 	app_jobs = { de = "Jobs", en = "Jobs" },
-	app_garage = { de = "Garage", en = "Garage" },
+	app_garage = { de = "Motorrad", en = "Motorbike" },
 	app_calls = { de = "Einsätze", en = "Calls" },
 	app_settings = { de = "Einstellungen", en = "Settings" },
 	app_admin = { de = "Admin", en = "Admin" },
@@ -179,7 +179,11 @@ local S: { [string]: { de: string, en: string } } = {
 	color = { de = "Farbe (500 €)", en = "Colour (€500)" },
 	change_plate = { de = "Kennzeichen ändern (250 €)", en = "Change plate (€250)" },
 	fuel = { de = "Tank", en = "Fuel" },
-	no_cars = { de = "Keine Autos. Besuch das Autohaus!", en = "No cars. Visit the dealership!" },
+	no_cars = { de = "Dein Motorrad kommt gleich …", en = "Your motorbike is on its way …" },
+	cars_refunded = {
+		de = "Die Autos wurden entfernt. Du hast %s zurückbekommen und fährst jetzt Motorrad!",
+		en = "Cars were removed. You got %s back and ride a motorbike now!",
+	},
 	sell = { de = "Verkaufen (50 %)", en = "Sell (50%)" },
 
 	-- calls app
