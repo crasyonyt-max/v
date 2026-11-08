@@ -86,7 +86,8 @@ local eating: { [Player]: number } = {}
 consume = function(player: Player, tool: Tool, itemId: string)
 	local data = DataService.Get(player)
 	local it = Items.ById[itemId]
-	if not data or not it or tool.Parent ~= player.Character then
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not data or not it or (tool.Parent ~= player.Character and tool.Parent ~= backpack) then
 		return
 	end
 	local now = os.clock()
@@ -126,6 +127,25 @@ function StoreService.Start()
 			giveTools(player)
 		end
 	end)
+
+	-- eat / drink straight from the item panel
+	Remotes.Handle("Item.Use", function(player, itemId: any)
+		if typeof(itemId) ~= "string" or not Items.ById[itemId] then
+			return Remotes.Fail("bad_item")
+		end
+		local backpack = player:FindFirstChildOfClass("Backpack")
+		for _, container in { player.Character, backpack } do
+			if container then
+				for _, t in container:GetChildren() do
+					if t:IsA("Tool") and t:GetAttribute("ItemId") == itemId then
+						consume(player, t, itemId)
+						return Remotes.Ok()
+					end
+				end
+			end
+		end
+		return Remotes.Fail("not_owned")
+	end, { rate = 6 })
 
 	Remotes.Handle("Store.Buy", function(player, kind: any, itemId: any)
 		local data = DataService.Get(player) :: { [string]: any }

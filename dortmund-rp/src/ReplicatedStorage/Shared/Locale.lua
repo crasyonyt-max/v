@@ -92,6 +92,15 @@ local S: { [string]: { de: string, en: string } } = {
 	elevator = { de = "Aufzug", en = "Elevator" },
 	floor = { de = "Etage %d", en = "Floor %d" },
 	lobby = { de = "Lobby (EG)", en = "Lobby" },
+	inventory = { de = "Inventar", en = "Inventory" },
+	empty_inventory = {
+		de = "Du trägst nichts bei dir. Kauf etwas im Supermarkt!",
+		en = "You carry nothing. Buy something at a supermarket!",
+	},
+	eat = { de = "Essen", en = "Eat" },
+	drink = { de = "Trinken", en = "Drink" },
+	hold = { de = "In die Hand", en = "Hold" },
+	put_away = { de = "Wegstecken", en = "Put away" },
 	no_space = {
 		de = "Hier ist kein Platz zum Ausparken. Stell dich an die Straße.",
 		en = "No space here. Stand next to a road.",

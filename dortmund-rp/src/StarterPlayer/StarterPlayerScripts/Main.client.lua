@@ -8,6 +8,7 @@ local Notify = require(Client.UI.Notify)
 local HUD = require(Client.UI.HUD)
 local Phone = require(Client.Phone.Phone)
 require(Client.UI.Shops)
+require(Client.UI.Inventory)
 
 -- Phone apps register themselves.
 for _, app in Client.Phone.Apps:GetChildren() do

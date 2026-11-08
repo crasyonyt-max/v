@@ -112,6 +112,13 @@ Make.Label("© OpenStreetMap", 10, Color3.fromRGB(200, 200, 200), T.font, {
 	Parent = gui,
 })
 
+-- while driving on a touchscreen the pedals take the bottom-right corner
+local function placeButtons()
+	local up = Players.LocalPlayer:GetAttribute("DrivingTouch") == true
+	HUD.PhoneButton.Position = if up then UDim2.new(1, -12, 1, -190) else UDim2.new(1, -12, 1, -12)
+end
+Players.LocalPlayer:GetAttributeChangedSignal("DrivingTouch"):Connect(placeButtons)
+
 function HUD.Render(s: { [string]: any })
 	money.Text = Locale.Euro(s.bank or 0)
 	local jobDef = Jobs.ById[s.job or "Unemployed"]

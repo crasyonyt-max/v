@@ -358,7 +358,15 @@ local function readInput(vseat: VehicleSeat, dt: number, speedRatio: number): (n
 	return throttleState, steerState
 end
 
+local hiddenPrompts: { ProximityPrompt } = {}
+
 local function stop()
+	for _, pr in hiddenPrompts do
+		if pr.Parent then
+			pr.Enabled = true
+		end
+	end
+	hiddenPrompts = {}
 	if conn then
 		conn:Disconnect()
 		conn = nil
@@ -377,6 +385,7 @@ local function stop()
 	motors, steers = {}, {}
 	gui.Enabled = false
 	touchGui.Enabled = false
+	player:SetAttribute("DrivingTouch", nil)
 	for key in touch do
 		release(key)
 	end
@@ -499,9 +508,18 @@ local function start(vseat: VehicleSeat)
 			end
 		end
 	end
+	-- the car's own "Einsteigen" prompts would sit in your face while you drive
+	hiddenPrompts = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("ProximityPrompt") and d.Enabled then
+			d.Enabled = false
+			table.insert(hiddenPrompts, d)
+		end
+	end
 	buildButtons()
 	gui.Enabled = true
 	touchGui.Enabled = isTouch
+	player:SetAttribute("DrivingTouch", isTouch)
 	setDefaultControls(false)
 	conn = RunService.Heartbeat:Connect(drive)
 end
