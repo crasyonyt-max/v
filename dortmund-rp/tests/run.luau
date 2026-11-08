@@ -305,6 +305,12 @@ for _, v in Vehicles.List do
 		eq(motors, 4, "motors")
 		eq(steers, 2, "steering")
 		assert(model.PrimaryPart:FindFirstChild("Stabilizer"), "no stabiliser")
+		-- rear-wheel drive: the front only rolls, so it can't pull the bike into a spin
+		local function torque(w)
+			return model:FindFirstChild(w):FindFirstChild("Motor"):GetAttribute("BaseTorque")
+		end
+		assert(torque("WheelFL") < torque("WheelRL") * 0.2, "front wheel must not drive")
+		assert(model.PrimaryPart:FindFirstChild("Upright"), "wheelie needs the Upright attachment")
 		-- the visible wheels spin with the physics wheels, the fork steers with the knuckle
 		local wheelFL, wheelRL = model:FindFirstChild("WheelFL"), model:FindFirstChild("WheelRL")
 		local tyres, forks = 0, 0

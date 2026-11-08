@@ -25,6 +25,7 @@ local State = require(script.Parent.State)
 local VehicleService = require(script.Parent.VehicleService)
 local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
+local NewsService = require(script.Parent.NewsService)
 
 local AdminService = {}
 
@@ -64,6 +65,8 @@ local ACTIONS: { [string]: number } = {
 	give_xp = GA,
 	give_vehicle = GA,
 	reply = GA,
+	news_post = GA,
+	news_delete = GA,
 }
 
 local function log(actor: Player, action: string, detail: string, global: boolean)
@@ -397,6 +400,34 @@ handlers.announce = function(actor, args, isGA)
 		end)
 	end
 	log(actor, if global then "announce (global)" else "announce", text, global)
+	return true
+end
+
+-- News app (all servers)
+handlers.news_post = function(actor, args)
+	local title = typeof(args) == "table" and Remotes.Check.String(args.title, 60) or nil
+	local text = typeof(args) == "table" and Remotes.Check.String(args.text, 600) or nil
+	if not title or not text then
+		return false, "bad_message"
+	end
+	local fTitle = ChatService.Filter(title, actor.UserId)
+	local fText = ChatService.Filter(text, actor.UserId)
+	if not fTitle or not fText then
+		return false, "bad_message"
+	end
+	if not NewsService.Post(fTitle, fText, actor.DisplayName) then
+		return false, "error"
+	end
+	log(actor, "news_post", fTitle, true)
+	return true
+end
+
+handlers.news_delete = function(actor, args)
+	local id = typeof(args) == "table" and Remotes.Check.String(args.id, 16) or nil
+	if not id or not NewsService.Delete(id) then
+		return false, "bad_request"
+	end
+	log(actor, "news_delete", id, true)
 	return true
 end
 

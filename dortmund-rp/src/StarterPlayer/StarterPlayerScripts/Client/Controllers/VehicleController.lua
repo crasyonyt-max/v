@@ -2,6 +2,7 @@
 -- Driving (client owns the car's physics while driving) + dashboard UI.
 -- Keys: W/S gas/brake, A/D steer, L lights, Q/E indicators, X hazards,
 --       B blue lights, N siren, V first-person camera. Mobile: on-screen buttons.
+-- Motorbike stunts: hold F = wheelie, 1 = one hand, 2 = no hands (no steering then).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -124,6 +125,10 @@ local firstPerson = false
 local lastBrake = false
 local lastBrakeSent = 0
 local warnedFuel = false
+local isBike = false
+local hands = "" -- "" | "OneHand" | "NoHands" (shown to everyone via the server)
+local wheelieAngle = 0 -- degrees, eased
+local WHEELIE_MAX = 30
 
 local function control(action: string, value: any?)
 	task.spawn(function()
@@ -178,6 +183,20 @@ local function buildButtons()
 			end,
 		},
 	}
+	if isBike then
+		table.insert(list, {
+			"✋",
+			function()
+				VehicleController.SetHands(if hands == "OneHand" then "" else "OneHand")
+			end,
+		})
+		table.insert(list, {
+			"🙌",
+			function()
+				VehicleController.SetHands(if hands == "NoHands" then "" else "NoHands")
+			end,
+		})
+	end
 	if isEmergency then
 		table.insert(list, {
 			"🔵",
@@ -207,7 +226,7 @@ end
 -- Gamepad: the seat's own values. Steering is smoothed and re-centres by itself.
 -- every touchscreen gets the buttons (some tablets also report a keyboard)
 local isTouch = UserInputService.TouchEnabled
-local touch = { gas = false, brake = false, left = false, right = false }
+local touch = { gas = false, brake = false, left = false, right = false, wheelie = false }
 -- which finger (InputObject) holds each button, so a lost "release" can never stick
 local heldBy: { [string]: InputObject } = {}
 local buttons: { [string]: TextButton } = {}
@@ -275,6 +294,9 @@ pedal("Left", "◀", Vector2.new(96, 96), UDim2.new(0, 20, 1, -24), Vector2.new(
 pedal("Right", "▶", Vector2.new(96, 96), UDim2.new(0, 128, 1, -24), Vector2.new(0, 1), "right")
 pedal("Gas", "GAS", Vector2.new(92, 150), UDim2.new(1, -20, 1, -24), Vector2.new(1, 1), "gas")
 pedal("Brake", "BREMSE", Vector2.new(92, 96), UDim2.new(1, -124, 1, -24), Vector2.new(1, 1), "brake")
+local wheelieButton =
+	pedal("Wheelie", "WHEELIE", Vector2.new(92, 50), UDim2.new(1, -124, 1, -128), Vector2.new(1, 1), "wheelie")
+wheelieButton.TextSize = 16
 local exitButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -20, 0, 70),
@@ -360,6 +382,27 @@ end
 
 local hiddenPrompts: { ProximityPrompt } = {}
 
+function VehicleController.SetHands(mode: string)
+	if not car or not isBike or hands == mode then
+		return
+	end
+	hands = mode
+	control("Hands", mode)
+	if mode == "NoHands" then
+		Notify.Show(Store.T("stunt_no_hands"), false, 2.5)
+	end
+end
+
+-- Leans the stabiliser's "up" forward so it holds the bike nose-up (wheelie).
+local function setPitch(model: Model, degrees: number)
+	local chassis = model.PrimaryPart
+	local up = chassis and chassis:FindFirstChild("Upright") :: Attachment?
+	if up then
+		local a = math.rad(degrees)
+		up.CFrame = CFrame.fromMatrix(up.Position, Vector3.new(0, math.cos(a), -math.sin(a)), Vector3.xAxis)
+	end
+end
+
 local function stop()
 	for _, pr in hiddenPrompts do
 		if pr.Parent then
@@ -381,6 +424,12 @@ local function stop()
 	if firstPerson then
 		setCamera(false)
 	end
+	if car and wheelieAngle ~= 0 then
+		setPitch(car, 0)
+	end
+	wheelieAngle = 0
+	hands = ""
+	isBike = false
 	car, seat = nil, nil
 	motors, steers = {}, {}
 	gui.Enabled = false
@@ -450,8 +499,33 @@ local function drive(dt: number)
 
 	local speedRatio = math.clamp(math.abs(speed) / top, 0, 1)
 	local maxAngle = 34 - 26 * math.clamp(speedRatio * 1.6, 0, 1)
+	if isBike and hands == "NoHands" then
+		steer, steerState = 0, 0 -- no hands, no steering
+	end
 	for _, s in steers do
 		s.TargetAngle = -steer * maxAngle
+	end
+
+	if isBike then
+		-- grip assist: a bike follows its front wheel, it never spins or slides sideways
+		local wheelbase = (model:GetAttribute("Wheelbase") or 5.3) :: number
+		local wanted = -speed * math.tan(math.rad(steer * maxAngle)) / wheelbase
+		local av = chassis.AssemblyAngularVelocity
+		local k = math.min(1, dt * 10)
+		chassis.AssemblyAngularVelocity = Vector3.new(av.X, av.Y + (wanted - av.Y) * k, av.Z)
+		local right = chassis.CFrame.RightVector
+		local v = chassis.AssemblyLinearVelocity
+		chassis.AssemblyLinearVelocity = v - right * v:Dot(right) * math.min(1, dt * 6)
+
+		-- wheelie: hold F / the button while rolling forward
+		local want = (touch.wheelie or keyDown(Enum.KeyCode.F)) and speed > 4
+		local target = if want then WHEELIE_MAX else 0
+		local step = (if want then 45 else 70) * dt
+		local before = wheelieAngle
+		wheelieAngle += math.clamp(target - wheelieAngle, -step, step)
+		if wheelieAngle ~= before then
+			setPitch(model, wheelieAngle)
+		end
 	end
 
 	-- brake lights (rate limited)
@@ -498,6 +572,8 @@ local function start(vseat: VehicleSeat)
 		return
 	end
 	car, seat = model, vseat
+	isBike = model:GetAttribute("Bike") == true
+	hands, wheelieAngle = "", 0
 	motors, steers = {}, {}
 	for _, d in model:GetDescendants() do
 		if d:IsA("HingeConstraint") then
@@ -519,6 +595,7 @@ local function start(vseat: VehicleSeat)
 	buildButtons()
 	gui.Enabled = true
 	touchGui.Enabled = isTouch
+	wheelieButton.Visible = isBike
 	player:SetAttribute("DrivingTouch", isTouch)
 	setDefaultControls(false)
 	conn = RunService.Heartbeat:Connect(drive)
@@ -565,6 +642,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		control("Siren")
 	elseif k == Enum.KeyCode.V then
 		setCamera(not firstPerson)
+	elseif k == Enum.KeyCode.One and isBike then
+		VehicleController.SetHands(if hands == "OneHand" then "" else "OneHand")
+	elseif k == Enum.KeyCode.Two and isBike then
+		VehicleController.SetHands(if hands == "NoHands" then "" else "NoHands")
 	end
 end)
 

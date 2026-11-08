@@ -277,8 +277,16 @@ local function spawnModel(
 	end)
 
 	local seat = model:FindFirstChild("DriveSeat") :: VehicleSeat
+	local lastRider: Model? = nil
 	seat:GetPropertyChangedSignal("Occupant"):Connect(function()
 		local humanoid = seat.Occupant
+		if lastRider then
+			lastRider:SetAttribute("BikeHands", nil) -- stunts end when you get off
+			lastRider = nil
+		end
+		if humanoid and humanoid.Parent and humanoid.Parent:IsA("Model") then
+			lastRider = humanoid.Parent :: Model
+		end
 		if not humanoid then
 			pcall(function()
 				chassis:SetNetworkOwner(player.Parent and player or nil)
@@ -520,6 +528,15 @@ function VehicleService.Start()
 			model:SetAttribute("Indicator", if model:GetAttribute("Indicator") == v then "" else v)
 		elseif action == "Brake" then
 			model:SetAttribute("Brake", value == true)
+		elseif action == "Hands" then
+			-- motorbike stunts: one hand / no hands (everyone sees the arms go up)
+			local v = Remotes.Check.OneOf(value, { "", "OneHand", "NoHands" })
+			if v == nil or not model:GetAttribute("Bike") then
+				return Remotes.Fail("bad_request")
+			end
+			if player.Character then
+				player.Character:SetAttribute("BikeHands", v)
+			end
 		elseif action == "Bluelight" or action == "Siren" then
 			if not model:GetAttribute("Emergency") then
 				return Remotes.Fail("not_emergency")

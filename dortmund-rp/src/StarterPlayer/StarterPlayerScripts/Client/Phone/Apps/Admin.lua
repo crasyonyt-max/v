@@ -13,6 +13,7 @@ local Notify = require(script.Parent.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Parent.Net)
 local Store = require(script.Parent.Parent.Parent.Store)
 local Phone = require(script.Parent.Parent.Phone)
+local News = require(script.Parent.News) :: any
 
 local New, T = Make.New, Make.Theme
 
@@ -293,6 +294,41 @@ local function vehiclesTab(root: ScrollingFrame)
 	end
 end
 
+-- News app posts (Game Admins): write a new one, delete old ones
+local function newsTab(root: ScrollingFrame)
+	local form = section(root, 1, "📰 " .. Store.T("news_new"))
+	local title = Make.TextBox(Store.T("news_title"), { Parent = form })
+	local text = Make.TextBox(Store.T("news_text"), {
+		Size = UDim2.new(1, 0, 0, 96),
+		MultiLine = true,
+		TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = form,
+	})
+	Make.Button(Store.T("news_post"), T.good, function()
+		local r = act("news_post", { title = title.Text, text = text.Text })
+		if r.ok then
+			Phone.Replace("admin", "admin_news")
+		end
+	end, { Parent = form })
+	local list = Make.Card({ LayoutOrder = 2, BackgroundTransparency = 1, Parent = root })
+	local function show()
+		Make.Clear(list)
+		News.RenderPosts(list, function(id: string)
+			local r = act("news_delete", { id = id })
+			if r.ok then
+				Phone.Replace("admin", "admin_news")
+			end
+		end, 0)
+	end
+	task.spawn(function()
+		News.Load()
+		if list.Parent then
+			show()
+		end
+	end)
+end
+
 local function inboxTab(root: ScrollingFrame)
 	local r = Net.Request("Admin.Inbox")
 	if not r.ok then
@@ -358,6 +394,7 @@ Phone.Register({
 		local tabs = { "admin_players", "admin_self", "admin_server", "admin_vehicles", "admin_logs" }
 		if isGA then
 			table.insert(tabs, 5, "admin_inbox")
+			table.insert(tabs, 5, "admin_news")
 		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"
 
@@ -389,6 +426,8 @@ Phone.Register({
 			vehiclesTab(root)
 		elseif current == "admin_inbox" then
 			inboxTab(root)
+		elseif current == "admin_news" then
+			newsTab(root)
 		elseif current == "admin_logs" then
 			logsTab(root)
 		end

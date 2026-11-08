@@ -20,6 +20,7 @@ end
 require(Client.Controllers.VehicleController)
 require(Client.Controllers.WorldController)
 require(Client.Controllers.AdminController)
+require(Client.Controllers.StuntPoses)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 

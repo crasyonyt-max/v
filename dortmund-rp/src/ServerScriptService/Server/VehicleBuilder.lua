@@ -446,6 +446,8 @@ local function visualWheel(model: Model, to: BasePart, y: number, z: number, r: 
 	end
 end
 
+local BIKE_DENSITY = 6
+
 -- Returns the model (unparented). `def` is a Vehicles catalog entry.
 function VehicleBuilder.Build(def: any, color: Color3?): Model
 	local scheme: Scheme? = if def.livery then SCHEMES[def.livery] else nil
@@ -462,7 +464,7 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		CanCollide = true,
 		Massless = false,
 		Transparency = 1,
-		CustomPhysicalProperties = PhysicalProperties.new(3, 0.3, 0.1),
+		CustomPhysicalProperties = PhysicalProperties.new(BIKE_DENSITY, 0.3, 0.1),
 	})
 	model.PrimaryPart = chassis
 
@@ -697,8 +699,16 @@ function VehicleBuilder.Build(def: any, color: Color3?): Model
 		{ name = "WheelRL", x = -px, y = R, z = zR, r = R, w = pw, front = false },
 		{ name = "WheelRR", x = px, y = R, z = zR, r = R, w = pw, front = false },
 	}
-	local mass = 1.4 * 0.8 * 5 * 3 + 4 * (math.pi * R * R * pw * 1.2) + 60
+	-- real assembly mass (chassis, wheels, knuckles) + the rider, so the torque fits
+	local mass = 1.4 * 0.8 * 5 * BIKE_DENSITY + 4 * (math.pi * R * R * pw * 1.2) + 2 * 2 + 15
 	VehicleBuilder.AddPhysics(model, chassis, def, wheelSpecs, mass, false)
+	-- rear-wheel drive: the front wheel only rolls (and helps a little when braking)
+	for _, w in { "WheelFL", "WheelFR" } do
+		local motor = (model:FindFirstChild(w) :: BasePart):FindFirstChild("Motor") :: HingeConstraint
+		local base = (motor:GetAttribute("BaseTorque") :: number) * 0.15
+		motor:SetAttribute("BaseTorque", base)
+		motor.MotorMaxTorque = base
+	end
 
 	-- Steering parts follow the left front knuckle, wheels spin with the left wheels
 	local knuckle: BasePart? = nil
