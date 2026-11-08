@@ -5,13 +5,13 @@ local Locations = {}
 Locations.Spawn = { -567.0, 544.4 }
 
 Locations.Jobs = {
-	Police = { title = "Polizeipräsidium", marker = { 36.5, 7075.6 }, garage = { 17.8, 7074.7 }, angle = -97.8 },
-	Fire = { title = "Feuer- und Rettungswache 1", marker = { 723.9, -1121.9 }, garage = { 738.2, -1126.9 }, angle = 70.8 },
-	Rettungsdienst = { title = "Rettungswache 1 (DRH)", marker = { 723.9, -1121.9 }, garage = { 738.2, -1126.9 }, angle = 70.8 },
-	Notarzt = { title = "NEF-Standort Klinikum Mitte", marker = { -479.4, 3508.5 }, garage = { -481.7, 3494.2 }, angle = -9.4 },
-	ADMC = { title = "ADMC Stützpunkt Markgrafenstraße", marker = { 1396.1, 6464.3 }, garage = { 1378.4, 6467.1 }, angle = 80.9 },
-	DXL = { title = "DXL Zustellbasis Nord", marker = { 1632.4, -858.4 }, garage = { 1646.6, -861.6 }, angle = -102.7 },
-	LKW = { title = "Spedition am Hafen", marker = { 2552.0, -513.1 }, garage = { 2572.3, -510.3 }, angle = -82.3 },
+	Police = { title = "Polizeiwache", marker = { 299.8, 7088.6 }, garage = { 299.8, 7088.6 }, angle = -97.8 },
+	Fire = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = 70.8 },
+	Rettungsdienst = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = 70.8 },
+	Notarzt = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = -9.4 },
+	ADMC = { title = "ADMC Stützpunkt", marker = { 2421.4, 6930.2 }, garage = { 2421.4, 6930.2 }, angle = 80.9 },
+	DXL = { title = "DXL Paketzentrum", marker = { 4543.7, 5794.6 }, garage = { 4543.7, 5794.6 }, angle = -102.7 },
+	LKW = { title = "Spedition Dortmund", marker = { 5678.5, -15.8 }, garage = { 5678.5, -15.8 }, angle = -82.3 },
 }
 
 Locations.Shops = {
@@ -47,6 +47,9 @@ Locations.Sites = {
 	Police = { x = 396.1, z = 7093.3, yaw = 87.18, width = 228.6, depth = 171.4 },
 	FireRescue = { x = 463.1, z = -1031.2, yaw = -70.82, width = 228.6, depth = 171.4 },
 	Tower = { x = -503.1, z = 463.7, yaw = -163.99, width = 114.3, depth = 114.3 },
+	LKW = { x = 5589.5, z = -93.0, yaw = -130.93, width = 285.7, depth = 214.3 },
+	DXL = { x = 4480.2, z = 5862.4, yaw = -43.11, width = 221.4, depth = 164.3 },
+	ADMC = { x = 2427.5, z = 7019.3, yaw = 3.93, width = 207.1, depth = 157.1 },
 }
 
 Locations.Bounds = { -3285.4, -1820.0, 6610.4, 7260.1 }

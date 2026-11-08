@@ -454,6 +454,64 @@ def main():
     else:
         print("no tower site found")
 
+    # ADMC / DXL / LKW: look inside real commercial / industrial areas for a free plot
+    def overlaps(site):
+        cx, cz, _, w, d = site
+        r = math.hypot(w, d) / 2
+        for o in sites.values():
+            if math.hypot(o[0] - cx, o[1] - cz) < r + math.hypot(o[3], o[4]) / 2 + 4:
+                return True
+        for st in stores:
+            if in_site(site, st[2], st[3], 10 / M_PER_STUD):
+                return True
+        return False
+
+    def area_at(lat, lon):
+        x0, z0 = project(lat, lon)
+        best = None
+        for wid, (nd, t) in ways.items():
+            lu = t.get("landuse")
+            if lu in ("industrial", "commercial", "retail") and len(nd) > 3:
+                pts = way_pts(wid)
+                if point_in_poly(x0, z0, pts):
+                    a = abs(poly_area(pts))
+                    if best is None or a < best[0]:
+                        best = (a, pts)
+        return best[1] if best else None
+
+    for key, (lat, lon), sizes_k in (
+        ("LKW", (51.51805, 7.48235), [(80, 60), (70, 54), (62, 48)]),
+        ("DXL", (51.50310, 7.47774), [(62, 46), (56, 42), (50, 38)]),
+        ("ADMC", (51.50056, 7.46886), [(58, 44), (52, 40), (46, 36), (40, 32)]),
+    ):
+        poly = area_at(lat, lon)
+        if not poly:
+            print("no area for", key)
+            continue
+        xs, zs = [p[0] for p in poly], [p[1] for p in poly]
+        cx0, cz0 = project(lat, lon)
+        step = 30 / M_PER_STUD
+        cand = []
+        gx = min(xs)
+        while gx <= max(xs):
+            gz = min(zs)
+            while gz <= max(zs):
+                if point_in_poly(gx, gz, poly):
+                    cand.append((math.hypot(gx - cx0, gz - cz0), gx, gz))
+                gz += step
+            gx += step
+        cand.sort()
+        found = None
+        for _, gx, gz in cand[:120]:
+            site = site_at_road(gx, gz, sizes_k)
+            if site and point_in_poly(site[0], site[1], poly) and not overlaps(site):
+                found = site
+                break
+        if found:
+            sites[key] = found
+        else:
+            print("no clear site for", key)
+
     def in_any_site(x, z):
         return any(in_site(st, x, z, 2 / M_PER_STUD) for st in sites.values())
 
@@ -668,8 +726,19 @@ def main():
         "LKW": ("Spedition am Hafen", by_name("Brügmannplatz")),
     }
     lines = []
+    SITE_OF = {"Police": "Police", "Fire": "FireRescue", "Rettungsdienst": "FireRescue", "Notarzt": "FireRescue", "ADMC": "ADMC", "DXL": "DXL", "LKW": "LKW"}
+    SITE_TITLE = {"Police": "Polizeiwache", "FireRescue": "Feuer- und Rettungswache 1", "ADMC": "ADMC Stützpunkt", "DXL": "DXL Paketzentrum", "LKW": "Spedition Dortmund"}
     for job, (title, (x, z)) in places.items():
         (mx, mz), (gx, gz), ang = spot(x, z)
+        site = sites.get(SITE_OF.get(job, ""))
+        if site:
+            # navigation target = the station's entrance on the street side
+            cx, cz, yaw, w_, d_ = site
+            a = math.radians(yaw)
+            fx, fz = -math.sin(a), -math.cos(a)  # local -Z in world space
+            mx, mz = r1(cx + fx * (d_ / 2 + 3 / M_PER_STUD)), r1(cz + fz * (d_ / 2 + 3 / M_PER_STUD))
+            gx, gz = mx, mz
+            title = SITE_TITLE[SITE_OF[job]]
         lines.append(f'\t{job} = {{ title = "{title}", marker = {{ {mx}, {mz} }}, garage = {{ {gx}, {gz} }}, angle = {ang} }},')
     shops = {
         "Handyland": ("Handyland (Westenhellweg)", by_name("Thier-Galerie")),

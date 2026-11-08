@@ -182,6 +182,10 @@ type StationDef = {
 	doorColor: Color3,
 	jobs: { { id: string, bays: number } },
 	police: boolean?,
+	staff: string?,
+	bayW: number?,
+	-- job-specific furniture: (model, garage frame, garage width, garage depth)
+	extras: ((Model, CFrame, number, number) -> ())?,
 }
 
 local function build(root: Instance, site: any, def: StationDef)
@@ -248,7 +252,7 @@ local function build(root: Instance, site: any, def: StationDef)
 	)
 	StoreBuilder.Npc(
 		m,
-		if def.police then "Wachtmeister" else "Wachabteilung",
+		def.staff or (if def.police then "Wachtmeister" else "Wachabteilung"),
 		bBase * CFrame.new(-bw / 4, 0.4, -bd / 2 + 15) * CFrame.Angles(0, math.pi, 0),
 		def.accent
 	)
@@ -372,7 +376,7 @@ local function build(root: Instance, site: any, def: StationDef)
 	for _, j in def.jobs do
 		totalBays += j.bays
 	end
-	local bayW = 16
+	local bayW = def.bayW or 16
 	local gw, gd, gh = math.min(W * 0.52, totalBays * bayW + 4), D * 0.6, 20
 	local gx, gz = W / 2 - gw / 2 - 4, -D / 2 + gd / 2 + 8
 	local gBase = at(gx, 0, gz)
@@ -487,6 +491,10 @@ local function build(root: Instance, site: any, def: StationDef)
 		}, true)
 	end
 
+	if def.extras then
+		def.extras(m, gBase, gw, gd)
+	end
+
 	-- flag poles at the entrance
 	for i = -1, 1 do
 		local p = at(-W / 2 + 6 + i * 4, 0, -D / 2 + 3)
@@ -505,6 +513,230 @@ local function build(root: Instance, site: any, def: StationDef)
 			p * CFrame.new(0, 19.5, 2.6),
 			if i == 0 then def.accent else Color3.fromRGB(240, 240, 240),
 			Enum.Material.Fabric
+		)
+	end
+end
+
+-- Job-specific furniture along the back of the garage hall (cars spawn in the front part).
+local BROWN = Color3.fromRGB(176, 128, 80)
+
+local function rack(m: Model, cf: CFrame, len: number, height: number, levels: number, goods: Color3)
+	box(
+		m,
+		"RackPost",
+		Vector3.new(0.4, height, 0.4),
+		cf * CFrame.new(-len / 2, height / 2, 0),
+		Color3.fromRGB(230, 120, 30),
+		Enum.Material.Metal
+	)
+	box(
+		m,
+		"RackPost",
+		Vector3.new(0.4, height, 0.4),
+		cf * CFrame.new(len / 2, height / 2, 0),
+		Color3.fromRGB(230, 120, 30),
+		Enum.Material.Metal
+	)
+	for i = 1, levels do
+		local y = i * height / (levels + 0.5)
+		box(
+			m,
+			"RackBeam",
+			Vector3.new(len, 0.3, 3.2),
+			cf * CFrame.new(0, y, 0),
+			Color3.fromRGB(40, 90, 170),
+			Enum.Material.Metal
+		)
+		for k = 0, math.floor(len / 3.4) - 1 do
+			box(
+				m,
+				"Goods",
+				Vector3.new(2.8, 2.2, 2.6),
+				cf * CFrame.new(-len / 2 + 2 + k * 3.4, y + 1.25, 0),
+				goods:Lerp(Color3.new(1, 1, 1), (k % 3) * 0.08),
+				Enum.Material.Cardboard,
+				{ CanCollide = false }
+			)
+		end
+	end
+end
+
+local function admcExtras(m: Model, g: CFrame, gw: number, gd: number)
+	local back = gd / 2 - 9
+	-- two car lifts at the back of the workshop
+	for _, x in { -gw / 4, gw / 4 } do
+		local lift = g * CFrame.new(x, 0.4, back)
+		for _, sx in { -1, 1 } do
+			box(
+				m,
+				"LiftPost",
+				Vector3.new(1, 12, 1),
+				lift * CFrame.new(sx * 5.5, 6, 0),
+				Color3.fromRGB(200, 30, 30),
+				Enum.Material.Metal
+			)
+			box(
+				m,
+				"LiftArm",
+				Vector3.new(4.5, 0.4, 0.6),
+				lift * CFrame.new(sx * 3.5, 3.5, -2),
+				Color3.fromRGB(60, 60, 64),
+				Enum.Material.Metal
+			)
+			box(
+				m,
+				"LiftArm",
+				Vector3.new(4.5, 0.4, 0.6),
+				lift * CFrame.new(sx * 3.5, 3.5, 2),
+				Color3.fromRGB(60, 60, 64),
+				Enum.Material.Metal
+			)
+		end
+		box(
+			m,
+			"LiftBeam",
+			Vector3.new(12, 0.8, 1),
+			lift * CFrame.new(0, 12.4, 0),
+			Color3.fromRGB(200, 30, 30),
+			Enum.Material.Metal
+		)
+	end
+	-- tool chests, tyre stacks, compressor
+	for i = 0, 3 do
+		box(
+			m,
+			"ToolChest",
+			Vector3.new(4, 4, 2),
+			g * CFrame.new(-gw / 2 + 4 + i * 5, 2.4, gd / 2 - 2),
+			Color3.fromRGB(200, 30, 30),
+			Enum.Material.Metal
+		)
+	end
+	for i = 0, 4 do
+		for k = 0, 3 do
+			box(
+				m,
+				"Tyre",
+				Vector3.new(0.9, 2.6, 2.6),
+				g * CFrame.new(gw / 2 - 3, 0.85 + k * 0.92, -gd / 2 + 26 + i * 3) * CFrame.Angles(0, 0, math.pi / 2),
+				Color3.fromRGB(25, 25, 27),
+				Enum.Material.Rubber,
+				{ Shape = Enum.PartType.Cylinder }
+			)
+		end
+	end
+	box(
+		m,
+		"Compressor",
+		Vector3.new(3, 3, 5),
+		g * CFrame.new(gw / 2 - 3, 1.9, gd / 2 - 6),
+		Color3.fromRGB(240, 200, 0),
+		Enum.Material.Metal
+	)
+end
+
+local function dxlExtras(m: Model, g: CFrame, gw: number, gd: number)
+	local back = gd / 2 - 4
+	for i = -1, 1 do
+		rack(m, g * CFrame.new(i * gw / 3.2, 0.4, back), gw / 3.6, 12, 3, BROWN)
+	end
+	-- conveyor belt with parcels
+	box(
+		m,
+		"Conveyor",
+		Vector3.new(gw * 0.7, 2.6, 2.4),
+		g * CFrame.new(0, 1.7, back - 9),
+		Color3.fromRGB(60, 62, 66),
+		Enum.Material.Metal
+	)
+	box(
+		m,
+		"Belt",
+		Vector3.new(gw * 0.7, 0.15, 2),
+		g * CFrame.new(0, 3.05, back - 9),
+		Color3.fromRGB(20, 20, 20),
+		Enum.Material.Rubber
+	)
+	for i = 0, math.floor(gw * 0.7 / 4) - 1 do
+		box(
+			m,
+			"Parcel",
+			Vector3.new(1.8, 1.2, 1.4),
+			g * CFrame.new(-gw * 0.35 + 2 + i * 4, 3.7, back - 9),
+			BROWN,
+			Enum.Material.Cardboard,
+			{ CanCollide = false }
+		)
+	end
+	for i = 0, 3 do
+		box(
+			m,
+			"Pallet",
+			Vector3.new(4, 0.5, 4),
+			g * CFrame.new(-gw / 2 + 5 + i * 6, 0.65, back - 16),
+			Color3.fromRGB(190, 160, 110),
+			Enum.Material.Wood
+		)
+		box(
+			m,
+			"ParcelStack",
+			Vector3.new(3.6, 3.2, 3.6),
+			g * CFrame.new(-gw / 2 + 5 + i * 6, 2.5, back - 16),
+			BROWN,
+			Enum.Material.Cardboard
+		)
+	end
+end
+
+local function lkwExtras(m: Model, g: CFrame, gw: number, gd: number)
+	local back = gd / 2 - 4
+	for i = -2, 2 do
+		rack(m, g * CFrame.new(i * gw / 5.2, 0.4, back), gw / 5.6, 16, 4, Color3.fromRGB(150, 120, 90))
+	end
+	-- forklift
+	local f = g * CFrame.new(gw / 2 - 10, 0.4, back - 14)
+	box(
+		m,
+		"ForkliftBody",
+		Vector3.new(3.6, 3, 5.5),
+		f * CFrame.new(0, 2, 0),
+		Color3.fromRGB(240, 180, 0),
+		Enum.Material.Metal
+	)
+	box(
+		m,
+		"ForkliftMast",
+		Vector3.new(3, 8, 0.5),
+		f * CFrame.new(0, 4.5, -3),
+		Color3.fromRGB(40, 40, 42),
+		Enum.Material.Metal
+	)
+	for _, sx in { -1, 1 } do
+		box(
+			m,
+			"Fork",
+			Vector3.new(0.4, 0.2, 4),
+			f * CFrame.new(sx * 0.9, 0.7, -5),
+			Color3.fromRGB(40, 40, 42),
+			Enum.Material.Metal
+		)
+	end
+	for i = 0, 5 do
+		box(
+			m,
+			"Pallet",
+			Vector3.new(4, 0.5, 4),
+			g * CFrame.new(-gw / 2 + 6 + i * 6, 0.65, back - 14),
+			Color3.fromRGB(190, 160, 110),
+			Enum.Material.Wood
+		)
+		box(
+			m,
+			"Freight",
+			Vector3.new(3.6, 3.6, 3.6),
+			g * CFrame.new(-gw / 2 + 6 + i * 6, 2.7, back - 14),
+			Color3.fromRGB(150 + i * 10, 120, 90),
+			Enum.Material.Cardboard
 		)
 	end
 end
@@ -531,6 +763,42 @@ function StationBuilder.Build()
 			accent = Color3.fromRGB(200, 20, 20),
 			doorColor = Color3.fromRGB(200, 20, 20),
 			jobs = { { id = "Fire", bays = 3 }, { id = "Rettungsdienst", bays = 2 }, { id = "Notarzt", bays = 1 } },
+		})
+	end
+	if sites.ADMC then
+		build(root, sites.ADMC, {
+			key = "ADMC",
+			title = "ADMC Stützpunkt",
+			accent = Color3.fromRGB(250, 205, 0),
+			doorColor = Color3.fromRGB(250, 205, 0),
+			jobs = { { id = "ADMC", bays = 4 } },
+			staff = "Werkstattmeister",
+			bayW = 18,
+			extras = admcExtras,
+		})
+	end
+	if sites.DXL then
+		build(root, sites.DXL, {
+			key = "DXL",
+			title = "DXL Paketzentrum",
+			accent = Color3.fromRGB(210, 20, 30),
+			doorColor = Color3.fromRGB(255, 204, 0),
+			jobs = { { id = "DXL", bays = 5 } },
+			staff = "Lagerist",
+			bayW = 16,
+			extras = dxlExtras,
+		})
+	end
+	if sites.LKW then
+		build(root, sites.LKW, {
+			key = "LKW",
+			title = "Spedition Dortmund",
+			accent = Color3.fromRGB(60, 120, 70),
+			doorColor = Color3.fromRGB(200, 200, 205),
+			jobs = { { id = "LKW", bays = 4 } },
+			staff = "Disponent",
+			bayW = 24,
+			extras = lkwExtras,
 		})
 	end
 end
