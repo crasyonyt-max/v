@@ -18,6 +18,7 @@ local Roles = require(script.Parent.Roles)
 local State = require(script.Parent.State)
 local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
+local ToolboxBuilder = require(script.Parent.ToolboxBuilder)
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
 local XPService = require(script.Parent.XPService)
 
@@ -252,6 +253,7 @@ local function spawnModel(
 	meta: { [string]: any }
 ): (boolean, string?)
 	VehicleService.Despawn(player)
+	ToolboxBuilder.WaitFor(def.id, 10)
 	local model = VehicleBuilder.Build(def, color)
 	local built = model.PrimaryPart :: BasePart
 	local cf = meta.SpawnAt or spawnCFrame(player, built.Size.X)

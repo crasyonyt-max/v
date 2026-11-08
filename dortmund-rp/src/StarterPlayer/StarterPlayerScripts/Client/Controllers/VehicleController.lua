@@ -205,8 +205,29 @@ end
 -- Input ------------------------------------------------------------------------------
 -- Touch: transparent pedals + steering buttons. Keyboard: W/S/A/D or arrows.
 -- Gamepad: the seat's own values. Steering is smoothed and re-centres by itself.
-local isTouch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+-- every touchscreen gets the buttons (some tablets also report a keyboard)
+local isTouch = UserInputService.TouchEnabled
 local touch = { gas = false, brake = false, left = false, right = false }
+-- which finger (InputObject) holds each button, so a lost "release" can never stick
+local heldBy: { [string]: InputObject } = {}
+local buttons: { [string]: TextButton } = {}
+
+local function release(key: string)
+	heldBy[key] = nil
+	(touch :: any)[key] = false
+	local b = buttons[key]
+	if b then
+		b.BackgroundTransparency = 0.82
+	end
+end
+
+UserInputService.InputEnded:Connect(function(input)
+	for key, held in heldBy do
+		if held == input then
+			release(key)
+		end
+	end
+end)
 local steerState, throttleState = 0, 0
 
 local touchGui = New("ScreenGui", {
@@ -232,22 +253,20 @@ local function pedal(name: string, text: string, size: Vector2, position: UDim2,
 		AutoButtonColor = false,
 		Parent = touchGui,
 	}, { Make.Corner(18), Make.Stroke(Color3.new(1, 1, 1), 2, 0.6) })
+	buttons[key] = b
 	b.InputBegan:Connect(function(input)
 		if
 			input.UserInputType == Enum.UserInputType.Touch
 			or input.UserInputType == Enum.UserInputType.MouseButton1
 		then
+			heldBy[key] = input;
 			(touch :: any)[key] = true
 			b.BackgroundTransparency = 0.6
 		end
 	end)
 	b.InputEnded:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.Touch
-			or input.UserInputType == Enum.UserInputType.MouseButton1
-		then
-			(touch :: any)[key] = false
-			b.BackgroundTransparency = 0.82
+		if heldBy[key] == input then
+			release(key)
 		end
 	end)
 	return b
@@ -308,17 +327,24 @@ local function keyDown(...: Enum.KeyCode): boolean
 end
 
 local function readInput(vseat: VehicleSeat, dt: number, speedRatio: number): (number, number)
-	local rawT, rawS = 0, 0
-	if isTouch then
-		rawT = (if touch.gas then 1 else 0) - (if touch.brake then 1 else 0)
-		rawS = (if touch.right then 1 else 0) - (if touch.left then 1 else 0)
-	else
-		local kT = (if keyDown(Enum.KeyCode.W, Enum.KeyCode.Up) then 1 else 0)
-			- (if keyDown(Enum.KeyCode.S, Enum.KeyCode.Down) then 1 else 0)
-		local kS = (if keyDown(Enum.KeyCode.D, Enum.KeyCode.Right) then 1 else 0)
-			- (if keyDown(Enum.KeyCode.A, Enum.KeyCode.Left) then 1 else 0)
-		rawT = if kT ~= 0 then kT else vseat.ThrottleFloat
-		rawS = if kS ~= 0 then kS else vseat.SteerFloat
+	-- safety net: a held button whose finger is gone is released
+	for key, input in heldBy do
+		if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+			release(key)
+		end
+	end
+	local tT = (if touch.gas then 1 else 0) - (if touch.brake then 1 else 0)
+	local tS = (if touch.right then 1 else 0) - (if touch.left then 1 else 0)
+	local kT = (if keyDown(Enum.KeyCode.W, Enum.KeyCode.Up) then 1 else 0)
+		- (if keyDown(Enum.KeyCode.S, Enum.KeyCode.Down) then 1 else 0)
+	local kS = (if keyDown(Enum.KeyCode.D, Enum.KeyCode.Right) then 1 else 0)
+		- (if keyDown(Enum.KeyCode.A, Enum.KeyCode.Left) then 1 else 0)
+	local rawT = if tT ~= 0 then tT elseif kT ~= 0 then kT else 0
+	local rawS = if tS ~= 0 then tS elseif kS ~= 0 then kS else 0
+	-- gamepad only: the seat's analogue values (ignored otherwise, they can lag / stick)
+	if rawT == 0 and rawS == 0 and UserInputService.GamepadEnabled and not isTouch then
+		rawT = vseat.ThrottleFloat
+		rawS = if math.abs(vseat.SteerFloat) > 0.15 then vseat.SteerFloat else 0
 	end
 	-- steering eases in (slower at speed) and springs back to centre
 	local inRate = 2.6 - 1.4 * speedRatio
@@ -351,6 +377,9 @@ local function stop()
 	motors, steers = {}, {}
 	gui.Enabled = false
 	touchGui.Enabled = false
+	for key in touch do
+		release(key)
+	end
 	setDefaultControls(true)
 	steerState, throttleState = 0, 0
 end

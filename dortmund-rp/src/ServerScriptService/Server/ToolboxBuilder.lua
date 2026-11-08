@@ -16,24 +16,46 @@ local ToolboxBuilder = {}
 
 local templates: { [number]: Model } = {}
 
+local loading: { [number]: boolean } = {}
+
+local function loadOne(modelId: number, assetId: number)
+	loading[modelId] = true
+	for attempt = 1, 4 do
+		local ok, asset = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if ok and asset then
+			local car = asset:FindFirstChild("Car", true)
+			if car and car:IsA("Model") then
+				car.Parent = nil
+				templates[modelId] = car
+				loading[modelId] = nil
+				return
+			end
+		end
+		warn(string.format("[ToolboxBuilder] body %d load attempt %d failed: %s", modelId, attempt, tostring(asset)))
+		task.wait(2 * attempt)
+	end
+	loading[modelId] = nil
+end
+
 function ToolboxBuilder.Start()
 	for modelId, info in ToolboxCars :: any do
 		if info.assetId and info.assetId ~= 0 then
-			task.spawn(function()
-				local ok, asset = pcall(function()
-					return InsertService:LoadAsset(info.assetId)
-				end)
-				if ok and asset then
-					local car = asset:FindFirstChild("Car", true)
-					if car and car:IsA("Model") then
-						car.Parent = nil
-						templates[modelId] = car
-						return
-					end
-				end
-				warn("[ToolboxBuilder] could not load body " .. tostring(modelId) .. ": " .. tostring(asset))
-			end)
+			task.spawn(loadOne, modelId, info.assetId)
 		end
+	end
+end
+
+-- Spawning waits for a mapped body so the same car never looks different between spawns.
+function ToolboxBuilder.WaitFor(vehicleId: string, timeout: number)
+	local map = (CarModels :: any)[vehicleId]
+	if not map then
+		return
+	end
+	local deadline = os.clock() + timeout
+	while not templates[map[1]] and loading[map[1]] and os.clock() < deadline do
+		task.wait(0.2)
 	end
 end
 
