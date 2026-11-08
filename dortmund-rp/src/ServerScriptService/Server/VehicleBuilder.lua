@@ -477,6 +477,7 @@ local ADMC_YELLOW = Color3.fromRGB(250, 205, 0)
 local DXL_YELLOW = Color3.fromRGB(255, 204, 0)
 local SCHEMES: { [string]: { [string]: any } } = {
 	Police = {
+		ToolboxPaint = POL_BLUE,
 		Body = SILVER,
 		SideLow = SILVER,
 		SideMid = NEON_YELLOW,
@@ -487,6 +488,7 @@ local SCHEMES: { [string]: { [string]: any } } = {
 		reflective = true,
 	},
 	Fire = {
+		ToolboxPaint = SIGNAL_RED,
 		Body = SIGNAL_RED,
 		SideLow = SIGNAL_RED,
 		SideMid = SNOW,
@@ -497,6 +499,7 @@ local SCHEMES: { [string]: { [string]: any } } = {
 		reflective = true,
 	},
 	Rescue = {
+		ToolboxPaint = SNOW,
 		Body = SNOW,
 		SideLow = NEON_YELLOW,
 		SideMid = Color3.fromRGB(235, 40, 30),
@@ -509,6 +512,7 @@ local SCHEMES: { [string]: { [string]: any } } = {
 	ADMC = { Body = ADMC_YELLOW, SideLow = Color3.fromRGB(20, 20, 22) },
 	DXL = { Body = DXL_YELLOW, SideLow = Color3.fromRGB(210, 20, 30) },
 	Admin = {
+		ToolboxPaint = Color3.fromRGB(255, 115, 0),
 		Body = Color3.fromRGB(255, 115, 0),
 		SideLow = Color3.fromRGB(20, 20, 22),
 		SideMid = Color3.fromRGB(255, 160, 40),

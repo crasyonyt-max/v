@@ -425,6 +425,49 @@ for id, m in CarModels do
 		model:Destroy()
 	end)
 end
+-- Real cleaned models (build/cars/*.rbxm, made by tools/toolbox/publish_cars.py)
+for modelId in ToolboxCars do
+	local path = "build/cars/" .. tostring(modelId) .. ".rbxm"
+	if fs.isFile(path) then
+		local ok, insts = pcall(roblox.deserializeModel, fs.readFile(path))
+		if ok and insts[1] then
+			ToolboxBuilder._inject(modelId, insts[1])
+		end
+	end
+end
+for id, m in CarModels do
+	test("real body sane " .. id, function()
+		local def = Vehicles.ById[id]
+		local model = ToolboxBuilder.Build(def, nil, VehicleBuilder, {}, {})
+		assert(model, "build failed")
+		local wheels = {}
+		for _, d in model:GetChildren() do
+			if string.match(d.Name, "^Wheel[FR][LR]$") then
+				wheels[d] = d.CFrame.Position
+			end
+		end
+		local height = 0
+		for _, d in model:GetDescendants() do
+			if d.ClassName == "WeldConstraint" then
+				local base, piece = d.Part0, d.Part1
+				if wheels[base] then
+					local dist = (piece.CFrame.Position - wheels[base]).Magnitude
+					assert(
+						dist < base.Size.Y * 0.6,
+						string.format("%s: piece %s %.1f studs from its wheel", id, piece.Name, dist)
+					)
+				end
+			end
+			if d:IsA("BasePart") then
+				local y = d.CFrame.Position.Y
+				assert(y > -2 and y < 40, string.format("%s: part %s at y=%.1f", id, d.Name, y))
+				height = math.max(height, y)
+			end
+		end
+		model:Destroy()
+	end)
+end
+
 test("real proportions: hypercars lower than vans and SUVs", function()
 	assert(heights.koenigshaus_jesco < 1.45, "Jesko too tall: " .. heights.koenigshaus_jesco)
 	assert(heights.koenigshaus_jesco < heights.vk_tiguar, "Jesko taller than an SUV")

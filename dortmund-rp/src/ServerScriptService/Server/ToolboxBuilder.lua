@@ -134,25 +134,48 @@ function ToolboxBuilder.Build(
 	model.Name = def.name
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 
-	-- wheels from the model (scaled)
+	-- wheels: centred on the model's own tyres (measured from the template, scaled)
 	local wheelR = 0
 	local specs = {}
 	local trackHalf = W * 0.4
+	local liftFromInfo = info.wheels.FL and (info.wheels.FL[4] * s - info.wheels.FL[2] * s) or 0
 	for _, tag in { "FL", "FR", "RL", "RR" } do
 		local w = info.wheels[tag]
 		if w then
-			local r = w[4] * s
+			-- centre and radius from the tagged tyre / rim pieces themselves
+			local minV, maxV = nil, nil
+			for _, src in template:GetChildren() do
+				if src:IsA("BasePart") and src:GetAttribute("Wheel") == tag then
+					local n = string.lower(src.Name)
+					if not (string.find(n, "caliper") or string.find(n, "brake") or string.find(n, "fixed")) then
+						local c, sz = src.CFrame.Position * s, src.Size * s
+						local half = math.max(sz.X, sz.Y, sz.Z) / 2
+						local lo, hi = c - Vector3.one * half, c + Vector3.one * half
+						minV = if minV then minV:Min(lo) else lo
+						maxV = if maxV then maxV:Max(hi) else hi
+					end
+				end
+			end
+			local cx, cy, cz, r = w[1] * s, w[2] * s, w[3] * s, w[4] * s
+			if minV and maxV then
+				local ctr = (minV + maxV) / 2
+				-- trust the measured centre only if it agrees with the analysis (guards odd models)
+				if (Vector3.new(ctr.X, 0, ctr.Z) - Vector3.new(cx, 0, cz)).Magnitude < r * 1.2 then
+					cx, cy, cz = ctr.X, ctr.Y, ctr.Z
+				end
+			end
 			wheelR = math.max(wheelR, r)
-			trackHalf = math.max(trackHalf, math.abs(w[1] * s))
+			trackHalf = math.max(trackHalf, math.abs(cx))
 			table.insert(specs, {
 				name = "Wheel" .. tag,
 				tag = tag,
-				x = w[1] * s,
+				x = cx,
 				y = r,
-				z = w[3] * s,
+				z = cz,
 				r = r,
 				w = math.max(0.8, r * 0.55),
 				front = string.sub(tag, 1, 1) == "F",
+				centreY = cy,
 			})
 		end
 	end
@@ -160,10 +183,9 @@ function ToolboxBuilder.Build(
 		return nil
 	end
 	-- the body sits so the wheels touch the ground at y = 0
-	local lift = 0
-	do
-		local w = info.wheels.FL
-		lift = w[4] * s - w[2] * s
+	local lift = specs[1].r - specs[1].centreY
+	if math.abs(lift - liftFromInfo) > specs[1].r then
+		lift = liftFromInfo
 	end
 
 	-- collision / mass chassis (invisible)
@@ -197,7 +219,7 @@ function ToolboxBuilder.Build(
 			p.CanQuery = false
 			p.Massless = true
 			if p:GetAttribute("Paint") then
-				p.Color = if scheme then scheme.Body else paint
+				p.Color = if scheme then (scheme.ToolboxPaint or scheme.Body) else paint
 				if scheme then
 					p:SetAttribute("Paint", nil)
 				end
@@ -325,50 +347,10 @@ function ToolboxBuilder.Build(
 	builder.MakePlate(model, "PlateRear", CFrame.new(0, math.max(clear + 0.5, ry - 0.7), rz + 0.06), Enum.NormalId.Back)
 	weld(chassis, model:FindFirstChild("PlateRear") :: BasePart)
 
-	-- livery stripes + text on service / admin cars
-	local sideX = trackHalf + specs[1].w / 2 + 0.12
-	if scheme then
-		for _, side in { -1, 1 } do
-			local face = if side < 0 then Enum.NormalId.Left else Enum.NormalId.Right
-			local y0 = clear + bodyH * 0.55
-			weld(
-				chassis,
-				part(
-					model,
-					"Stripe",
-					Vector3.new(0.05, bodyH * 0.22, L * 0.62),
-					CFrame.new(side * sideX, y0, 0),
-					scheme.SideMid or scheme.Body,
-					{ Material = if scheme.reflective then Enum.Material.Neon else Enum.Material.SmoothPlastic }
-				)
-			)
-			if scheme.SideHigh and scheme.SideHigh ~= scheme.Body then
-				weld(
-					chassis,
-					part(
-						model,
-						"Stripe2",
-						Vector3.new(0.05, bodyH * 0.3, L * 0.62),
-						CFrame.new(side * sideX, y0 + bodyH * 0.27, 0),
-						scheme.SideHigh
-					)
-				)
-			end
-			local text = liveryText[def.livery]
-			if text and text.text then
-				local panel = part(
-					model,
-					"LiveryText",
-					Vector3.new(0.05, bodyH * 0.24, math.min(L * 0.45, 9)),
-					CFrame.new(side * (sideX + 0.03), y0 + bodyH * 0.27, 0),
-					Color3.new(1, 1, 1),
-					{ Transparency = 1 }
-				)
-				weld(chassis, panel)
-				builder.TextPanel(panel, face, text.text, Color3.new(1, 1, 1))
-			end
-		end
-	end
+	-- (no side stripes / text on Creator Store bodies: their curved sides are unknown,
+	-- so stripes would float. The livery colour goes on the paint instead.)
+	local _ = trackHalf
+	local _ = liveryText
 
 	-- blue lights + siren on emergency vehicles (roof bar)
 	if def.emergency then
@@ -422,12 +404,31 @@ function ToolboxBuilder.Build(
 	-- weld body pieces: wheel pieces to their physics wheel (so they turn), the rest to the chassis
 	local mass = W * bodyH * L * 0.6 + 60
 	builder.AddPhysics(model, chassis, def, specs, mass, false)
+	local byTag = {}
+	for _, sp in specs do
+		byTag[sp.tag] = sp
+	end
 	for _, p in model:GetChildren() do
 		if p:IsA("BasePart") and p ~= chassis and not p:FindFirstChildOfClass("WeldConstraint") then
-			local tag = p:GetAttribute("Wheel")
-			local target = if typeof(tag) == "string" then model:FindFirstChild("Wheel" .. tag) else nil
 			if p.Name ~= "Knuckle" and not string.match(p.Name, "^Wheel[FR][LR]$") then
-				weld(if target and target:IsA("BasePart") then target else chassis, p)
+				local tag = p:GetAttribute("Wheel")
+				local sp = if typeof(tag) == "string" then byTag[tag] else nil
+				local target: BasePart = chassis
+				if sp then
+					local n = string.lower(p.Name)
+					local wheelPart = model:FindFirstChild(sp.name) :: BasePart?
+					local fixed = string.find(n, "caliper") or string.find(n, "brake") or string.find(n, "fixed")
+					local dist = (p.CFrame.Position - Vector3.new(sp.x, sp.y, sp.z)).Magnitude
+					if wheelPart and not fixed and dist < sp.r * 1.1 then
+						target = wheelPart -- turns with the wheel
+					else
+						-- fixed parts ride on the knuckle (front, steers) or the chassis (rear)
+						local knuckle = wheelPart and wheelPart:FindFirstChild("NoCollisionConstraint")
+						local _ = knuckle
+						target = chassis
+					end
+				end
+				weld(target, p)
 			end
 		end
 	end
