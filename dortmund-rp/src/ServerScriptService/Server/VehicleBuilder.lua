@@ -507,6 +507,16 @@ local SCHEMES: { [string]: { [string]: any } } = {
 	},
 	ADMC = { Body = ADMC_YELLOW, SideLow = Color3.fromRGB(20, 20, 22) },
 	DXL = { Body = DXL_YELLOW, SideLow = Color3.fromRGB(210, 20, 30) },
+	Admin = {
+		Body = Color3.fromRGB(255, 115, 0),
+		SideLow = Color3.fromRGB(20, 20, 22),
+		SideMid = Color3.fromRGB(255, 160, 40),
+		SideHigh = Color3.fromRGB(255, 115, 0),
+		Hood = Color3.fromRGB(20, 20, 22),
+		Roof = Color3.fromRGB(20, 20, 22),
+		Deck = Color3.fromRGB(255, 115, 0),
+		reflective = true,
+	},
 }
 
 local LIVERY = {
@@ -531,6 +541,12 @@ local LIVERY = {
 	},
 	ADMC = { stripe = TRIM, text = "ADMC Pannenhilfe", textColor = TRIM, roof = true },
 	DXL = { stripe = Color3.fromRGB(210, 20, 30), text = "DXL", textColor = Color3.fromRGB(210, 20, 30), roof = false },
+	Admin = {
+		stripe = Color3.fromRGB(20, 20, 22),
+		text = "ADMIN",
+		textColor = Color3.fromRGB(20, 20, 22),
+		roof = false,
+	},
 	Unmarked = { roof = false },
 }
 

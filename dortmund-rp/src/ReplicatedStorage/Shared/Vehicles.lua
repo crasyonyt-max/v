@@ -326,6 +326,7 @@ local function admin(level: string, id: string, name: string, body: string, spee
 		name = name,
 		category = "Admin",
 		adminLevel = level,
+		livery = "Admin",
 		price = 0,
 		body = body,
 		speed = speed,
