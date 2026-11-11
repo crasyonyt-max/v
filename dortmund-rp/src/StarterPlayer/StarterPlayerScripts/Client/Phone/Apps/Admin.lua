@@ -165,7 +165,12 @@ local function playersTab(root: ScrollingFrame)
 			return
 		end
 		for i, info in r.players do
-			local badge = if info.rank >= GAME_ADMIN then " 🛡️" elseif info.rank >= 1 then " ⭐" else ""
+			local badge = if info.rank >= 5
+				then " 👑"
+				elseif info.rank >= 4 then " 💠"
+				elseif info.rank >= GAME_ADMIN then " 🛡️"
+				elseif info.rank >= 1 then " ⭐"
+				else ""
 			Make.CardButton({ LayoutOrder = i, Parent = root }, {
 				Make.Label(info.display .. badge, 14, T.text, T.bold),
 				Make.Label("@" .. info.name .. " · " .. Jobs.Name(info.job, Store.Lang()), 12, T.sub, T.font),

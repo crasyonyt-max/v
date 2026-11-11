@@ -7,6 +7,15 @@ local Config = {}
 Config.GameName = "Emergency Dortmund"
 Config.Version = "0.1.0"
 
+-- OWNER: the highest rank. Nobody can kick or ban the owner.
+Config.OwnerId = 10396317047
+
+-- CO-OWNERS: everything a Game Admin can do, and they outrank Game Admins
+-- (they can ban everyone except the owner; only the owner can ban them).
+Config.CoOwners = {
+	3559943151, -- samder_nervt
+}
+
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {

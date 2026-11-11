@@ -1,7 +1,8 @@
 --!strict
 -- Who is allowed to do what. Always decided on the server.
---   Rank 4: experience owner
---   Rank 3: Game Admin (Config.GameAdmins / group owner) -> whole game
+--   Rank 5: owner (Config.OwnerId / experience or group owner) -> nobody can target them
+--   Rank 4: Co-Owner (Config.CoOwners) -> like a Game Admin, outranks Game Admins
+--   Rank 3: Game Admin (Config.GameAdmins) -> whole game
 --   Rank 2: server owner (private server) -> own server only
 --   Rank 1: appointed Server Admin -> own server only
 --   Rank 0: player
@@ -13,7 +14,8 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local Roles = {}
 
-Roles.OWNER = 4
+Roles.OWNER = 5
+Roles.CO_OWNER = 4
 Roles.GAME_ADMIN = 3
 Roles.SERVER_OWNER = 2
 Roles.SERVER_ADMIN = 1
@@ -26,6 +28,30 @@ local reservedOwnerId: number? = nil -- set by the server browser (phase 2) for 
 local whitelist: { [number]: boolean } = {}
 for _, id in Config.GameAdmins do
 	whitelist[id] = true
+end
+local coOwners: { [number]: boolean } = {}
+for _, id in Config.CoOwners do
+	coOwners[id] = true
+end
+
+-- Rank from the UserId alone (also for offline players, e.g. bans).
+local function staticRank(id: number): number
+	if id == Config.OwnerId or (game.CreatorType == Enum.CreatorType.User and id == game.CreatorId) then
+		return Roles.OWNER
+	end
+	if coOwners[id] then
+		return Roles.CO_OWNER
+	end
+	if whitelist[id] then
+		return Roles.GAME_ADMIN
+	end
+	if Roles.ServerOwnerId() == id then
+		return Roles.SERVER_OWNER
+	end
+	if appointed[id] then
+		return Roles.SERVER_ADMIN
+	end
+	return Roles.PLAYER
 end
 
 local function isOwner(player: Player): boolean
@@ -66,16 +92,7 @@ function Roles.Rank(player: Player): number
 	if cached then
 		return Roles.OWNER
 	end
-	if whitelist[id] then
-		return Roles.GAME_ADMIN
-	end
-	if Roles.ServerOwnerId() == id then
-		return Roles.SERVER_OWNER
-	end
-	if appointed[id] then
-		return Roles.SERVER_ADMIN
-	end
-	return Roles.PLAYER
+	return staticRank(id)
 end
 
 function Roles.IsGameAdmin(player: Player): boolean
@@ -94,20 +111,14 @@ function Roles.CanTarget(actor: Player, target: Player): boolean
 	return Roles.Rank(actor) > Roles.Rank(target)
 end
 
+-- For bans by UserId (target may be offline): only someone of a higher rank.
 function Roles.CanTargetUserId(actor: Player, userId: number): boolean
 	if actor.UserId == userId then
 		return false
 	end
-	if whitelist[userId] then
-		return Roles.Rank(actor) >= Roles.OWNER
-	end
-	if game.CreatorType == Enum.CreatorType.User and userId == game.CreatorId then
-		return false
-	end
-	if Roles.ServerOwnerId() == userId then
-		return Roles.Rank(actor) >= Roles.GAME_ADMIN
-	end
-	return Roles.Rank(actor) >= Roles.SERVER_ADMIN
+	local online = Players:GetPlayerByUserId(userId)
+	local target = if online then Roles.Rank(online) else staticRank(userId)
+	return Roles.Rank(actor) > math.max(target, Roles.PLAYER)
 end
 
 function Roles.Appoint(userId: number, value: boolean)
@@ -125,8 +136,10 @@ end
 -- Public role label for UI (purely cosmetic on the client).
 function Roles.Refresh(player: Player)
 	local rank = Roles.Rank(player)
-	local label = if rank >= Roles.GAME_ADMIN
-		then "GameAdmin"
+	local label = if rank >= Roles.OWNER
+		then "Owner"
+		elseif rank >= Roles.CO_OWNER then "CoOwner"
+		elseif rank >= Roles.GAME_ADMIN then "GameAdmin"
 		elseif rank >= Roles.SERVER_ADMIN then "ServerAdmin"
 		else ""
 	player:SetAttribute("Role", label)
