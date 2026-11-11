@@ -3,12 +3,14 @@
 -- Everyone is in sync: the song starts where it is "now", also for late joiners.
 -- A small 🔊 button lets each player mute it for themselves.
 
+local ContentProvider = game:GetService("ContentProvider")
 local Players = game:GetService("Players")
 local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local Make = require(script.Parent.Parent.UI.Make)
 local Net = require(script.Parent.Parent.Net)
+local Store = require(script.Parent.Parent.Store)
 
 local New, T = Make.New, Make.Theme
 
@@ -16,6 +18,7 @@ local EventMusic = {}
 
 local sound = New("Sound", { Name = "EventMusic", Parent = SoundService })
 local playingKey = ""
+local blockedKey = "" -- this song could not be loaded: keep showing the warning
 local muted = false
 local current: { [string]: any }? = nil
 
@@ -75,7 +78,9 @@ local function play(m: { [string]: any }?)
 		return
 	end
 	local key = tostring(m.id) .. "@" .. tostring(m.started)
-	title.Text = "🎵 " .. tostring(m.name)
+	if key ~= blockedKey then
+		title.Text = "🎵 " .. tostring(m.name)
+	end
 	gui.Enabled = true
 	applyVolume()
 	if key == playingKey then
@@ -87,12 +92,30 @@ local function play(m: { [string]: any }?)
 	sound.SoundId = "rbxassetid://" .. tostring(m.id)
 	sound.Looped = m.loop == true
 	task.spawn(function()
-		if not sound.IsLoaded then
-			sound.Loaded:Wait()
+		-- load it and find out if Roblox lets this game use the audio
+		local status: Enum.AssetFetchStatus? = nil
+		pcall(function()
+			ContentProvider:PreloadAsync({ sound }, function(_, fetchStatus)
+				status = fetchStatus
+			end)
+		end)
+		if playingKey ~= key then
+			return
+		end
+		if status ~= nil and status ~= Enum.AssetFetchStatus.Success then
+			blockedKey = key
+			title.Text = "⚠️ " .. Store.T("music_blocked") .. " (" .. tostring(m.id) .. ")"
+			warn("[Music] audio " .. tostring(m.id) .. " could not be loaded: " .. tostring(status))
+			return
+		end
+		local waited = 0
+		while not sound.IsLoaded and waited < 10 do
+			waited += task.wait(0.25)
 		end
 		if playingKey ~= key then
 			return
 		end
+		sound:Play()
 		-- join in where everyone else is
 		local offset = math.max(0, Workspace:GetServerTimeNow() - (tonumber(m.started) or 0))
 		local length = sound.TimeLength
@@ -100,12 +123,14 @@ local function play(m: { [string]: any }?)
 			if m.loop then
 				offset %= length
 			elseif offset >= length then
+				sound:Stop()
 				gui.Enabled = false -- the song is already over
 				return
 			end
+			if offset > 1 then
+				sound.TimePosition = offset
+			end
 		end
-		sound.TimePosition = offset
-		sound:Play()
 	end)
 end
 

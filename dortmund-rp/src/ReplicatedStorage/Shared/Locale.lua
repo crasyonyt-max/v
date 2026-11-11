@@ -269,6 +269,10 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_loop_on = { de = "Wiederholen: an", en = "Repeat: on" },
 	aa_loop_off = { de = "Wiederholen: aus", en = "Repeat: off" },
 	aa_play = { de = "Abspielen", en = "Play" },
+	music_blocked = {
+		de = "Audio darf in diesem Spiel nicht abgespielt werden",
+		en = "This audio is not allowed in this game",
+	},
 	aa_save_song = { de = "Liste", en = "List" },
 	bad_audio = { de = "Ungültige Audio-ID.", en = "Invalid audio ID." },
 	not_audio = {
