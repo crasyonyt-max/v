@@ -6,6 +6,7 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local MessagingService = game:GetService("MessagingService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,17 +29,20 @@ local EventService = {}
 local TOPIC = "AAEvents"
 local KEY = "state"
 local MAX_DROPS = 10
+local MAX_SONGS = 60
 
 export type Boost = { m: number, ends: number }
 export type Drop = { id: string, x: number, z: number, kind: string, value: any, ends: number }
-type Saved = { cash: Boost?, xp: Boost?, drops: { Drop } }
+export type Song = { id: number, name: string }
+export type Music = { id: number, name: string, started: number, vol: number, loop: boolean }
+type Saved = { cash: Boost?, xp: Boost?, drops: { Drop }, music: Music?, songs: { Song } }
 
 local store: DataStore? = nil
 pcall(function()
 	store = DataStoreService:GetDataStore(Config.DataStoreName .. "_Events")
 end)
 
-local saved: Saved = { drops = {} }
+local saved: Saved = { drops = {}, songs = {} }
 
 -- Rewards -------------------------------------------------------------------------
 
@@ -122,6 +126,8 @@ local function snapshot(): { [string]: any }
 		xp = { m = Boosts.XP(), ends = xpEnds },
 		weekly = Boosts.WeeklyEnds(os.time()) ~= nil,
 		drops = drops,
+		music = saved.music,
+		songs = saved.songs,
 	}
 end
 EventService.Snapshot = snapshot
@@ -282,7 +288,7 @@ end
 -- Saving + sharing --------------------------------------------------------------------
 
 local function clean(v: any): Saved
-	local out: Saved = { drops = {} }
+	local out: Saved = { drops = {}, songs = {} }
 	if typeof(v) ~= "table" then
 		return out
 	end
@@ -297,6 +303,23 @@ local function clean(v: any): Saved
 		for _, d in v.drops do
 			if typeof(d) == "table" and typeof(d.id) == "string" and typeof(d.ends) == "number" and d.ends > now then
 				table.insert(out.drops, d)
+			end
+		end
+	end
+	local m = v.music
+	if typeof(m) == "table" and typeof(m.id) == "number" and typeof(m.started) == "number" then
+		out.music = {
+			id = m.id,
+			name = tostring(m.name or ""),
+			started = m.started,
+			vol = math.clamp(tonumber(m.vol) or 0.5, 0, 1),
+			loop = m.loop == true,
+		}
+	end
+	if typeof(v.songs) == "table" then
+		for _, song in v.songs do
+			if typeof(song) == "table" and typeof(song.id) == "number" and #out.songs < MAX_SONGS then
+				table.insert(out.songs, { id = song.id, name = tostring(song.name or "") })
 			end
 		end
 	end
@@ -417,6 +440,71 @@ function EventService.RemoveDrop(id: string): boolean
 		for i, d in s.drops do
 			if d.id == id then
 				table.remove(s.drops, i)
+				return
+			end
+		end
+	end)
+end
+
+-- Music (global boombox) -------------------------------------------------------------
+
+-- Looks up a Roblox audio id. Returns its name, or nil if it isn't an audio asset.
+local function audioName(id: number): string?
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(id, Enum.InfoType.Asset)
+	end)
+	if not ok or typeof(info) ~= "table" or info.AssetTypeId ~= 3 then
+		return nil
+	end
+	return string.sub(tostring(info.Name or ("Audio " .. id)), 1, 60)
+end
+
+function EventService.PlayMusic(id: number, volume: number, loop: boolean): (boolean, string?)
+	local name = audioName(id)
+	if not name then
+		return false, "not_audio"
+	end
+	local ok = update(function(s)
+		s.music = { id = id, name = name, started = os.time(), vol = volume, loop = loop }
+	end)
+	return ok, nil
+end
+
+function EventService.StopMusic(): boolean
+	return update(function(s)
+		s.music = nil
+	end)
+end
+
+function EventService.AddSong(id: number): (boolean, string?)
+	local name = audioName(id)
+	if not name then
+		return false, "not_audio"
+	end
+	local full = false
+	local ok = update(function(s)
+		for _, song in s.songs do
+			if song.id == id then
+				return
+			end
+		end
+		if #s.songs >= MAX_SONGS then
+			full = true
+			return
+		end
+		table.insert(s.songs, { id = id, name = name })
+	end)
+	if full then
+		return false, "too_many_songs"
+	end
+	return ok, nil
+end
+
+function EventService.RemoveSong(id: number): boolean
+	return update(function(s)
+		for i, song in s.songs do
+			if song.id == id then
+				table.remove(s.songs, i)
 				return
 			end
 		end

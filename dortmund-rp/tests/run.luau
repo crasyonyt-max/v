@@ -476,6 +476,14 @@ test("AA events", function()
 		PublishAsync = function() end,
 		SubscribeAsync = function() end,
 	}
+	fakeServices.MarketplaceService = {
+		GetProductInfo = function(_, id)
+			if id == 1837849285 then
+				return { AssetTypeId = 3, Name = "Event Song" }
+			end
+			return { AssetTypeId = 10, Name = "A model" }
+		end,
+	}
 	local data = { bank = 0, tx = {}, inventory = {} }
 	local got = {}
 	local fakePlayer = { UserId = 7, Name = "P" }
@@ -514,6 +522,7 @@ test("AA events", function()
 	end
 	fakeServices.DataStoreService, fakeServices.HttpService = nil, nil
 	fakeServices.MessagingService, fakeServices.Players = nil, nil
+	fakeServices.MarketplaceService = nil
 
 	-- rewards are checked
 	eq(Events.CheckReward("cash", 500), 500)
@@ -550,6 +559,21 @@ test("AA events", function()
 	local id = Events.Snapshot().drops[1].id
 	assert(Events.RemoveDrop(id), "remove")
 	eq(#Events.Snapshot().drops, 9)
+
+	-- music: only real audio ids, saved list without duplicates
+	local okMusic, errMusic = Events.PlayMusic(555, 0.5, true)
+	eq(okMusic, false, "a model is not music")
+	eq(errMusic, "not_audio")
+	assert(Events.PlayMusic(1837849285, 0.8, true), "play")
+	eq(Events.Snapshot().music.name, "Event Song")
+	eq(Events.Snapshot().music.vol, 0.8)
+	assert(Events.StopMusic(), "stop")
+	eq(Events.Snapshot().music, nil, "stopped")
+	assert(Events.AddSong(1837849285), "add song")
+	assert(Events.AddSong(1837849285), "adding twice is fine")
+	eq(#Events.Snapshot().songs, 1, "no duplicates")
+	assert(Events.RemoveSong(1837849285), "remove song")
+	eq(#Events.Snapshot().songs, 0)
 end)
 
 -- Every bike builds ---------------------------------------------------------------

@@ -547,7 +547,74 @@ local function aaTab(root: ScrollingFrame)
 		end)
 	end, { Parent = drop })
 
-	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 6, Parent = root })
+	-- music on every server (Roblox audio ids), plus a saved song list like a boombox
+	local music = section(root, 6, "🎵 " .. Store.T("aa_music"))
+	local nowPlaying = Make.Label("", 12, T.sub, T.bold, { Parent = music })
+	local idBox = Make.TextBox(Store.T("aa_music_id"), { Parent = music })
+	local volBox = Make.TextBox(Store.T("aa_music_volume"), { Parent = music })
+	local loop = true
+	local loopButton: TextButton
+	loopButton = Make.Button("", T.panel, function()
+		loop = not loop
+		loopButton.Text = "🔁 " .. Store.T(if loop then "aa_loop_on" else "aa_loop_off")
+	end, { Parent = music })
+	loopButton.Text = "🔁 " .. Store.T("aa_loop_on")
+	local function playId(id: any)
+		act("aa_music_play", {
+			id = id,
+			volume = math.clamp((number(volBox.Text) or 50) / 100, 0, 1),
+			loop = loop,
+		})
+	end
+	Make.Row({
+		Make.Button("▶ " .. Store.T("aa_play"), T.good, function()
+			playId(idBox.Text)
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+		Make.Button("⏹ " .. Store.T("stop"), T.bad, function()
+			act("aa_music_stop")
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+		Make.Button("＋ " .. Store.T("aa_save_song"), T.accent, function()
+			act("aa_song_add", { id = idBox.Text })
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+	}).Parent =
+		music
+	local songList = New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = music,
+	}, { Make.List(4) })
+	local function showMusic()
+		local m = snap.music
+		nowPlaying.Text = if typeof(m) == "table"
+			then "▶ " .. tostring(m.name) .. "  (" .. tostring(m.id) .. ")"
+			else Store.T("aa_music_off")
+		Make.Clear(songList)
+		for _, song in snap.songs or {} do
+			Make.Row({
+				Make.Label(tostring(song.name), 12, T.text, T.font, {
+					Size = UDim2.new(1, -84, 1, 0),
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					TextWrapped = false,
+				}),
+				Make.Button("▶", T.good, function()
+					playId(song.id)
+				end, { Size = UDim2.fromOffset(38, 28) }),
+				Make.Button("🗑", T.bad, function()
+					act("aa_song_remove", { id = song.id })
+				end, { Size = UDim2.fromOffset(38, 28) }),
+			}, 28).Parent =
+				songList
+		end
+	end
+	local base = showStatus
+	showStatus = function()
+		base()
+		showMusic()
+	end
+	showMusic()
+
+	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 7, Parent = root })
 end
 
 local function inboxTab(root: ScrollingFrame)

@@ -78,6 +78,10 @@ local ACTIONS: { [string]: number } = {
 	aa_gift = Roles.CO_OWNER,
 	aa_drop = Roles.CO_OWNER,
 	aa_drop_remove = Roles.CO_OWNER,
+	aa_music_play = Roles.CO_OWNER,
+	aa_music_stop = Roles.CO_OWNER,
+	aa_song_add = Roles.CO_OWNER,
+	aa_song_remove = Roles.CO_OWNER,
 }
 
 local function log(actor: Player, action: string, detail: string, global: boolean)
@@ -531,6 +535,59 @@ handlers.aa_drop_remove = function(actor, args)
 		return false, "bad_request"
 	end
 	log(actor, "aa_drop_remove", id, true)
+	return true
+end
+
+-- AA music: plays on every server --------------------------------------------------
+local function audioId(v: any): number?
+	local n = tonumber(if typeof(v) == "string" then string.match(v, "%d+") else v)
+	if n and n >= 1 and n < 1e15 and n == math.floor(n) then
+		return n
+	end
+	return nil
+end
+
+handlers.aa_music_play = function(actor, args)
+	local id = typeof(args) == "table" and audioId(args.id) or nil
+	if not id then
+		return false, "bad_audio"
+	end
+	local volume = Remotes.Check.Number(args.volume, 0, 1) or 0.5
+	local ok, err = EventService.PlayMusic(id, volume, args.loop == true)
+	if not ok then
+		return false, err or "error"
+	end
+	log(actor, "aa_music_play", tostring(id), true)
+	return true
+end
+
+handlers.aa_music_stop = function(actor)
+	if not EventService.StopMusic() then
+		return false, "error"
+	end
+	log(actor, "aa_music_stop", "", true)
+	return true
+end
+
+handlers.aa_song_add = function(actor, args)
+	local id = typeof(args) == "table" and audioId(args.id) or nil
+	if not id then
+		return false, "bad_audio"
+	end
+	local ok, err = EventService.AddSong(id)
+	if not ok then
+		return false, err or "error"
+	end
+	log(actor, "aa_song_add", tostring(id), true)
+	return true
+end
+
+handlers.aa_song_remove = function(actor, args)
+	local id = typeof(args) == "table" and audioId(args.id) or nil
+	if not id or not EventService.RemoveSong(id) then
+		return false, "bad_request"
+	end
+	log(actor, "aa_song_remove", tostring(id), true)
 	return true
 end
 
