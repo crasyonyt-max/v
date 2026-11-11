@@ -211,12 +211,14 @@ local function buildButtons()
 			end,
 		})
 	end
+	-- shrink the buttons so they always fit the dashboard (police bike: 9 buttons)
+	local width = math.min(40, math.floor((324 - 4 * (#list - 1)) / #list))
 	for i, b in list do
 		Make.Button(
 			b[1],
 			T.card,
 			b[2],
-			{ Size = UDim2.fromOffset(40, 26), TextSize = 14, LayoutOrder = i, Parent = buttons }
+			{ Size = UDim2.fromOffset(width, 26), TextSize = 14, LayoutOrder = i, Parent = buttons }
 		)
 	end
 end

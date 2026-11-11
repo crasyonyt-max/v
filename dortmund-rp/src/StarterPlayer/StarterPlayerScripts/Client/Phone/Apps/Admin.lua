@@ -628,16 +628,24 @@ Phone.Register({
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.X,
 			ScrollingDirection = Enum.ScrollingDirection.X,
-			ScrollBarThickness = 0,
+			ScrollBarThickness = 3,
 			Parent = container,
 		}, { Make.List(4, true) })
+		-- left-aligned so every tab can be scrolled to (centred, the first ones were cut off)
+		local barLayout = bar:FindFirstChildOfClass("UIListLayout") :: UIListLayout
+		barLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 		local root =
 			Make.Scroll({ Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -40), Parent = container })
 
 		for i, key in tabs do
 			Make.Button(Store.T(key), if key == current then Color3.fromRGB(57, 160, 20) else T.card, function()
 				Phone.Replace("admin", key)
-			end, { LayoutOrder = i, Size = UDim2.fromOffset(78, 30), TextSize = 12, Parent = bar })
+			end, {
+				LayoutOrder = i,
+				Size = UDim2.fromOffset(if key == "admin_aa" then 44 else 70, 30),
+				TextSize = 12,
+				Parent = bar,
+			})
 		end
 
 		if current == "admin_players" then
