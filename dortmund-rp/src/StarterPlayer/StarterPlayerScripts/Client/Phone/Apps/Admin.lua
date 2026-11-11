@@ -5,10 +5,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
+local Phones = require(ReplicatedStorage.Shared.Phones)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
+local MapPicker = require(script.Parent.Parent.Parent.UI.MapPicker)
 local Notify = require(script.Parent.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Parent.Net)
 local Store = require(script.Parent.Parent.Parent.Store)
@@ -17,6 +20,7 @@ local News = require(script.Parent.News) :: any
 
 local New, T = Make.New, Make.Theme
 
+local CO_OWNER = 4
 local GAME_ADMIN = 3
 local SERVER_OWNER = 2
 
@@ -203,7 +207,40 @@ local function selfTab(root: ScrollingFrame)
 	end
 end
 
+local function number(text: string): number?
+	return tonumber((string.gsub(text, ",", ".")))
+end
+
+-- Votes on this server: question, 2-4 answers, time limit
+local function voteSection(root: ScrollingFrame, order: number)
+	local card = section(root, order, "🗳️ " .. Store.T("vote"))
+	local question = Make.TextBox(Store.T("vote_question"), { Parent = card })
+	local answers = {}
+	for i = 1, 4 do
+		answers[i] = Make.TextBox(Store.T("vote_answer", i), { Parent = card })
+	end
+	local minutes = Make.TextBox(Store.T("duration_min") .. " (5)", { Parent = card })
+	Make.Row({
+		half(Store.T("vote_start"), T.good, function()
+			local options = {}
+			for i = 1, 4 do
+				table.insert(options, answers[i].Text)
+			end
+			act("vote_start", {
+				question = question.Text,
+				options = options,
+				minutes = math.floor(number(minutes.Text) or 5),
+			})
+		end),
+		half(Store.T("vote_end"), T.bad, function()
+			act("vote_end")
+		end),
+	}).Parent =
+		card
+end
+
 local function serverTab(root: ScrollingFrame)
+	voteSection(root, 20)
 	local isGA = Store.Rank() >= GAME_ADMIN
 	local ann = section(root, 1, "📢")
 	local text = Make.TextBox(Store.T("announce_text"), { Parent = ann })
@@ -334,6 +371,185 @@ local function newsTab(root: ScrollingFrame)
 	end)
 end
 
+-- AA (Owner + Co-Owners): boosts, gifts and pickups on every server ----------------------
+local REWARD_KINDS = { "cash", "xp", "item", "phone" }
+local REWARD_ICON = { cash = "💶", xp = "⭐", item = "🍕", phone = "📱" }
+local itemChoices = {}
+for _, it in Items.List do
+	table.insert(itemChoices, { id = it.id, name = it.name })
+end
+local phoneChoices = {}
+for _, ph in Phones.List do
+	if ph.shop and not ph.adminOnly then
+		table.insert(phoneChoices, { id = ph.id, name = ph.name })
+	end
+end
+
+-- A reward chooser (kind + amount / item / phone). Returns a getter.
+local function rewardPicker(parent: Instance): () -> (string, any)
+	local kindIndex, itemIndex, phoneIndex = 1, 1, 1
+	local holder = New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = parent,
+	}, { Make.List(6) })
+	local amount = Make.TextBox(Store.T("amount"), { LayoutOrder = 2, Parent = holder })
+	local choice: TextButton
+	local kindButton: TextButton
+	local function show()
+		local kind = REWARD_KINDS[kindIndex]
+		kindButton.Text = REWARD_ICON[kind] .. " " .. Store.T("reward_" .. kind) .. "  ⟳"
+		amount.Visible = kind == "cash" or kind == "xp"
+		choice.Visible = kind == "item" or kind == "phone"
+		if kind == "item" then
+			choice.Text = itemChoices[itemIndex].name .. "  ⟳"
+		elseif kind == "phone" then
+			choice.Text = phoneChoices[phoneIndex].name .. "  ⟳"
+		end
+	end
+	kindButton = Make.Button("", T.panel, function()
+		kindIndex = kindIndex % #REWARD_KINDS + 1
+		show()
+	end, { LayoutOrder = 1, Parent = holder })
+	choice = Make.Button("", T.card, function()
+		if REWARD_KINDS[kindIndex] == "item" then
+			itemIndex = itemIndex % #itemChoices + 1
+		else
+			phoneIndex = phoneIndex % #phoneChoices + 1
+		end
+		show()
+	end, { LayoutOrder = 3, Parent = holder })
+	show()
+	return function()
+		local kind = REWARD_KINDS[kindIndex]
+		if kind == "item" then
+			return kind, itemChoices[itemIndex].id
+		elseif kind == "phone" then
+			return kind, phoneChoices[phoneIndex].id
+		end
+		return kind, math.floor(number(amount.Text) or 0)
+	end
+end
+
+local function aaTab(root: ScrollingFrame)
+	local snap: { [string]: any } = { drops = {} }
+
+	-- what is running right now
+	local status = section(root, 1, "📊 " .. Store.T("aa_running"))
+	local statusList = New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = status,
+	}, { Make.List(6) })
+	local function showStatus()
+		Make.Clear(statusList)
+		local now = workspace:GetServerTimeNow()
+		local any = false
+		for _, info in { { "cash", "💸 Cash" }, { "xp", "⭐ XP" } } do
+			local b = snap[info[1]]
+			if typeof(b) == "table" and (b.m or 1) > 1 and (b.ends or 0) > now then
+				any = true
+				local mins = math.ceil((b.ends - now) / 60)
+				Make.Row({
+					Make.Label(
+						string.format("%s %gx · %d min", info[2], b.m, mins),
+						13,
+						T.text,
+						T.bold,
+						{ Size = UDim2.new(0.6, 0, 1, 0) }
+					),
+					Make.Button("⏹ " .. Store.T("stop"), T.bad, function()
+						act("aa_boost_stop", { kind = info[1] })
+					end, { Size = UDim2.new(0.4, -6, 1, 0) }),
+				}, 30).Parent =
+					statusList
+			end
+		end
+		if snap.weekly then
+			any = true
+			Make.Label("🗓️ " .. Store.T("aa_weekly_now"), 12, T.warn, T.bold, { Parent = statusList })
+		end
+		for _, d in snap.drops or {} do
+			any = true
+			local mins = math.ceil((d.ends - now) / 60)
+			Make.Row({
+				Make.Label(
+					string.format("📦 %s · %d min", tostring(d.name), mins),
+					13,
+					T.text,
+					T.bold,
+					{ Size = UDim2.new(0.6, 0, 1, 0) }
+				),
+				Make.Button("🗑", T.bad, function()
+					act("aa_drop_remove", { id = d.id })
+				end, { Size = UDim2.new(0.4, -6, 1, 0) }),
+			}, 30).Parent =
+				statusList
+		end
+		if not any then
+			Make.Label(Store.T("aa_nothing"), 12, T.sub, T.font, { Parent = statusList })
+		end
+	end
+	local function refresh()
+		local r = Net.Request("Events.Get")
+		if r.ok and statusList.Parent then
+			snap = r
+			showStatus()
+		end
+	end
+	local stopListening = Net.On("Events", function(e)
+		if typeof(e) == "table" and statusList.Parent then
+			snap = e
+			showStatus()
+		end
+	end)
+	root.Destroying:Connect(stopListening)
+	task.spawn(refresh)
+
+	-- ?x Cash / ?x XP with a time limit
+	for i, info in { { "cash", "💸 ?x Cash" }, { "xp", "⭐ ?x XP" } } do
+		local card = section(root, 1 + i, info[2])
+		local mult = Make.TextBox(Store.T("aa_multiplier"), { Parent = card })
+		local minutes = Make.TextBox(Store.T("duration_min") .. " (30)", { Parent = card })
+		Make.Button("▶ " .. Store.T("aa_start"), T.good, function()
+			act("aa_boost", {
+				kind = info[1],
+				mult = number(mult.Text) or 2,
+				minutes = math.floor(number(minutes.Text) or 30),
+			})
+		end, { Parent = card })
+	end
+
+	-- free cash / XP / items / phones for everyone online (all servers)
+	local gift = section(root, 4, "🎁 " .. Store.T("aa_gift"))
+	local getGift = rewardPicker(gift)
+	Make.Button(Store.T("aa_gift_all"), T.good, function()
+		local kind, value = getGift()
+		act("aa_gift", { kind = kind, value = value })
+	end, { Parent = gift })
+
+	-- a pickup at a spot on the map, with a time limit
+	local drop = section(root, 5, "📦 " .. Store.T("aa_drop"))
+	local getDrop = rewardPicker(drop)
+	local dropMinutes = Make.TextBox(Store.T("duration_min") .. " (15)", { Parent = drop })
+	Make.Button("🗺️ " .. Store.T("aa_pick_spot"), T.accent, function()
+		MapPicker.Pick(snap.drops or {}, function(x, z)
+			local kind, value = getDrop()
+			act("aa_drop", {
+				x = x,
+				z = z,
+				kind = kind,
+				value = value,
+				minutes = math.floor(number(dropMinutes.Text) or 15),
+			})
+		end)
+	end, { Parent = drop })
+
+	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 6, Parent = root })
+end
+
 local function inboxTab(root: ScrollingFrame)
 	local r = Net.Request("Admin.Inbox")
 	if not r.ok then
@@ -401,6 +617,9 @@ Phone.Register({
 			table.insert(tabs, 5, "admin_inbox")
 			table.insert(tabs, 5, "admin_news")
 		end
+		if Store.Rank() >= CO_OWNER then
+			table.insert(tabs, 1, "admin_aa")
+		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"
 
 		local bar = New("ScrollingFrame", {
@@ -433,6 +652,8 @@ Phone.Register({
 			inboxTab(root)
 		elseif current == "admin_news" then
 			newsTab(root)
+		elseif current == "admin_aa" then
+			aaTab(root)
 		elseif current == "admin_logs" then
 			logsTab(root)
 		end

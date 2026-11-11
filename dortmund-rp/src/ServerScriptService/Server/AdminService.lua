@@ -26,6 +26,9 @@ local VehicleService = require(script.Parent.VehicleService)
 local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
+local EventService = require(script.Parent.EventService)
+local VoteService = require(script.Parent.VoteService)
+local Locations = require(ReplicatedStorage.Shared.Locations)
 
 local AdminService = {}
 
@@ -67,6 +70,14 @@ local ACTIONS: { [string]: number } = {
 	reply = GA,
 	news_post = GA,
 	news_delete = GA,
+	vote_start = SA,
+	vote_end = SA,
+	-- AA: Owner + Co-Owners only
+	aa_boost = Roles.CO_OWNER,
+	aa_boost_stop = Roles.CO_OWNER,
+	aa_gift = Roles.CO_OWNER,
+	aa_drop = Roles.CO_OWNER,
+	aa_drop_remove = Roles.CO_OWNER,
 }
 
 local function log(actor: Player, action: string, detail: string, global: boolean)
@@ -400,6 +411,126 @@ handlers.announce = function(actor, args, isGA)
 		end)
 	end
 	log(actor, if global then "announce (global)" else "announce", text, global)
+	return true
+end
+
+-- Votes on this server ----------------------------------------------------------
+handlers.vote_start = function(actor, args)
+	if typeof(args) ~= "table" or typeof(args.options) ~= "table" then
+		return false, "bad_request"
+	end
+	local question = Remotes.Check.String(args.question, 120)
+	local minutes = Remotes.Check.Int(args.minutes, 1, 120)
+	if not question or not minutes then
+		return false, "bad_request"
+	end
+	local options = {}
+	for i = 1, 4 do
+		local o = args.options[i]
+		if typeof(o) == "string" and #o > 0 then
+			local text = Remotes.Check.String(o, 40)
+			if not text then
+				return false, "bad_request"
+			end
+			table.insert(options, text)
+		end
+	end
+	if #options < 2 then
+		return false, "vote_need_two"
+	end
+	local fq = ChatService.Filter(question, actor.UserId)
+	if not fq then
+		return false, "bad_message"
+	end
+	for i, o in options do
+		local f = ChatService.Filter(o, actor.UserId)
+		if not f then
+			return false, "bad_message"
+		end
+		options[i] = f
+	end
+	if not VoteService.Begin(fq, options, minutes, actor.DisplayName) then
+		return false, "vote_running"
+	end
+	log(actor, "vote_start", fq, false)
+	return true
+end
+
+handlers.vote_end = function(actor)
+	if not VoteService.End() then
+		return false, "no_vote"
+	end
+	log(actor, "vote_end", "", false)
+	return true
+end
+
+-- AA events (all servers) ------------------------------------------------------------
+handlers.aa_boost = function(actor, args)
+	local kind = typeof(args) == "table" and Remotes.Check.OneOf(args.kind, { "cash", "xp" }) or nil
+	local mult = typeof(args) == "table" and Remotes.Check.Number(args.mult, 2, 10) or nil
+	local minutes = typeof(args) == "table" and Remotes.Check.Int(args.minutes, 1, 1440) or nil
+	if not kind or not mult or not minutes then
+		return false, "bad_request"
+	end
+	mult = math.floor(mult * 10 + 0.5) / 10
+	if not EventService.SetBoost(kind, mult, minutes) then
+		return false, "error"
+	end
+	log(actor, "aa_boost", string.format("%s %gx %d min", kind, mult, minutes), true)
+	return true
+end
+
+handlers.aa_boost_stop = function(actor, args)
+	local kind = typeof(args) == "table" and Remotes.Check.OneOf(args.kind, { "cash", "xp" }) or nil
+	if not kind or not EventService.StopBoost(kind) then
+		return false, "bad_request"
+	end
+	log(actor, "aa_boost_stop", kind, true)
+	return true
+end
+
+handlers.aa_gift = function(actor, args)
+	local kind = typeof(args) == "table" and args.kind or nil
+	local value = EventService.CheckReward(kind, typeof(args) == "table" and args.value or nil)
+	if value == nil then
+		return false, "bad_request"
+	end
+	EventService.Gift(kind, value)
+	log(actor, "aa_gift", EventService.RewardName(kind, value), true)
+	return true
+end
+
+handlers.aa_drop = function(actor, args)
+	if typeof(args) ~= "table" then
+		return false, "bad_request"
+	end
+	local b = Locations.Bounds
+	local x = Remotes.Check.Number(args.x, b[1], b[3])
+	local z = Remotes.Check.Number(args.z, b[2], b[4])
+	local minutes = Remotes.Check.Int(args.minutes, 1, 1440)
+	local value = EventService.CheckReward(args.kind, args.value)
+	if not x or not z or not minutes or value == nil then
+		return false, "bad_request"
+	end
+	local ok, err = EventService.AddDrop(x, z, args.kind, value, minutes)
+	if not ok then
+		return false, err or "error"
+	end
+	log(
+		actor,
+		"aa_drop",
+		string.format("%s at %d, %d (%d min)", EventService.RewardName(args.kind, value), x, z, minutes),
+		true
+	)
+	return true
+end
+
+handlers.aa_drop_remove = function(actor, args)
+	local id = typeof(args) == "table" and Remotes.Check.String(args.id, 16) or nil
+	if not id or not EventService.RemoveDrop(id) then
+		return false, "bad_request"
+	end
+	log(actor, "aa_drop_remove", id, true)
 	return true
 end
 

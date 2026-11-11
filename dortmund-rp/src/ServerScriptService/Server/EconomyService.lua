@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
+local Boosts = require(script.Parent.Boosts)
 local DataService = require(script.Parent.DataService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
@@ -36,6 +37,16 @@ function Economy.Add(player: Player, amount: number, reason: string): boolean
 	return true
 end
 
+-- Money a player earns (pay, rewards): multiplied while a cash event runs.
+function Economy.Earn(player: Player, amount: number, reason: string): number
+	local mult = Boosts.Cash()
+	local total = amount * mult
+	if Economy.Add(player, total, if mult > 1 then string.format("%s (%gx)", reason, mult) else reason) then
+		return total
+	end
+	return 0
+end
+
 function Economy.TrySpend(player: Player, amount: number, reason: string): boolean
 	local data = DataService.Get(player)
 	if not data or amount ~= amount or amount < 0 then
@@ -60,8 +71,12 @@ local function paychecks()
 			local data = DataService.Get(player)
 			if data then
 				local job = Jobs.ById[data.job] or Jobs.ById.Unemployed
-				Economy.Add(player, job.paycheck, if job.id == "Unemployed" then "Bürgergeld" else "Gehalt " .. job.de)
-				Remotes.Push(player, "Notify", { key = "paycheck", args = { job.paycheck } })
+				local paid = Economy.Earn(
+					player,
+					job.paycheck,
+					if job.id == "Unemployed" then "Bürgergeld" else "Gehalt " .. job.de
+				)
+				Remotes.Push(player, "Notify", { key = "paycheck", args = { paid } })
 			end
 		end
 	end

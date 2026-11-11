@@ -109,6 +109,22 @@ consume = function(player: Player, tool: Tool, itemId: string)
 	State.MarkDirty(player)
 end
 
+-- Gives a carried item for free (events / pickups). False if unknown or the bag is full.
+function StoreService.Give(player: Player, itemId: string): boolean
+	local data = DataService.Get(player)
+	if not data or not Items.ById[itemId] or #data.inventory >= Items.MaxCarried then
+		return false
+	end
+	table.insert(data.inventory, itemId)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	local tool = makeTool(player, itemId)
+	if tool and backpack then
+		tool.Parent = backpack
+	end
+	State.MarkDirty(player)
+	return true
+end
+
 function StoreService.Start()
 	DataService.Loaded:Connect(function(player, data)
 		data.hunger = clamp(tonumber(data.hunger) or 100)

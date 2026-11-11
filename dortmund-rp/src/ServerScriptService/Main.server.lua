@@ -39,6 +39,8 @@ local services = {
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),
+	require(Server.EventService),
+	require(Server.VoteService),
 	require(Server.HousingService),
 }
 for _, service in services do

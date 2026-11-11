@@ -19,9 +19,17 @@ function Net.Request(name: string, ...: any): { [string]: any }
 	return result
 end
 
-function Net.On(kind: string, fn: (any) -> ())
+-- Returns a function that removes the listener again.
+function Net.On(kind: string, fn: (any) -> ()): () -> ()
 	listeners[kind] = listeners[kind] or {}
 	table.insert(listeners[kind], fn)
+	return function()
+		local list = listeners[kind]
+		local i = list and table.find(list, fn)
+		if i then
+			table.remove(list, i)
+		end
+	end
 end
 
 event.OnClientEvent:Connect(function(kind: string, payload: any)

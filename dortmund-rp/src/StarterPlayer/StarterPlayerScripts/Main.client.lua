@@ -9,6 +9,7 @@ local HUD = require(Client.UI.HUD)
 local Phone = require(Client.Phone.Phone)
 require(Client.UI.Shops)
 require(Client.UI.Inventory)
+require(Client.UI.Vote)
 
 -- Phone apps register themselves.
 for _, app in Client.Phone.Apps:GetChildren() do
@@ -25,6 +26,13 @@ require(Client.Controllers.StuntPoses)
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 
 Net.On("Notify", Notify.Key)
+Net.On("Events", HUD.SetEvents)
+task.spawn(function()
+	local r = Net.Request("Events.Get")
+	if r.ok then
+		HUD.SetEvents(r)
+	end
+end)
 Net.On("XP", function(payload)
 	Notify.Show(
 		Store.T("xp_gain", payload.amount) .. (if payload.reason then " · " .. tostring(payload.reason) else ""),

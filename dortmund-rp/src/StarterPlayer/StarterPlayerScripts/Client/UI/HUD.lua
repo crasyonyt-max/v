@@ -92,6 +92,45 @@ task.spawn(function()
 	end
 end)
 
+-- Running events (2x cash / XP …), with a countdown
+local eventLabel = Make.Label("", 12, Color3.fromRGB(255, 205, 70), T.bold, {
+	LayoutOrder = 9,
+	Visible = false,
+	Size = UDim2.new(1, 0, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y,
+})
+eventLabel.Parent = box
+local events: { [string]: any } = {}
+local function updateEvents()
+	local now = workspace:GetServerTimeNow()
+	local parts = {}
+	for _, info in { { "cash", "💸", "Cash" }, { "xp", "⭐", "XP" } } do
+		local b = events[info[1]]
+		if typeof(b) == "table" and (b.m or 1) > 1 and (b.ends or 0) > now then
+			local left = math.floor(b.ends - now)
+			table.insert(parts, string.format("%s %gx %s %d:%02d", info[2], b.m, info[3], left // 60, left % 60))
+		end
+	end
+	local drops = if typeof(events.drops) == "table" then #events.drops else 0
+	if drops > 0 then
+		table.insert(parts, "📦 " .. drops)
+	end
+	eventLabel.Text = table.concat(parts, "\n")
+	eventLabel.Visible = #parts > 0
+end
+HUD.SetEvents = function(e: any)
+	if typeof(e) == "table" then
+		events = e
+		updateEvents()
+	end
+end
+task.spawn(function()
+	while true do
+		task.wait(1)
+		updateEvents()
+	end
+end)
+
 -- Phone button (bottom right) – opens the phone on mobile and PC.
 HUD.PhoneButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 1),

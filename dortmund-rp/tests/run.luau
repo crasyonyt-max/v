@@ -249,6 +249,42 @@ test("vehicle catalog: one motorbike", function()
 	eq(Vehicles.LegacyPrices.vk_golfo4, nil, "free starter cars are not refunded")
 end)
 
+test("weekly event: Saturday 18:00 German time, 30 min", function()
+	local Boosts = requirePath(Server.Boosts)
+	-- 14 Nov 2026 is a Saturday (CET = UTC+1); 13 Jun 2026 too (CEST = UTC+2)
+	local nov = 1794675600 -- 2026-11-14 17:00 UTC
+	local jun = 1781366400 -- 2026-06-13 16:00 UTC
+	eq(os.date("!%Y-%m-%d %H:%M", nov), "2026-11-14 17:00")
+	eq(os.date("!%Y-%m-%d %H:%M", jun), "2026-06-13 16:00")
+	eq(Boosts.WeeklyEnds(nov), nov + 1800, "winter start")
+	eq(Boosts.WeeklyEnds(nov + 1799), nov + 1800, "winter last second")
+	eq(Boosts.WeeklyEnds(nov + 1800), nil, "winter over")
+	eq(Boosts.WeeklyEnds(nov - 1), nil, "not yet")
+	eq(Boosts.WeeklyEnds(nov - 86400), nil, "Friday")
+	eq(Boosts.WeeklyEnds(jun), jun + 1800, "summer start")
+	eq(Boosts.WeeklyEnds(jun + 3600), nil, "19:00 CEST")
+end)
+
+test("every UI text key exists", function()
+	local missing = {}
+	local function walk(dir)
+		for _, name in fs.readDir(dir) do
+			local path = dir .. "/" .. name
+			if fs.isDir(path) then
+				walk(path)
+			elseif string.match(name, "%.lua$") then
+				for key in string.gmatch(fs.readFile(path), 'Store%.T%("([%w_]+)"') do
+					if string.sub(key, -1) ~= "_" and Locale.T("de", key) == key then
+						table.insert(missing, key .. " (" .. name .. ")")
+					end
+				end
+			end
+		end
+	end
+	walk("src")
+	eq(#missing, 0, "missing texts: " .. table.concat(missing, ", "))
+end)
+
 test("phones", function()
 	local Phones = requirePath(RS.Shared.Phones)
 	local shop = 0
@@ -404,6 +440,116 @@ test("car refund is paid only once", function()
 	eq(data.bank, 300000, "duplicates taken back")
 	VS._migrate(player, data)
 	eq(data.bank, 300000, "correction runs once")
+end)
+
+-- AA events: boosts, gifts once per player, pickups -------------------------------
+test("AA events", function()
+	local stores = {}
+	fakeServices.DataStoreService = {
+		GetDataStore = function(_, name)
+			stores[name] = stores[name] or {}
+			local mem = stores[name]
+			return {
+				UpdateAsync = function(_, key, fn)
+					local new = fn(mem[key])
+					if new ~= nil then
+						mem[key] = new
+					end
+				end,
+				GetAsync = function(_, key)
+					return mem[key]
+				end,
+			}
+		end,
+	}
+	local n = 0
+	fakeServices.HttpService = {
+		GenerateGUID = function()
+			n += 1
+			return string.format("%08d-x", n)
+		end,
+		JSONEncode = function(_, v)
+			return tostring(v)
+		end,
+	}
+	fakeServices.MessagingService = {
+		PublishAsync = function() end,
+		SubscribeAsync = function() end,
+	}
+	local data = { bank = 0, tx = {}, inventory = {} }
+	local got = {}
+	local fakePlayer = { UserId = 7, Name = "P" }
+	fakeServices.Players = {
+		GetPlayers = function()
+			return { fakePlayer }
+		end,
+	}
+	local stub = function()
+		return setmetatable({}, {
+			__index = function()
+				return function() end
+			end,
+		})
+	end
+	overrides["ServerScriptService/Server/DataService"] = {
+		Get = function()
+			return data
+		end,
+	}
+	overrides["ServerScriptService/Server/EconomyService"] = {
+		Add = function(_, amount, reason)
+			data.bank += amount
+			table.insert(got, reason)
+			return true
+		end,
+	}
+	overrides["ServerScriptService/Server/XPService"] = stub()
+	overrides["ServerScriptService/Server/PhoneService"] = stub()
+	overrides["ServerScriptService/Server/StoreService"] = stub()
+	overrides["ServerScriptService/Server/Remotes"] = stub()
+	local Boosts = requirePath(Server.Boosts)
+	local Events = requirePath(Server.EventService)
+	for _, name in { "DataService", "EconomyService", "XPService", "PhoneService", "StoreService", "Remotes" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	fakeServices.DataStoreService, fakeServices.HttpService = nil, nil
+	fakeServices.MessagingService, fakeServices.Players = nil, nil
+
+	-- rewards are checked
+	eq(Events.CheckReward("cash", 500), 500)
+	eq(Events.CheckReward("cash", -5), nil, "negative cash")
+	eq(Events.CheckReward("cash", 1e9), nil, "too much cash")
+	eq(Events.CheckReward("item", "pizza_salami"), "pizza_salami")
+	eq(Events.CheckReward("item", "nope"), nil)
+	eq(Events.CheckReward("phone", "nvdr_p1"), nil, "admin phone can't be given")
+	eq(Events.CheckReward("rocket", 1), nil)
+
+	-- boosts
+	assert(Events.SetBoost("cash", 3, 10), "set boost")
+	eq(Boosts.Cash(), 3, "3x cash")
+	local snap = Events.Snapshot()
+	eq(snap.cash.m, 3)
+	assert(snap.cash.ends > os.time() + 590, "10 minutes")
+	assert(Events.StopBoost("cash"), "stop")
+	eq(Boosts.Cash(), Boosts.WeeklyEnds(os.time()) and 2 or 1, "boost stopped")
+
+	-- gift: once per player, even if the message arrives twice
+	Events.Gift("cash", 250)
+	require("@lune/task").wait(0.1)
+	eq(data.bank, 250, "gift paid")
+	eq(#data.eventClaims, 1)
+
+	-- pickups (max 10 at once)
+	for i = 1, 10 do
+		assert(Events.AddDrop(100 + i, 200, "cash", 50, 5), "drop " .. i)
+	end
+	local ok, err = Events.AddDrop(1, 1, "cash", 50, 5)
+	eq(ok, false, "11th drop refused")
+	eq(err, "too_many_drops")
+	eq(#Events.Snapshot().drops, 10)
+	local id = Events.Snapshot().drops[1].id
+	assert(Events.RemoveDrop(id), "remove")
+	eq(#Events.Snapshot().drops, 9)
 end)
 
 -- Every bike builds ---------------------------------------------------------------

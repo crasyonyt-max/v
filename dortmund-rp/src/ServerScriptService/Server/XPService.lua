@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Levels = require(ReplicatedStorage.Shared.Levels)
+local Boosts = require(script.Parent.Boosts)
 local DataService = require(script.Parent.DataService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
@@ -29,6 +30,17 @@ function XPService.Add(player: Player, jobId: string?, amount: number, reason: s
 		Remotes.Push(player, "LevelUp", { level = after })
 	end
 	State.MarkDirty(player)
+end
+
+-- XP a player earns by playing: multiplied while an XP event runs.
+function XPService.Earn(player: Player, jobId: string?, amount: number, reason: string?)
+	local mult = Boosts.XP()
+	XPService.Add(
+		player,
+		jobId,
+		amount * mult,
+		if mult > 1 and reason then string.format("%s (%gx)", reason, mult) else reason
+	)
 end
 
 function XPService.JobXP(player: Player, jobId: string): number

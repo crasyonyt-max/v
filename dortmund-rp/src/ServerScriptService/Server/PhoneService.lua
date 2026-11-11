@@ -42,6 +42,18 @@ function PhoneService.SyncAdminPhone(player: Player)
 	State.MarkDirty(player)
 end
 
+-- Gives a shop phone for free (events / pickups). False if unknown, admin-only or owned.
+function PhoneService.Give(player: Player, phoneId: string): boolean
+	local data = DataService.Get(player)
+	local phone = Phones.ById[phoneId]
+	if not data or not phone or phone.adminOnly or owns(data, phone.id) then
+		return false
+	end
+	table.insert(data.phones, phone.id)
+	State.MarkDirty(player)
+	return true
+end
+
 function PhoneService.Start()
 	DataService.Loaded:Connect(function(player)
 		PhoneService.SyncAdminPhone(player)

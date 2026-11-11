@@ -164,8 +164,8 @@ function Emergency.Start()
 		call.responders[player.UserId] = nil
 		-- Reward only real responses (travelled there, still in the job).
 		if r.startDistance >= Config.CallMinTravel and JobService.Get(player) == r.job then
-			XPService.Add(player, r.job, Config.CallXP, "Einsatz")
-			Economy.Add(player, Config.CallBonus, "Einsatzprämie")
+			XPService.Earn(player, r.job, Config.CallXP, "Einsatz")
+			Economy.Earn(player, Config.CallBonus, "Einsatzprämie")
 		else
 			Remotes.Push(player, "Notify", { key = "call_no_reward" })
 		end
