@@ -16,6 +16,12 @@ Config.CoOwners = {
 	3559943151, -- samder_nervt
 }
 
+-- SECOND CO-OWNERS: under the Co-Owners, over the Game Admins (Game Admin powers,
+-- can ban Game Admins and everyone below; no AA tab).
+Config.SecondCoOwners = {
+	2851688688, -- pommes5123
+}
+
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {

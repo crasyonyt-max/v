@@ -1,7 +1,8 @@
 --!strict
 -- Who is allowed to do what. Always decided on the server.
---   Rank 5: owner (Config.OwnerId / experience or group owner) -> nobody can target them
---   Rank 4: Co-Owner (Config.CoOwners) -> like a Game Admin, outranks Game Admins
+--   Rank 6: owner (Config.OwnerId / experience or group owner) -> nobody can target them
+--   Rank 5: Co-Owner (Config.CoOwners) -> Game Admin powers + AA tab
+--   Rank 4: second Co-Owner (Config.SecondCoOwners) -> Game Admin powers, outranks Game Admins
 --   Rank 3: Game Admin (Config.GameAdmins) -> whole game
 --   Rank 2: server owner (private server) -> own server only
 --   Rank 1: appointed Server Admin -> own server only
@@ -14,8 +15,9 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local Roles = {}
 
-Roles.OWNER = 5
-Roles.CO_OWNER = 4
+Roles.OWNER = 6
+Roles.CO_OWNER = 5
+Roles.SECOND_CO_OWNER = 4
 Roles.GAME_ADMIN = 3
 Roles.SERVER_OWNER = 2
 Roles.SERVER_ADMIN = 1
@@ -33,6 +35,10 @@ local coOwners: { [number]: boolean } = {}
 for _, id in Config.CoOwners do
 	coOwners[id] = true
 end
+local secondCoOwners: { [number]: boolean } = {}
+for _, id in Config.SecondCoOwners do
+	secondCoOwners[id] = true
+end
 
 -- Rank from the UserId alone (also for offline players, e.g. bans).
 local function staticRank(id: number): number
@@ -41,6 +47,9 @@ local function staticRank(id: number): number
 	end
 	if coOwners[id] then
 		return Roles.CO_OWNER
+	end
+	if secondCoOwners[id] then
+		return Roles.SECOND_CO_OWNER
 	end
 	if whitelist[id] then
 		return Roles.GAME_ADMIN
@@ -138,7 +147,7 @@ function Roles.Refresh(player: Player)
 	local rank = Roles.Rank(player)
 	local label = if rank >= Roles.OWNER
 		then "Owner"
-		elseif rank >= Roles.CO_OWNER then "CoOwner"
+		elseif rank >= Roles.SECOND_CO_OWNER then "CoOwner"
 		elseif rank >= Roles.GAME_ADMIN then "GameAdmin"
 		elseif rank >= Roles.SERVER_ADMIN then "ServerAdmin"
 		else ""

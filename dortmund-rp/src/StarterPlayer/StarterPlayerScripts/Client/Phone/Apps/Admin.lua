@@ -20,7 +20,7 @@ local News = require(script.Parent.News) :: any
 
 local New, T = Make.New, Make.Theme
 
-local CO_OWNER = 4
+local CO_OWNER = 5 -- AA tab: Owner (6) + Co-Owners (5)
 local GAME_ADMIN = 3
 local SERVER_OWNER = 2
 
@@ -169,9 +169,10 @@ local function playersTab(root: ScrollingFrame)
 			return
 		end
 		for i, info in r.players do
-			local badge = if info.rank >= 5
+			local badge = if info.rank >= 6
 				then " 👑"
-				elseif info.rank >= 4 then " 💠"
+				elseif info.rank >= 5 then " 💠"
+				elseif info.rank >= 4 then " 🔷"
 				elseif info.rank >= GAME_ADMIN then " 🛡️"
 				elseif info.rank >= 1 then " ⭐"
 				else ""
