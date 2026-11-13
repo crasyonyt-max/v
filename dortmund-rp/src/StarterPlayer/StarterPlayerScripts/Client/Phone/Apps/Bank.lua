@@ -88,7 +88,7 @@ Phone.Register({
 
 		local function render(state: { [string]: any })
 			balance.Text = Locale.Euro(state.bank or 0)
-			local dxp = math.floor(tonumber(state.driveXP) or 0)
+			local dxp = math.floor(tonumber((state.jobXP or {}).Unemployed) or 0)
 			driveLabel.Text = "🚗 " .. Store.T("drive_xp") .. ": " .. dxp
 			exchange.Text = Store.T("drive_xp_exchange", Locale.Euro(dxp // 10))
 			Make.Clear(history)

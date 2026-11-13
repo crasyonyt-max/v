@@ -289,19 +289,18 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_droppers_are_on = { de = "Dropper in den Wohnungen: an", en = "Droppers in the apartments: on" },
 	aa_droppers_are_off = { de = "Dropper in den Wohnungen: aus", en = "Droppers in the apartments: off" },
 	aa_no_drop_event = { de = "Kein Dropper-Event aktiv.", en = "No dropper event running." },
-	-- Fahr-XP (traffic)
-	drive_xp = { de = "Fahr-XP", en = "Driving XP" },
+	-- Unemployed XP from traffic
+	drive_xp = { de = "Arbeitslos-XP", en = "Unemployed XP" },
 	drive_xp_info = {
-		de = "Als Arbeitslos: grüne Ampeln und Blitzer im Limit geben Fahr-XP. Rote Ampel / zu schnell kostet Fahr-XP. Letzte Ziffer weg = Euro.",
-		en = "As unemployed: green lights and speed cameras within the limit give driving XP. Red lights / speeding cost XP. Drop the last digit = euros.",
+		de = "Als Arbeitslos: grüne Ampeln und Blitzer im Limit geben XP. Rote Ampel / zu schnell kostet XP. Letzte Ziffer weg = Euro.",
+		en = "As unemployed: green lights and speed cameras within the limit give XP. Red lights / speeding cost XP. Drop the last digit = euros.",
 	},
 	drive_xp_exchange = { de = "In %s umtauschen", en = "Exchange for %s" },
-	drive_xp_low = { de = "Du brauchst mindestens 10 Fahr-XP.", en = "You need at least 10 driving XP." },
-	drive_xp_plus = { de = "🚗 +%d Fahr-XP", en = "🚗 +%d driving XP" },
-	red_light = { de = "🚦 Rote Ampel! -%d Fahr-XP", en = "🚦 Red light! -%d driving XP" },
+	drive_xp_low = { de = "Du brauchst mindestens 10 Arbeitslos-XP.", en = "You need at least 10 unemployed XP." },
+	red_light = { de = "🚦 Rote Ampel! -%d Arbeitslos-XP", en = "🚦 Red light! -%d unemployed XP" },
 	speeding = {
-		de = "📸 Geblitzt: %d km/h bei %d! -%d Fahr-XP",
-		en = "📸 Speed camera: %d km/h in a %d zone! -%d driving XP",
+		de = "📸 Geblitzt: %d km/h bei %d! -%d Arbeitslos-XP",
+		en = "📸 Speed camera: %d km/h in a %d zone! -%d unemployed XP",
 	},
 	aa_countdown = { de = "Countdown (alle Server)", en = "Countdown (all servers)" },
 	aa_countdown_title = { de = "Titel (leer = AA)", en = "Title (empty = AA)" },

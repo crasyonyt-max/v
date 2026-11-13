@@ -106,7 +106,6 @@ function State.Snapshot(player: Player): { [string]: any }?
 		tx = tx,
 		number = State.PhoneNumber(player.UserId),
 		rank = Roles.Rank(player),
-		driveXP = math.floor(tonumber(data.driveXP) or 0),
 		packs = packs,
 		privateServer = Roles.IsPrivateServer(),
 	}

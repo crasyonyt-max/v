@@ -1,8 +1,9 @@
 --!strict
 -- Traffic lights + speed cameras ("Blitzer") from OpenStreetMap (Shared/TrafficData),
--- and Fahr-XP: unemployed players earn it for driving through green lights and
--- passing speed cameras within the limit; red lights and speeding cost Fahr-XP
--- (everyone). Fahr-XP can be exchanged for money: drop the last digit = euros.
+-- and Unemployed XP (the "Arbeitslos" job XP): unemployed players earn it for driving
+-- through green lights and passing speed cameras within the limit; red lights and
+-- speeding cost Unemployed XP (everyone). It can be exchanged for money: drop the last
+-- digit = euros.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -16,6 +17,7 @@ local DataService = require(script.Parent.DataService)
 local Economy = require(script.Parent.EconomyService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
+local XPService = require(script.Parent.XPService)
 
 local TrafficService = {}
 
@@ -195,10 +197,15 @@ local function changeXP(player: Player, amount: number, key: string, args: { any
 	if not data then
 		return
 	end
-	local before = tonumber(data.driveXP) or 0
-	data.driveXP = math.max(0, before + amount)
+	if amount > 0 then
+		-- normal job XP for "Unemployed" (shows the usual +XP message)
+		XPService.Add(player, "Unemployed", amount, "Verkehr")
+		return
+	end
+	data.jobXP = data.jobXP or {}
+	data.jobXP.Unemployed = math.max(0, (tonumber(data.jobXP.Unemployed) or 0) + amount)
 	State.MarkDirty(player)
-	Remotes.Push(player, "Notify", { key = key, args = args, error = amount < 0 })
+	Remotes.Push(player, "Notify", { key = key, args = args, error = true })
 end
 
 local inside: { [Player]: { [string]: boolean } } = {}
@@ -276,6 +283,17 @@ function TrafficService.Start()
 		end
 	end)
 
+	-- the short-lived separate "Fahr-XP" moves into the Unemployed XP
+	DataService.Loaded:Connect(function(player, data)
+		local old = math.floor(tonumber(data.driveXP) or 0)
+		if old > 0 then
+			data.jobXP = data.jobXP or {}
+			data.jobXP.Unemployed = (tonumber(data.jobXP.Unemployed) or 0) + old
+			State.MarkDirty(player)
+		end
+		data.driveXP = nil
+	end)
+
 	Players.PlayerRemoving:Connect(function(player)
 		inside[player] = nil
 		cooldown[player] = nil
@@ -284,13 +302,14 @@ function TrafficService.Start()
 	-- 1234 Fahr-XP -> 123 € (the last digit stays as Fahr-XP)
 	Remotes.Handle("DriveXP.Exchange", function(player)
 		local data = DataService.Get(player) :: { [string]: any }
-		local xp = math.floor(tonumber(data.driveXP) or 0)
+		data.jobXP = data.jobXP or {}
+		local xp = math.floor(tonumber(data.jobXP.Unemployed) or 0)
 		local euros = xp // 10
 		if euros <= 0 then
 			return Remotes.Fail("drive_xp_low")
 		end
-		data.driveXP = xp - euros * 10
-		Economy.Add(player, euros, "Fahr-XP Umtausch")
+		data.jobXP.Unemployed = xp - euros * 10
+		Economy.Add(player, euros, "XP-Umtausch (Arbeitslos)")
 		State.MarkDirty(player)
 		return Remotes.Ok({ euros = euros })
 	end, { rate = 3 })
