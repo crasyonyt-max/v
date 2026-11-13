@@ -20,7 +20,7 @@ local News = require(script.Parent.News) :: any
 
 local New, T = Make.New, Make.Theme
 
-local CO_OWNER = 5 -- AA tab: Owner (6) + Co-Owners (5)
+local AA_RANK = 4 -- AA tab: Owner (6) + both Co-Owner ranks (5, 4)
 local GAME_ADMIN = 3
 local SERVER_OWNER = 2
 
@@ -685,7 +685,7 @@ Phone.Register({
 			table.insert(tabs, 5, "admin_inbox")
 			table.insert(tabs, 5, "admin_news")
 		end
-		if Store.Rank() >= CO_OWNER then
+		if Store.Rank() >= AA_RANK then
 			table.insert(tabs, 1, "admin_aa")
 		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"

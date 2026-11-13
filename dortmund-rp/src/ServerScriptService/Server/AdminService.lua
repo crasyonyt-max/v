@@ -72,16 +72,16 @@ local ACTIONS: { [string]: number } = {
 	news_delete = GA,
 	vote_start = SA,
 	vote_end = SA,
-	-- AA: Owner + Co-Owners only
-	aa_boost = Roles.CO_OWNER,
-	aa_boost_stop = Roles.CO_OWNER,
-	aa_gift = Roles.CO_OWNER,
-	aa_drop = Roles.CO_OWNER,
-	aa_drop_remove = Roles.CO_OWNER,
-	aa_music_play = Roles.CO_OWNER,
-	aa_music_stop = Roles.CO_OWNER,
-	aa_song_add = Roles.CO_OWNER,
-	aa_song_remove = Roles.CO_OWNER,
+	-- AA: Owner + both Co-Owner ranks
+	aa_boost = Roles.SECOND_CO_OWNER,
+	aa_boost_stop = Roles.SECOND_CO_OWNER,
+	aa_gift = Roles.SECOND_CO_OWNER,
+	aa_drop = Roles.SECOND_CO_OWNER,
+	aa_drop_remove = Roles.SECOND_CO_OWNER,
+	aa_music_play = Roles.SECOND_CO_OWNER,
+	aa_music_stop = Roles.SECOND_CO_OWNER,
+	aa_song_add = Roles.SECOND_CO_OWNER,
+	aa_song_remove = Roles.SECOND_CO_OWNER,
 }
 
 local function log(actor: Player, action: string, detail: string, global: boolean)
@@ -358,10 +358,12 @@ handlers.tp_to = function(actor, args)
 	return true
 end
 
+-- Any admin may bring anyone, whatever their rank (bringing is harmless).
 handlers.bring = function(actor, args)
-	local target, err = targetPlayer(actor, args)
+	local id = typeof(args) == "table" and Remotes.Check.Int(args.userId, 1, 1e12) or nil
+	local target = id and Players:GetPlayerByUserId(id)
 	if not target then
-		return false, err
+		return false, if id then "target_offline" else "bad_target"
 	end
 	local from, to = rootOf(target), rootOf(actor)
 	if not from or not to then
