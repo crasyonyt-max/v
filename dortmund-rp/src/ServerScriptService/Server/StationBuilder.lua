@@ -73,13 +73,13 @@ local function lamp(parent: Instance, cf: CFrame, range: number)
 		"Lamp",
 		Vector3.new(5, 0.2, 1.2),
 		cf,
-		Color3.fromRGB(255, 252, 242),
-		Enum.Material.Neon,
+		Color3.fromRGB(245, 242, 232),
+		Enum.Material.Glass,
 		{ CanCollide = false }
 	)
 	local l = Instance.new("PointLight")
 	l.Range = range
-	l.Brightness = 1.1
+	l.Brightness = 0.7
 	l.Shadows = false
 	l.Parent = p
 end

@@ -42,8 +42,8 @@ end
 function WorldService.Start()
 	Lighting.ClockTime = 9
 	Lighting.GeographicLatitude = 51.5 -- Dortmund
-	Lighting.Brightness = 2.5
-	Lighting.EnvironmentDiffuseScale = 0.6
+	Lighting.Brightness = 2.2
+	Lighting.EnvironmentDiffuseScale = 0.45
 	Lighting.EnvironmentSpecularScale = 0.6
 	pcall(function()
 		Lighting.Technology = Enum.Technology.Future
@@ -58,16 +58,16 @@ function WorldService.Start()
 	Lighting.OutdoorAmbient = Color3.fromRGB(120, 124, 132)
 	Lighting.Ambient = Color3.fromRGB(40, 42, 46)
 	Lighting.ShadowSoftness = 0.25
-	Lighting.ExposureCompensation = 0.1
+	Lighting.ExposureCompensation = -0.15 -- indoor rooms were washed out
 	local grade = Instance.new("ColorCorrectionEffect")
 	grade.Contrast = 0.08
 	grade.Saturation = -0.08
 	grade.TintColor = Color3.fromRGB(255, 250, 244)
 	grade.Parent = Lighting
 	local bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 0.35
-	bloom.Size = 28
-	bloom.Threshold = 1.6
+	bloom.Intensity = 0.2
+	bloom.Size = 22
+	bloom.Threshold = 2.4 -- only really bright things glow, not white walls
 	bloom.Parent = Lighting
 	local rays = Instance.new("SunRaysEffect")
 	rays.Intensity = 0.04

@@ -33,7 +33,7 @@ TowerBuilder.FloorSpots = {} :: { [number]: CFrame } -- 0 = lobby
 
 local GLASS = Color3.fromRGB(120, 150, 175)
 local SLAB = Color3.fromRGB(205, 205, 208)
-local WALL = Color3.fromRGB(236, 233, 226)
+local WALL = Color3.fromRGB(214, 208, 198)
 local WOOD = Color3.fromRGB(165, 125, 85)
 local DARK = Color3.fromRGB(45, 46, 50)
 
@@ -71,16 +71,16 @@ local function lamp(parent: Instance, cf: CFrame, range: number)
 		"Lamp",
 		Vector3.new(2.4, 0.2, 2.4),
 		cf,
-		Color3.fromRGB(255, 250, 238),
-		Enum.Material.Neon,
+		Color3.fromRGB(245, 238, 220),
+		Enum.Material.Glass,
 		{ CanCollide = false, Shape = Enum.PartType.Cylinder }
 	)
 	p.Size = Vector3.new(0.2, 2.4, 2.4)
 	p.CFrame = cf * CFrame.Angles(0, 0, math.pi / 2)
 	local l = Instance.new("PointLight")
-	l.Range = range
-	l.Brightness = 1
-	l.Color = Color3.fromRGB(255, 240, 220)
+	l.Range = range * 0.8
+	l.Brightness = 0.55
+	l.Color = Color3.fromRGB(255, 232, 205) -- warm, like a real ceiling light
 	l.Shadows = false
 	l.Parent = p
 end

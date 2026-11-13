@@ -25,7 +25,7 @@ local FLOORS = 4 -- lobby, offices, meeting, holding room
 
 local CONCRETE = Color3.fromRGB(60, 62, 68)
 local GLASS = Color3.fromRGB(40, 60, 80)
-local WALL = Color3.fromRGB(232, 230, 225)
+local WALL = Color3.fromRGB(212, 208, 200)
 local CARPET = Color3.fromRGB(70, 76, 92)
 local WOOD = Color3.fromRGB(150, 110, 75)
 local DARK = Color3.fromRGB(30, 30, 34)
@@ -433,13 +433,13 @@ function AdminTowerService.Build()
 					"Lamp",
 					Vector3.new(6, 0.3, 6),
 					at(lx, y + FH - 1.4, lz),
-					Color3.fromRGB(255, 250, 235),
-					Enum.Material.Neon,
+					Color3.fromRGB(245, 240, 228),
+					Enum.Material.Glass,
 					{ CanCollide = false }
 				)
 				local light = Instance.new("PointLight")
-				light.Range = 30
-				light.Brightness = 1.4
+				light.Range = 26
+				light.Brightness = 0.75
 				light.Parent = lamp
 			end
 		end

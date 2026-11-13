@@ -240,13 +240,13 @@ local function buildStore(root: Instance, s: any)
 				"Lamp",
 				Vector3.new(4, 0.2, 1.2),
 				at(lx, H - 0.9, lz),
-				Color3.fromRGB(255, 252, 240),
-				Enum.Material.Neon,
+				Color3.fromRGB(245, 242, 230),
+				Enum.Material.Glass,
 				{ CanCollide = false }
 			)
 			local light = Instance.new("PointLight")
-			light.Range = 26
-			light.Brightness = 1.2
+			light.Range = 24
+			light.Brightness = 0.7
 			light.Color = Color3.fromRGB(255, 248, 235)
 			light.Shadows = false
 			light.Parent = lamp
