@@ -58,9 +58,9 @@ Config.MaxTransfer = 1000000
 Config.FuelPricePerLiter = 1.79
 
 -- Dropper tycoon in the apartment (10 max). Cost to buy dropper i, and what it drops
--- every Config.DropInterval seconds (nerfed 50 % for the first up to 80 % for the best one).
+-- every Config.DropInterval seconds (nerfed twice: 50-80 %, then another 80 %).
 Config.DropperCosts = { 0, 1000, 3000, 10000, 100000, 200000, 400000, 800000, 1600000, 3200000 }
-Config.DropperDrops = { 250, 450, 1300, 4000, 7500, 12000, 15000, 17500, 19000, 20000 }
+Config.DropperDrops = { 50, 90, 260, 800, 1500, 2400, 3000, 3500, 3800, 4000 }
 Config.DropInterval = 1
 
 -- Vehicles

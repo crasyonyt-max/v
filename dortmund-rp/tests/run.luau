@@ -924,8 +924,8 @@ test("dropper tycoon in the apartment", function()
 	eq(Config.DropperCosts[5], 100000)
 	eq(Config.DropperCosts[6], 200000, "then x2")
 	eq(Config.DropperCosts[10], 3200000)
-	eq(Config.DropperDrops[1], 250, "first drops 250")
-	eq(Config.DropperDrops[10], 20000, "dropper 10: 20k per second (nerfed)")
+	eq(Config.DropperDrops[1], 50, "first drops 50")
+	eq(Config.DropperDrops[10], 4000, "dropper 10: 4000 per second (nerfed)")
 	for i = 2, 10 do
 		assert(Config.DropperDrops[i] > Config.DropperDrops[i - 1], "every dropper drops more")
 	end
