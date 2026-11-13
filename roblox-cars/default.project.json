@@ -1,0 +1,12 @@
+{
+  "name": "RealisticCars",
+  "emitLegacyScripts": false,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "RealisticCars": {
+        "$path": "src/RealisticCars"
+      }
+    }
+  }
+}
