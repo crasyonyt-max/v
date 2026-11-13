@@ -340,10 +340,12 @@ handlers.freeze = function(actor, args)
 	return true, nil, { on = on }
 end
 
+-- Any admin may teleport to anyone, whatever their rank.
 handlers.tp_to = function(actor, args)
-	local target, err = targetPlayer(actor, args)
+	local id = typeof(args) == "table" and Remotes.Check.Int(args.userId, 1, 1e12) or nil
+	local target = id and Players:GetPlayerByUserId(id)
 	if not target then
-		return false, err
+		return false, if id then "target_offline" else "bad_target"
 	end
 	local from, to = rootOf(actor), rootOf(target)
 	if not from or not to then
