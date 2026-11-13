@@ -27,6 +27,7 @@ local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
 local EventService = require(script.Parent.EventService)
+local Boosts = require(script.Parent.Boosts)
 local VoteService = require(script.Parent.VoteService)
 local Locations = require(ReplicatedStorage.Shared.Locations)
 
@@ -81,6 +82,8 @@ local ACTIONS: { [string]: number } = {
 	aa_music_play = Roles.SECOND_CO_OWNER,
 	aa_music_stop = Roles.SECOND_CO_OWNER,
 	aa_default_music = Roles.SECOND_CO_OWNER,
+	aa_countdown = Roles.SECOND_CO_OWNER,
+	aa_countdown_stop = Roles.SECOND_CO_OWNER,
 	aa_song_add = Roles.SECOND_CO_OWNER,
 	aa_song_remove = Roles.SECOND_CO_OWNER,
 }
@@ -571,6 +574,61 @@ handlers.aa_music_stop = function(actor)
 		return false, "error"
 	end
 	log(actor, "aa_music_stop", "", true)
+	return true
+end
+
+-- Countdown: date "TT.MM.JJJJ" (empty = today, or tomorrow if the time has passed)
+-- and time "HH:MM", both in Berlin time.
+handlers.aa_countdown = function(actor, args)
+	if typeof(args) ~= "table" then
+		return false, "bad_request"
+	end
+	local h, mi = string.match(tostring(args.time or ""), "^%s*(%d%d?)[:%.](%d%d)%s*$")
+	local hour, minute = tonumber(h), tonumber(mi)
+	if not hour or not minute or hour > 23 or minute > 59 then
+		return false, "bad_time"
+	end
+	local now = os.time()
+	local d, m, y = string.match(tostring(args.date or ""), "^%s*(%d%d?)%.(%d%d?)%.(%d%d%d%d)%s*$")
+	local at: number
+	if d then
+		local day, month, year = tonumber(d) :: number, tonumber(m) :: number, tonumber(y) :: number
+		if month < 1 or month > 12 or day < 1 or day > 31 then
+			return false, "bad_date"
+		end
+		at = Boosts.FromBerlin(year, month, day, hour, minute)
+	elseif string.match(tostring(args.date or ""), "%S") then
+		return false, "bad_date"
+	else
+		local localNow = now + Boosts.BerlinOffset(now)
+		local year = tonumber(os.date("!%Y", localNow)) :: number
+		local month = tonumber(os.date("!%m", localNow)) :: number
+		local day = tonumber(os.date("!%d", localNow)) :: number
+		at = Boosts.FromBerlin(year, month, day, hour, minute)
+		if at <= now then
+			at += 86400 -- already passed today: tomorrow
+		end
+	end
+	if at <= now or at > now + 366 * 86400 then
+		return false, "bad_date"
+	end
+	local title = Remotes.Check.String(args.title, 40) or "AA"
+	local filtered = ChatService.Filter(title, actor.UserId)
+	if not filtered then
+		return false, "bad_message"
+	end
+	if not EventService.SetCountdown(filtered, at) then
+		return false, "error"
+	end
+	log(actor, "aa_countdown", filtered .. " @ " .. os.date("!%Y-%m-%d %H:%M UTC", at), true)
+	return true
+end
+
+handlers.aa_countdown_stop = function(actor)
+	if not EventService.ClearCountdown() then
+		return false, "error"
+	end
+	log(actor, "aa_countdown_stop", "", true)
 	return true
 end
 

@@ -581,6 +581,15 @@ test("AA events", function()
 	eq(Events.Snapshot().defaultOff, true, "paused")
 	assert(Events.SetDefaultMusic(true), "start")
 	eq(Events.Snapshot().defaultOff, false, "on again")
+
+	-- countdown: shown until a few minutes after it hits zero
+	assert(Events.SetCountdown("AA", os.time() + 3600), "countdown")
+	eq(Events.Snapshot().countdown.title, "AA")
+	assert(Events.ClearCountdown(), "clear")
+	eq(Events.Snapshot().countdown, nil)
+	local Bo = requirePath(Server.Boosts)
+	eq(os.date("!%Y-%m-%d %H:%M", Bo.FromBerlin(2026, 11, 13, 19, 0)), "2026-11-13 18:00", "19:00 CET")
+	eq(os.date("!%Y-%m-%d %H:%M", Bo.FromBerlin(2026, 7, 1, 19, 0)), "2026-07-01 17:00", "19:00 CEST")
 end)
 
 -- Every bike builds ---------------------------------------------------------------

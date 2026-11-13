@@ -99,14 +99,28 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+-- Noclip: parts stop colliding while it is on; switching it off puts every
+-- part back the way it was (before, they stayed non-colliding).
+local noclipSaved: { [BasePart]: boolean } = {}
 RunService.Stepped:Connect(function()
 	if player:GetAttribute("AdminNoclip") ~= true then
+		if next(noclipSaved) then
+			for part, collide in noclipSaved do
+				if part.Parent then
+					part.CanCollide = collide
+				end
+			end
+			noclipSaved = {}
+		end
 		return
 	end
 	local c = player.Character
 	if c then
 		for _, d in c:GetDescendants() do
 			if d:IsA("BasePart") then
+				if noclipSaved[d] == nil then
+					noclipSaved[d] = d.CanCollide
+				end
 				d.CanCollide = false
 			end
 		end
@@ -115,6 +129,7 @@ end)
 
 player.CharacterAdded:Connect(function()
 	flyVelocity, flyAlign, flyAttachment = nil, nil, nil
+	noclipSaved = {}
 end)
 
 -- F toggles fly for admins (asks the server, which checks the role).
@@ -123,6 +138,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	if (player:GetAttribute("Role") or "") == "" then
+		return
+	end
+	-- on a vehicle F is the wheelie, not fly
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum and hum.SeatPart then
 		return
 	end
 	local Net = require(script.Parent.Parent.Net)

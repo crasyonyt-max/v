@@ -35,7 +35,15 @@ export type Boost = { m: number, ends: number }
 export type Drop = { id: string, x: number, z: number, kind: string, value: any, ends: number }
 export type Song = { id: number, name: string }
 export type Music = { id: number, name: string, started: number, vol: number, loop: boolean }
-type Saved = { cash: Boost?, xp: Boost?, drops: { Drop }, music: Music?, songs: { Song }, defaultOff: boolean? }
+type Saved = {
+	cash: Boost?,
+	xp: Boost?,
+	drops: { Drop },
+	music: Music?,
+	songs: { Song },
+	defaultOff: boolean?,
+	countdown: { title: string, at: number }?,
+}
 
 local store: DataStore? = nil
 pcall(function()
@@ -128,6 +136,7 @@ local function snapshot(): { [string]: any }
 		drops = drops,
 		music = saved.music,
 		defaultOff = saved.defaultOff == true,
+		countdown = saved.countdown,
 		songs = saved.songs,
 	}
 end
@@ -320,6 +329,11 @@ local function clean(v: any): Saved
 	if v.defaultOff == true then
 		out.defaultOff = true
 	end
+	-- countdowns stay a few minutes after they hit zero ("now!")
+	local c = v.countdown
+	if typeof(c) == "table" and typeof(c.at) == "number" and c.at + 300 > now then
+		out.countdown = { title = tostring(c.title or "AA"), at = c.at }
+	end
 	if typeof(v.songs) == "table" then
 		for _, song in v.songs do
 			if typeof(song) == "table" and typeof(song.id) == "number" and #out.songs < MAX_SONGS then
@@ -475,6 +489,19 @@ function EventService.PlayMusic(id: number, volume: number, loop: boolean): (boo
 end
 
 -- The 24/7 background playlist (Config.DefaultMusic): on or paused, on every server.
+-- Countdown shown to everyone on every server (title already filtered, at = UTC).
+function EventService.SetCountdown(title: string, at: number): boolean
+	return update(function(s)
+		s.countdown = { title = title, at = at }
+	end)
+end
+
+function EventService.ClearCountdown(): boolean
+	return update(function(s)
+		s.countdown = nil
+	end)
+end
+
 function EventService.SetDefaultMusic(on: boolean): boolean
 	return update(function(s)
 		s.defaultOff = if on then nil else true

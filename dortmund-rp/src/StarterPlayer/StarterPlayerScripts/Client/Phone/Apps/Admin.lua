@@ -549,7 +549,36 @@ local function aaTab(root: ScrollingFrame)
 	end, { Parent = drop })
 
 	-- music on every server (Roblox audio ids), plus a saved song list like a boombox
-	local music = section(root, 6, "🎵 " .. Store.T("aa_music"))
+	-- countdown for everyone (Berlin time)
+	local countdown = section(root, 6, "⏳ " .. Store.T("aa_countdown"))
+	local countdownState = Make.Label("", 12, T.sub, T.bold, { Parent = countdown })
+	local cdTitle = Make.TextBox(Store.T("aa_countdown_title"), { Parent = countdown })
+	local cdDate = Make.TextBox(Store.T("aa_countdown_date"), { Parent = countdown })
+	local cdTime = Make.TextBox(Store.T("aa_countdown_time"), { Parent = countdown })
+	Make.Row({
+		half("▶ " .. Store.T("aa_start"), T.good, function()
+			act("aa_countdown", {
+				title = if cdTitle.Text == "" then "AA" else cdTitle.Text,
+				date = cdDate.Text,
+				time = cdTime.Text,
+			})
+		end),
+		half("⏹ " .. Store.T("stop"), T.bad, function()
+			act("aa_countdown_stop")
+		end),
+	}).Parent =
+		countdown
+	local function showCountdown()
+		local c = snap.countdown
+		countdownState.Text = if typeof(c) == "table"
+			then "▶ " .. tostring(c.title) .. " · " .. os.date("%d.%m.%Y %H:%M", c.at) .. " (" .. Store.T(
+				"aa_your_time"
+			) .. ")"
+			else Store.T("aa_countdown_none")
+	end
+	showCountdown()
+
+	local music = section(root, 7, "🎵 " .. Store.T("aa_music"))
 	local nowPlaying = Make.Label("", 12, T.sub, T.bold, { Parent = music })
 	-- the 24/7 background playlist (plays whenever no AA music runs)
 	local defaultState = Make.Label("", 12, T.sub, T.font, { Parent = music })
@@ -624,10 +653,11 @@ local function aaTab(root: ScrollingFrame)
 	showStatus = function()
 		base()
 		showMusic()
+		showCountdown()
 	end
 	showMusic()
 
-	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 7, Parent = root })
+	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 8, Parent = root })
 end
 
 local function inboxTab(root: ScrollingFrame)

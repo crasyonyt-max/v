@@ -10,6 +10,7 @@ local Phone = require(Client.Phone.Phone)
 require(Client.UI.Shops)
 require(Client.UI.Inventory)
 require(Client.UI.Vote)
+require(Client.UI.Countdown)
 
 -- Phone apps register themselves.
 for _, app in Client.Phone.Apps:GetChildren() do

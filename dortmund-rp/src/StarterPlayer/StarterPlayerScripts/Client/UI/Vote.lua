@@ -23,7 +23,7 @@ local gui = New("ScreenGui", {
 })
 local panel = New("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 10),
+	Position = UDim2.new(0.5, 0, 0, 58), -- under the AA countdown
 	Size = UDim2.fromOffset(300, 0),
 	AutomaticSize = Enum.AutomaticSize.Y,
 	BackgroundColor3 = T.bg,

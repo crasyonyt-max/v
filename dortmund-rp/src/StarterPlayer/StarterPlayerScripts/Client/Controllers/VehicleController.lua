@@ -463,7 +463,10 @@ local function drive(dt: number)
 			warnedFuel = true
 			Notify.Show(Store.T("out_of_fuel"), true)
 		end
-		throttle = math.min(throttle, 0)
+		-- empty tank: no driving at all (also not backwards), only braking
+		if not (throttle < 0 and speedNow > 1) then
+			throttle = 0
+		end
 	else
 		warnedFuel = false
 	end
@@ -589,7 +592,7 @@ local function start(vseat: VehicleSeat)
 	-- the car's own "Einsteigen" prompts would sit in your face while you drive
 	hiddenPrompts = {}
 	for _, d in model:GetDescendants() do
-		if d:IsA("ProximityPrompt") and d.Enabled then
+		if d:IsA("ProximityPrompt") and d.Enabled and d.Name ~= "ADMCRefuel" then
 			d.Enabled = false
 			table.insert(hiddenPrompts, d)
 		end

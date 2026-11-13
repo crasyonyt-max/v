@@ -218,7 +218,10 @@ local S: { [string]: { de: string, en: string } } = {
 	bluelight = { de = "Blaulicht", en = "Blue lights" },
 	siren = { de = "Martinshorn", en = "Siren" },
 	camera = { de = "Kamera", en = "Camera" },
-	out_of_fuel = { de = "Tank leer! Fahr zur Arol-Tankstelle.", en = "Out of fuel! Drive to an Arol station." },
+	out_of_fuel = {
+		de = "Tank leer! Der ADMC kann dich auftanken.",
+		en = "Out of fuel! ADMC can refuel you.",
+	},
 
 	-- admin
 	admin_players = { de = "Spieler", en = "Players" },
@@ -262,6 +265,24 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_start = { de = "Starten (alle Server)", en = "Start (all servers)" },
 	stop = { de = "Stopp", en = "Stop" },
 	duration_min = { de = "Dauer in Minuten", en = "Duration in minutes" },
+	aa_countdown = { de = "Countdown (alle Server)", en = "Countdown (all servers)" },
+	aa_countdown_title = { de = "Titel (leer = AA)", en = "Title (empty = AA)" },
+	aa_countdown_date = { de = "Datum TT.MM.JJJJ (leer = heute)", en = "Date DD.MM.YYYY (empty = today)" },
+	aa_countdown_time = { de = "Uhrzeit HH:MM (Berlin)", en = "Time HH:MM (Berlin)" },
+	aa_countdown_none = { de = "Kein Countdown aktiv.", en = "No countdown running." },
+	aa_your_time = { de = "deine Uhrzeit", en = "your time" },
+	countdown_now = { de = "jetzt!", en = "now!" },
+	bad_time = { de = "Uhrzeit bitte als HH:MM, z. B. 19:00.", en = "Time as HH:MM, e.g. 19:00." },
+	bad_date = {
+		de = "Datum bitte als TT.MM.JJJJ und in der Zukunft (max. 1 Jahr).",
+		en = "Date as DD.MM.YYYY, in the future (max 1 year).",
+	},
+	admc_only = { de = "Nur der ADMC im Dienst kann hier tanken.", en = "Only ADMC on duty can refuel here." },
+	admc_refueled = { de = "⛽ Aufgetankt!", en = "⛽ Refueled!" },
+	admc_refueled_you = {
+		de = "⛽ %s vom ADMC hat dein Fahrzeug aufgetankt.",
+		en = "⛽ %s from ADMC refueled your vehicle.",
+	},
 	aa_music = { de = "Musik (alle Server)", en = "Music (all servers)" },
 	aa_music_id = { de = "Roblox Audio-ID", en = "Roblox audio ID" },
 	aa_music_volume = { de = "Lautstärke in % (50)", en = "Volume in % (50)" },

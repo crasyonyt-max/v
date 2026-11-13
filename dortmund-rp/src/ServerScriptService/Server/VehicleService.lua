@@ -245,6 +245,47 @@ function setupSeats(model: Model, owner: Player, meta: { [string]: any })
 	end
 end
 
+-- ADMC: a vehicle with an (almost) empty tank gets an "Auftanken" prompt that
+-- only players on ADMC duty can use. They fill it up and get paid for it.
+local ADMC_REFUEL_PAY = 120
+local ADMC_REFUEL_XP = 25
+local function setupRefuel(model: Model)
+	local chassis = model.PrimaryPart :: BasePart
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ADMCRefuel"
+	prompt.ActionText = "Auftanken (ADMC)"
+	prompt.ObjectText = model.Name
+	prompt.HoldDuration = 2
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.T
+	prompt.Enabled = false
+	prompt.Parent = chassis
+	local function check()
+		prompt.Enabled = ((model:GetAttribute("Fuel") or 100) :: number) < 10
+	end
+	model:GetAttributeChangedSignal("Fuel"):Connect(check)
+	check()
+	prompt.Triggered:Connect(function(player)
+		if JobService.Get(player) ~= "ADMC" then
+			Remotes.Push(player, "Notify", { key = "admc_only", error = true })
+			return
+		end
+		if ((model:GetAttribute("Fuel") or 100) :: number) >= 10 then
+			return
+		end
+		model:SetAttribute("Fuel", 100)
+		local ownerId = model:GetAttribute("OwnerId")
+		local owner = if typeof(ownerId) == "number" then Players:GetPlayerByUserId(ownerId) else nil
+		if owner and owner ~= player then
+			Economy.Earn(player, ADMC_REFUEL_PAY, "ADMC Pannenhilfe")
+			XPService.Earn(player, "ADMC", ADMC_REFUEL_XP, "Pannenhilfe")
+			Remotes.Push(owner, "Notify", { key = "admc_refueled_you", args = { player.DisplayName } })
+		end
+		Remotes.Push(player, "Notify", { key = "admc_refueled" })
+	end)
+end
+
 local function spawnModel(
 	player: Player,
 	def: any,
@@ -313,6 +354,7 @@ local function spawnModel(
 	end)
 
 	setupSeats(model, player, meta)
+	setupRefuel(model)
 	spawned[player] = model
 	return true, nil
 end

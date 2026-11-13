@@ -34,6 +34,15 @@ local function daysFromCivil(y: number, m: number, d: number): number
 	return era * 146097 + doe - 719468
 end
 
+Boosts.DaysFromCivil = daysFromCivil
+
+-- Berlin wall-clock time -> UTC timestamp (handles CET / CEST).
+function Boosts.FromBerlin(y: number, m: number, d: number, h: number, mi: number): number
+	local wall = daysFromCivil(y, m, d) * 86400 + h * 3600 + mi * 60
+	local guess = wall - 3600
+	return wall - Boosts.BerlinOffset(guess)
+end
+
 local function lastSunday(y: number, m: number): number -- days since epoch
 	local nextMonth = if m == 12 then daysFromCivil(y + 1, 1, 1) else daysFromCivil(y, m + 1, 1)
 	local last = nextMonth - 1
