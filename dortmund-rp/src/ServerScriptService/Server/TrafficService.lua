@@ -26,9 +26,9 @@ local JUNCTION_R = 32 -- studs (≈ 9 m) from the centre: the crossing area
 local CAMERA_R = 22
 local TOLERANCE_KMH = 5
 
-TrafficService.XP_GREEN = 5
-TrafficService.XP_CAMERA_OK = 5
-TrafficService.XP_RED = 25
+TrafficService.XP_GREEN = 50
+TrafficService.XP_CAMERA_OK = 50
+TrafficService.XP_RED = 100
 TrafficService.XP_SPEEDING_MIN = 15
 
 type Junction = { index: number, pos: Vector3, dirA: Vector3, dirB: Vector3 }
