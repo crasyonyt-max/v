@@ -7,6 +7,7 @@ local Teams = game:GetService("Teams")
 
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local DataService = require(script.Parent.DataService)
+local GameLog = require(script.Parent.GameLog)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
 local Interaction = require(script.Parent.InteractionService)
@@ -71,6 +72,7 @@ function JobService.Set(player: Player, jobId: string): (boolean, string?)
 	data.job = jobId
 	JobService.Apply(player)
 	State.MarkDirty(player)
+	GameLog.Add("job", player, tostring(old) .. " -> " .. jobId)
 	changedEvent:Fire(player, old, jobId)
 	Remotes.Push(player, "Notify", { key = "job_changed", args = { jobId } })
 	return true, nil

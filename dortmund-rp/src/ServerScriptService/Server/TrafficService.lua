@@ -19,6 +19,7 @@ local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
 local XPService = require(script.Parent.XPService)
 local Levels = require(ReplicatedStorage.Shared.Levels)
+local GameLog = require(script.Parent.GameLog)
 
 local TrafficService = {}
 
@@ -204,6 +205,7 @@ local function changeXP(player: Player, amount: number, key: string, args: { any
 		return
 	end
 	data.xp = math.max(0, (tonumber(data.xp) or 0) + amount)
+	GameLog.Add("traffic", player, key .. " " .. amount .. " XP")
 	player:SetAttribute("Level", Levels.FromTotal(data.xp))
 	State.MarkDirty(player)
 	Remotes.Push(player, "Notify", { key = key, args = args, error = true })

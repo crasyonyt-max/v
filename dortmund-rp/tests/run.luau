@@ -1043,6 +1043,26 @@ test("admin tower: site and offices", function()
 	end
 end)
 
+test("full game log: add, filter, pages", function()
+	local Log = requirePath(Server.GameLog)
+	Log.Add("money", 98765, "+500.00 € Dropper")
+	Log.Add("chat", 98765, "to 23646: hilfe")
+	for i = 1, 150 do
+		Log.Add("xp", 7, "+50 XP Verkehr #" .. i)
+	end
+	local today = os.date("!%Y-%m-%d") :: string
+	local all, total = Log.Read(today, nil, 1, 100)
+	eq(#all, 100, "first page")
+	assert(total >= 152, "everything is there")
+	local chats, n = Log.Read(today, "23646", 1, 100)
+	eq(n, 1, "filter finds the message")
+	eq(chats[1].k, "chat")
+	local _, n2 = Log.Read(today, "98765", 1, 100)
+	eq(n2, 2, "filter by user id")
+	local page2 = Log.Read(today, "xp", 2, 100)
+	eq(#page2, 50, "second page")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
 	error("tests failed")

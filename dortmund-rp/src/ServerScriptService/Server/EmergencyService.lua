@@ -11,6 +11,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local ChatService = require(script.Parent.ChatService)
 local Economy = require(script.Parent.EconomyService)
 local JobService = require(script.Parent.JobService)
+local GameLog = require(script.Parent.GameLog)
 local Remotes = require(script.Parent.Remotes)
 local XPService = require(script.Parent.XPService)
 
@@ -86,6 +87,7 @@ function Emergency.Start()
 			return Remotes.Fail("filter_failed")
 		end
 		lastCall[player.UserId] = now
+		GameLog.Add("call", player, num .. ": " .. filtered)
 		local call: Call = {
 			id = HttpService:GenerateGUID(false),
 			number = num,

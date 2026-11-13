@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService = game:GetService("TextService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local GameLog = require(script.Parent.GameLog)
 local DataService = require(script.Parent.DataService)
 local Remotes = require(script.Parent.Remotes)
 local Roles = require(script.Parent.Roles)
@@ -216,6 +217,7 @@ function ChatService.Start()
 		local data = DataService.Get(player) :: { [string]: any }
 		local myNumber = State.PhoneNumber(player.UserId)
 
+		GameLog.Add("chat", player, "to " .. to .. ": " .. filtered)
 		if to == Config.AdminChatNumber then
 			toAdmins(player, filtered)
 			append(data, {

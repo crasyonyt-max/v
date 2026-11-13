@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Boosts = require(script.Parent.Boosts)
+local GameLog = require(script.Parent.GameLog)
 local DataService = require(script.Parent.DataService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
@@ -33,6 +34,7 @@ function Economy.Add(player: Player, amount: number, reason: string): boolean
 	amount = math.floor(amount * 100 + 0.5) / 100 -- cents
 	data.bank = math.floor((data.bank + amount) * 100 + 0.5) / 100
 	logTx(data, amount, reason)
+	GameLog.Add("money", player, string.format("+%.2f € %s (bank %.2f €)", amount, reason, data.bank))
 	State.MarkDirty(player)
 	return true
 end
@@ -59,6 +61,7 @@ function Economy.TrySpend(player: Player, amount: number, reason: string): boole
 	data.bank = math.floor((data.bank - amount) * 100 + 0.5) / 100
 	if amount > 0 then
 		logTx(data, -amount, reason)
+		GameLog.Add("money", player, string.format("-%.2f € %s (bank %.2f €)", amount, reason, data.bank))
 	end
 	State.MarkDirty(player)
 	return true

@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Levels = require(ReplicatedStorage.Shared.Levels)
 local Boosts = require(script.Parent.Boosts)
+local GameLog = require(script.Parent.GameLog)
 local DataService = require(script.Parent.DataService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
@@ -25,6 +26,11 @@ function XPService.Add(player: Player, jobId: string?, amount: number, reason: s
 	end
 	local after = Levels.FromTotal(data.xp)
 	player:SetAttribute("Level", after)
+	GameLog.Add(
+		"xp",
+		player,
+		string.format("+%d XP %s%s", amount, reason or "", if jobId then " (" .. jobId .. ")" else "")
+	)
 	Remotes.Push(player, "XP", { amount = amount, reason = reason })
 	if after > before then
 		Remotes.Push(player, "LevelUp", { level = after })

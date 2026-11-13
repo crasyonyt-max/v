@@ -21,6 +21,7 @@ local News = require(script.Parent.News) :: any
 
 local New, T = Make.New, Make.Theme
 
+local OWNER = 6
 local AA_RANK = 4 -- AA tab: Owner (6) + both Co-Owner ranks (5, 4)
 local GAME_ADMIN = 3
 local SERVER_OWNER = 2
@@ -766,6 +767,93 @@ local function inboxTab(root: ScrollingFrame)
 	end
 end
 
+-- The full game log (Owner only): every server, every day. Filter + pages.
+local LOG_ICON = {
+	join = "🟢",
+	leave = "🔴",
+	money = "💶",
+	xp = "⭐",
+	admin = "🛡️",
+	chat = "💬",
+	call = "🚨",
+	job = "💼",
+	vehicle = "🏍️",
+	traffic = "🚦",
+	death = "💀",
+	server = "🖥️",
+}
+local logDay: number? = nil -- days back from today
+local logFilter = ""
+local logPage = 1
+local function fullLogTab(root: ScrollingFrame)
+	local back = logDay or 0
+	local dayName = os.date("!%Y-%m-%d", os.time() - back * 86400) :: string
+	local head = section(root, 1, "📜 " .. Store.T("full_log") .. " · " .. dayName)
+	Make.Row({
+		Make.Button("◀", T.panel, function()
+			logDay, logPage = back + 1, 1
+			Phone.Replace("admin", "admin_fulllog")
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+		Make.Button(Store.T("today"), T.panel, function()
+			logDay, logPage = 0, 1
+			Phone.Replace("admin", "admin_fulllog")
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+		Make.Button("▶", T.panel, function()
+			logDay, logPage = math.max(0, back - 1), 1
+			Phone.Replace("admin", "admin_fulllog")
+		end, { Size = UDim2.new(1 / 3, -4, 1, 0) }),
+	}).Parent =
+		head
+	local filterBox = Make.TextBox(Store.T("log_filter"), { Text = logFilter, Parent = head })
+	Make.Button("🔍 " .. Store.T("log_search"), T.accent, function()
+		logFilter, logPage = filterBox.Text, 1
+		Phone.Replace("admin", "admin_fulllog")
+	end, { Parent = head })
+	local info = Make.Label("…", 12, T.sub, T.bold, { Parent = head })
+	local list = Make.Card({ LayoutOrder = 2, BackgroundTransparency = 1, Parent = root })
+	task.spawn(function()
+		local r = Net.Request("Admin.FullLog", dayName, logFilter, logPage)
+		if not list.Parent then
+			return
+		end
+		if not r.ok then
+			Notify.Error(r.err)
+			return
+		end
+		local pages = math.max(1, math.ceil((r.total or 0) / 100))
+		info.Text = Store.T("log_count", r.total or 0, logPage, pages)
+		for i, e in r.entries or {} do
+			Make.Label(
+				string.format(
+					"%s %s  %s  %s",
+					os.date("%H:%M:%S", e.t),
+					LOG_ICON[e.k] or "•",
+					if e.n then e.n else (if e.u then tostring(e.u) else "Server " .. tostring(e.s)),
+					tostring(e.x)
+				),
+				11,
+				T.text,
+				T.font,
+				{ LayoutOrder = i, Parent = list }
+			)
+		end
+		if pages > 1 then
+			local nav = Make.Row({
+				Make.Button("‹ " .. Store.T("newer"), T.panel, function()
+					logPage = math.max(1, logPage - 1)
+					Phone.Replace("admin", "admin_fulllog")
+				end, { Size = UDim2.new(0.5, -3, 1, 0) }),
+				Make.Button(Store.T("older") .. " ›", T.panel, function()
+					logPage = math.min(pages, logPage + 1)
+					Phone.Replace("admin", "admin_fulllog")
+				end, { Size = UDim2.new(0.5, -3, 1, 0) }),
+			})
+			nav.LayoutOrder = 1000
+			nav.Parent = list
+		end
+	end)
+end
+
 local function logsTab(root: ScrollingFrame)
 	local r = Net.Request("Admin.Logs")
 	if not r.ok then
@@ -802,8 +890,11 @@ Phone.Register({
 			table.insert(tabs, 5, "admin_inbox")
 			table.insert(tabs, 5, "admin_news")
 		end
-		if Store.Rank() >= AA_RANK then
+		if Store.Rank() >= AA_RANK or Store.Get().aa == true then
 			table.insert(tabs, 1, "admin_aa")
+		end
+		if Store.Rank() >= OWNER then
+			table.insert(tabs, "admin_fulllog")
 		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"
 
@@ -847,6 +938,8 @@ Phone.Register({
 			newsTab(root)
 		elseif current == "admin_aa" then
 			aaTab(root)
+		elseif current == "admin_fulllog" then
+			fullLogTab(root)
 		elseif current == "admin_logs" then
 			logsTab(root)
 		end

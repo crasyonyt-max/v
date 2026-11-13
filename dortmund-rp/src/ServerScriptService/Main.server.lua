@@ -31,6 +31,7 @@ for _, player in Players:GetPlayers() do
 end
 
 local services = {
+	require(Server.GameLog),
 	require(Server.WorldService),
 	require(Server.EconomyService),
 	require(Server.JobService),

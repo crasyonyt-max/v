@@ -22,6 +22,7 @@ local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
 local XPService = require(script.Parent.XPService)
+local GameLog = require(script.Parent.GameLog)
 
 local VehicleService = {}
 
@@ -355,6 +356,11 @@ local function spawnModel(
 
 	setupSeats(model, player, meta)
 	setupRefuel(model)
+	GameLog.Add(
+		"vehicle",
+		player,
+		"spawned " .. def.name .. (if meta.Job then " (" .. tostring(meta.Job) .. ")" else "")
+	)
 	spawned[player] = model
 	return true, nil
 end

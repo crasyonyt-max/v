@@ -26,6 +26,7 @@ local VehicleService = require(script.Parent.VehicleService)
 local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
+local GameLog = require(script.Parent.GameLog)
 local EventService = require(script.Parent.EventService)
 local AdminTowerService = require(script.Parent.AdminTowerService)
 local Boosts = require(script.Parent.Boosts)
@@ -109,6 +110,7 @@ local function log(actor: Player, action: string, detail: string, global: boolea
 		table.remove(localLog, 1)
 	end
 	print(string.format("[Admin] %s: %s %s", actor.Name, action, detail))
+	GameLog.Add("admin", actor, action .. " " .. tostring(detail))
 	if global and logStore then
 		task.spawn(function()
 			local day = os.date("!%Y-%m-%d") :: string
@@ -929,7 +931,11 @@ function AdminService.Start()
 			return Remotes.Fail("bad_request")
 		end
 		local rank = Roles.Rank(player)
-		if rank < minRank then
+		if string.sub(action, 1, 3) == "aa_" then
+			if not Roles.HasAA(player) then
+				return Remotes.Fail("no_permission")
+			end
+		elseif rank < minRank then
 			return Remotes.Fail("no_permission")
 		end
 		local ok, err, extra = handlers[action](player, args or {}, rank >= GA)
@@ -960,6 +966,20 @@ function AdminService.Start()
 		end
 		return Remotes.Ok({ players = list })
 	end, { rate = 10 })
+
+	-- the full game log (GameLog): Owner only
+	Remotes.Handle("Admin.FullLog", function(player, dayArg: any, filter: any, page: any)
+		if Roles.Rank(player) < Roles.OWNER then
+			return Remotes.Fail("no_permission")
+		end
+		local d = if typeof(dayArg) == "string" and string.match(dayArg, "^%d%d%d%d%-%d%d%-%d%d$")
+			then dayArg
+			else os.date("!%Y-%m-%d") :: string
+		local f = if typeof(filter) == "string" then string.sub(filter, 1, 40) else nil
+		local p = Remotes.Check.Int(page, 1, 10000) or 1
+		local entries, total = GameLog.Read(d, f, p, 100)
+		return Remotes.Ok({ entries = entries, total = total, day = d, page = p })
+	end, { rate = 6, needsData = false })
 
 	Remotes.Handle("Admin.Logs", function(player)
 		if not Roles.IsServerAdmin(player) then
