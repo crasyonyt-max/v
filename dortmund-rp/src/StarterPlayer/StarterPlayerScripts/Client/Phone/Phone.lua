@@ -4,6 +4,7 @@
 
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -87,7 +88,7 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 			Adornee = monitor,
 			Face = face,
 			SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
-			PixelsPerStud = 120,
+			PixelsPerStud = 230, -- a real screen resolution, so all apps fit
 			LightInfluence = 0,
 			ResetOnSpawn = false,
 			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -99,7 +100,7 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 		body.SizeConstraint = Enum.SizeConstraint.RelativeXY
 		body.Size = UDim2.fromScale(1, 1)
 		aspect.AspectRatio = monitor.Size.X / monitor.Size.Y
-		max.MaxSize = Vector2.new(math.huge, math.huge)
+		max.MaxSize = Vector2.new(5000, 5000) -- fill the whole monitor
 		-- camera in front of the screen, filling the view
 		local normal = monitor.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))
 		local center = monitor.Position + normal * (monitor.Size.Z / 2)
@@ -108,6 +109,8 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 		camera.FieldOfView = 40
 		local distance = (monitor.Size.Y / 2) / math.tan(math.rad(20)) * 1.12
 		camera.CFrame = CFrame.lookAt(center + normal * distance, center)
+		-- no "PC benutzen" prompts on top of the screen while you use it
+		ProximityPromptService.Enabled = false
 		if hum then
 			savedWalk = { walk = hum.WalkSpeed, jump = hum.JumpPower }
 			hum.WalkSpeed = 0
@@ -150,6 +153,7 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 		end
 		pcMonitor = nil
 	end
+	ProximityPromptService.Enabled = true
 	if savedCamera then
 		camera.CameraType = savedCamera.type
 		camera.FieldOfView = savedCamera.fov
@@ -298,7 +302,8 @@ local function styleBody()
 	local camera = workspace.CurrentCamera
 	local small = camera ~= nil and camera.ViewportSize.Y < 520
 	local height = if small then 0.94 else math.min(0.9, 0.74 * p.screen)
-	body.Size = UDim2.fromScale(height * 0.48, height)
+	-- on a PC monitor the screen fills the whole monitor instead
+	body.Size = if pcMode then UDim2.fromScale(1, 1) else UDim2.fromScale(height * 0.48, height)
 	brandLabel.Text = p.brand
 	if p.id == "nvdr_p1" then
 		-- black glass body with the neon green edge from the product shot
