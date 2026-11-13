@@ -412,13 +412,13 @@ local function rewardPicker(parent: Instance): () -> (string, any)
 	local kindButton: TextButton
 	local function show()
 		local kind = REWARD_KINDS[kindIndex]
-		kindButton.Text = REWARD_ICON[kind] .. " " .. Store.T("reward_" .. kind) .. "  ⟳"
+		kindButton.Text = REWARD_ICON[kind] .. " " .. Store.T("reward_" .. kind) .. "  🔄"
 		amount.Visible = kind == "cash" or kind == "xp"
 		choice.Visible = kind == "item" or kind == "phone"
 		if kind == "item" then
-			choice.Text = itemChoices[itemIndex].name .. "  ⟳"
+			choice.Text = itemChoices[itemIndex].name .. "  🔄"
 		elseif kind == "phone" then
-			choice.Text = phoneChoices[phoneIndex].name .. "  ⟳"
+			choice.Text = phoneChoices[phoneIndex].name .. "  🔄"
 		end
 	end
 	kindButton = Make.Button("", T.panel, function()
@@ -689,7 +689,7 @@ local function aaTab(root: ScrollingFrame)
 	local function evText()
 		local e = DropEvents.List[evIndex]
 		return string.format(
-			"%s %s · x%s · %d%%  ⟳",
+			"%s %s · x%s · %d%%  🔄",
 			e.icon,
 			e.name,
 			tostring(e.mult),

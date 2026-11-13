@@ -169,7 +169,7 @@ barButton("📍", T.card, function()
 		redraw()
 	end
 end)
-barButton("✕", T.bad, close)
+barButton("X", T.bad, close)
 barButton("✓ " .. Store.T("map_place"), T.good, function()
 	local cb, point = onPick, selected
 	if cb and point then

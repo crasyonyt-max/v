@@ -76,7 +76,7 @@ Make.Label(
 	T.black,
 	{ Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -60, 0, 24), Parent = panel }
 )
-Make.Button("✕", T.card, function()
+Make.Button("X", T.card, function()
 	panel.Visible = false
 end, {
 	AnchorPoint = Vector2.new(1, 0),

@@ -42,7 +42,7 @@ local title = Make.Label(
 	T.black,
 	{ Position = UDim2.fromOffset(16, 10), Size = UDim2.new(1, -80, 0, 30), Parent = window }
 )
-Make.Button("✕", T.card, function()
+Make.Button("X", T.card, function()
 	Shops.Close()
 end, {
 	AnchorPoint = Vector2.new(1, 0),

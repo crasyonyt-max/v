@@ -124,7 +124,7 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 			Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
 		})
 		pcExit = exitGui
-		Make.Button("✕ PC verlassen", T.bad, function()
+		Make.Button("❌ PC verlassen", T.bad, function()
 			Phone.Close()
 		end, {
 			AnchorPoint = Vector2.new(0.5, 1),
