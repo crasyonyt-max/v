@@ -551,6 +551,17 @@ local function aaTab(root: ScrollingFrame)
 	-- music on every server (Roblox audio ids), plus a saved song list like a boombox
 	local music = section(root, 6, "🎵 " .. Store.T("aa_music"))
 	local nowPlaying = Make.Label("", 12, T.sub, T.bold, { Parent = music })
+	-- the 24/7 background playlist (plays whenever no AA music runs)
+	local defaultState = Make.Label("", 12, T.sub, T.font, { Parent = music })
+	Make.Row({
+		half("▶ " .. Store.T("aa_default_start"), T.good, function()
+			act("aa_default_music", { on = true })
+		end),
+		half("⏸ " .. Store.T("aa_default_stop"), T.bad, function()
+			act("aa_default_music", { on = false })
+		end),
+	}).Parent =
+		music
 	local idBox = Make.TextBox(Store.T("aa_music_id"), { Parent = music })
 	local volBox = Make.TextBox(Store.T("aa_music_volume"), { Parent = music })
 	local loop = true
@@ -590,6 +601,7 @@ local function aaTab(root: ScrollingFrame)
 		nowPlaying.Text = if typeof(m) == "table"
 			then "▶ " .. tostring(m.name) .. "  (" .. tostring(m.id) .. ")"
 			else Store.T("aa_music_off")
+		defaultState.Text = "📻 " .. Store.T(if snap.defaultOff then "aa_default_off" else "aa_default_on")
 		Make.Clear(songList)
 		for _, song in snap.songs or {} do
 			Make.Row({

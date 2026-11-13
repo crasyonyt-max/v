@@ -22,6 +22,15 @@ Config.SecondCoOwners = {
 	2851688688, -- pommes5123
 }
 
+-- Background music, 24/7 on every server, one song after the other (all in sync).
+-- `length` in seconds. The AA music plays instead while it runs; the AA tab can
+-- pause this playlist. Roblox music library tracks (allowed in every game).
+Config.DefaultMusic = {
+	{ id = 9043887091, length = 137, name = "Lo-fi Chill A" },
+	{ id = 1848354536, length = 97, name = "Relaxed Scene" },
+}
+Config.DefaultMusicVolume = 0.35 -- 0..1
+
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {

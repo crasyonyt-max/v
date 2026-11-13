@@ -35,7 +35,7 @@ export type Boost = { m: number, ends: number }
 export type Drop = { id: string, x: number, z: number, kind: string, value: any, ends: number }
 export type Song = { id: number, name: string }
 export type Music = { id: number, name: string, started: number, vol: number, loop: boolean }
-type Saved = { cash: Boost?, xp: Boost?, drops: { Drop }, music: Music?, songs: { Song } }
+type Saved = { cash: Boost?, xp: Boost?, drops: { Drop }, music: Music?, songs: { Song }, defaultOff: boolean? }
 
 local store: DataStore? = nil
 pcall(function()
@@ -127,6 +127,7 @@ local function snapshot(): { [string]: any }
 		weekly = Boosts.WeeklyEnds(os.time()) ~= nil,
 		drops = drops,
 		music = saved.music,
+		defaultOff = saved.defaultOff == true,
 		songs = saved.songs,
 	}
 end
@@ -316,6 +317,9 @@ local function clean(v: any): Saved
 			loop = m.loop == true,
 		}
 	end
+	if v.defaultOff == true then
+		out.defaultOff = true
+	end
 	if typeof(v.songs) == "table" then
 		for _, song in v.songs do
 			if typeof(song) == "table" and typeof(song.id) == "number" and #out.songs < MAX_SONGS then
@@ -468,6 +472,13 @@ function EventService.PlayMusic(id: number, volume: number, loop: boolean): (boo
 		s.music = { id = id, name = name, started = os.time(), vol = volume, loop = loop }
 	end)
 	return ok, nil
+end
+
+-- The 24/7 background playlist (Config.DefaultMusic): on or paused, on every server.
+function EventService.SetDefaultMusic(on: boolean): boolean
+	return update(function(s)
+		s.defaultOff = if on then nil else true
+	end)
 end
 
 function EventService.StopMusic(): boolean

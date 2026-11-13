@@ -5,10 +5,12 @@
 
 local ContentProvider = game:GetService("ContentProvider")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local Make = require(script.Parent.Parent.UI.Make)
+local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(script.Parent.Parent.Net)
 local Store = require(script.Parent.Parent.Store)
 
@@ -140,11 +142,61 @@ sound.Ended:Connect(function()
 	end
 end)
 
-local function onEvents(e: any)
-	if typeof(e) == "table" then
-		play(if typeof(e.music) == "table" then e.music else nil)
+-- The 24/7 playlist: which song is on right now, and since when. Worked out from
+-- the clock, so every server and every player hears the same song at the same time.
+local function defaultSong(): { [string]: any }?
+	local list = Config.DefaultMusic
+	local cycle = 0
+	for _, song in list do
+		cycle += song.length
+	end
+	if cycle <= 0 then
+		return nil
+	end
+	local now = Workspace:GetServerTimeNow()
+	local start = (now // cycle) * cycle -- whole seconds: the same key every tick
+	for _, song in list do
+		if now < start + song.length then
+			return {
+				id = song.id,
+				name = song.name,
+				started = start,
+				vol = Config.DefaultMusicVolume,
+				loop = false,
+			}
+		end
+		start += song.length
+	end
+	return nil
+end
+
+local events: { [string]: any } = {}
+local function update()
+	if typeof(events.music) == "table" then
+		play(events.music) -- AA music wins
+	elseif events.defaultOff ~= true then
+		play(defaultSong())
+	else
+		play(nil)
 	end
 end
+
+local function onEvents(e: any)
+	if typeof(e) == "table" then
+		events = e
+		update()
+	end
+end
+
+-- next song of the playlist when its time comes
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if typeof(events.music) ~= "table" and events.defaultOff ~= true then
+			update()
+		end
+	end
+end)
 
 Net.On("Events", onEvents)
 task.spawn(function()

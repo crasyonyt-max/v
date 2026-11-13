@@ -80,6 +80,7 @@ local ACTIONS: { [string]: number } = {
 	aa_drop_remove = Roles.SECOND_CO_OWNER,
 	aa_music_play = Roles.SECOND_CO_OWNER,
 	aa_music_stop = Roles.SECOND_CO_OWNER,
+	aa_default_music = Roles.SECOND_CO_OWNER,
 	aa_song_add = Roles.SECOND_CO_OWNER,
 	aa_song_remove = Roles.SECOND_CO_OWNER,
 }
@@ -570,6 +571,15 @@ handlers.aa_music_stop = function(actor)
 		return false, "error"
 	end
 	log(actor, "aa_music_stop", "", true)
+	return true
+end
+
+handlers.aa_default_music = function(actor, args)
+	local on = typeof(args) == "table" and args.on == true
+	if not EventService.SetDefaultMusic(on) then
+		return false, "error"
+	end
+	log(actor, if on then "aa_default_music_start" else "aa_default_music_stop", "", true)
 	return true
 end
 

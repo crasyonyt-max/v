@@ -269,6 +269,13 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_loop_on = { de = "Wiederholen: an", en = "Repeat: on" },
 	aa_loop_off = { de = "Wiederholen: aus", en = "Repeat: off" },
 	aa_play = { de = "Abspielen", en = "Play" },
+	aa_default_start = { de = "Standard starten", en = "Start default" },
+	aa_default_stop = { de = "Standard stoppen", en = "Stop default" },
+	aa_default_on = {
+		de = "Standard-Musik läuft 24/7 (wenn keine AA-Musik spielt)",
+		en = "Default music plays 24/7 (when no AA music runs)",
+	},
+	aa_default_off = { de = "Standard-Musik ist pausiert", en = "Default music is paused" },
 	music_blocked = {
 		de = "Audio darf in diesem Spiel nicht abgespielt werden",
 		en = "This audio is not allowed in this game",

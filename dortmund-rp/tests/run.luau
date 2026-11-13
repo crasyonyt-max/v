@@ -574,6 +574,13 @@ test("AA events", function()
 	eq(#Events.Snapshot().songs, 1, "no duplicates")
 	assert(Events.RemoveSong(1837849285), "remove song")
 	eq(#Events.Snapshot().songs, 0)
+
+	-- 24/7 default music: on unless paused
+	eq(Events.Snapshot().defaultOff, false, "default music on")
+	assert(Events.SetDefaultMusic(false), "pause")
+	eq(Events.Snapshot().defaultOff, true, "paused")
+	assert(Events.SetDefaultMusic(true), "start")
+	eq(Events.Snapshot().defaultOff, false, "on again")
 end)
 
 -- Every bike builds ---------------------------------------------------------------
