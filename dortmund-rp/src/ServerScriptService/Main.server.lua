@@ -19,6 +19,7 @@ Remotes.IsReady = DataService.IsLoaded
 -- Nobody spawns until the city exists (otherwise they would fall).
 Players.CharacterAutoLoads = false
 MapBuilder.Build()
+require(Server.TrafficService).Build()
 Interaction.Start()
 task.spawn(require(Server.StoreBuilder).Build) -- NPCs load from the web; don't block spawning
 Players.CharacterAutoLoads = true
@@ -42,6 +43,9 @@ local services = {
 	require(Server.EventService),
 	require(Server.VoteService),
 	require(Server.HousingService),
+	require(Server.TrafficService),
+	require(Server.DropEventService),
+	require(Server.DropperService),
 }
 for _, service in services do
 	service.Start()

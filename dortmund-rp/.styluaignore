@@ -3,3 +3,4 @@ src/ServerStorage/CityMeta.lua
 src/ReplicatedStorage/Shared/Locations.lua
 src/ServerStorage/ToolboxCars.lua
 src/ServerScriptService/Server/CarModels.lua
+src/ReplicatedStorage/Shared/TrafficData.lua

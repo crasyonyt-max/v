@@ -24,6 +24,8 @@ require(Client.Controllers.WorldController)
 require(Client.Controllers.AdminController)
 require(Client.Controllers.StuntPoses)
 require(Client.Controllers.EventMusic)
+require(Client.Controllers.TrafficLights)
+require(Client.Controllers.DropEventFX)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 

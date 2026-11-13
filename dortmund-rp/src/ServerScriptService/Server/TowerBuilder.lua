@@ -17,7 +17,17 @@ TowerBuilder.PER_FLOOR = 2
 TowerBuilder.FLOOR_H = 13
 TowerBuilder.LOBBY_H = 18
 
-export type Unit = { number: number, floor: number, door: BasePart, label: TextLabel, inside: CFrame }
+-- frame: centre of the flat at floor level; local -Z = hallway side, +Z = facade
+export type Unit = {
+	number: number,
+	floor: number,
+	door: BasePart,
+	label: TextLabel,
+	inside: CFrame,
+	frame: CFrame?,
+	w: number?,
+	d: number?,
+}
 TowerBuilder.Units = {} :: { Unit }
 TowerBuilder.FloorSpots = {} :: { [number]: CFrame } -- 0 = lobby
 
@@ -469,6 +479,8 @@ function TowerBuilder.Build()
 			table.insert(TowerBuilder.Units, { number = n, floor = f, door = door, label = label, inside = inside })
 			local flatCenter = at(0, fy, side * (hallD / 2 + unitD / 2 + 1))
 			local flatFrame = flatCenter * CFrame.Angles(0, if side < 0 then math.pi else 0, 0)
+			local unit = TowerBuilder.Units[#TowerBuilder.Units]
+			unit.frame, unit.w, unit.d = flatFrame, unitW, unitD
 			local accent = Color3.fromHSV((n * 0.137) % 1, 0.45, 0.75)
 			local flat = Instance.new("Model")
 			flat.Name = "Wohnung " .. n

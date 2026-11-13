@@ -28,6 +28,7 @@ local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
 local EventService = require(script.Parent.EventService)
 local Boosts = require(script.Parent.Boosts)
+local DropEventService = require(script.Parent.DropEventService)
 local VoteService = require(script.Parent.VoteService)
 local Locations = require(ReplicatedStorage.Shared.Locations)
 
@@ -83,6 +84,7 @@ local ACTIONS: { [string]: number } = {
 	aa_music_stop = Roles.SECOND_CO_OWNER,
 	aa_default_music = Roles.SECOND_CO_OWNER,
 	aa_countdown = Roles.SECOND_CO_OWNER,
+	aa_drop_event = Roles.SECOND_CO_OWNER,
 	aa_countdown_stop = Roles.SECOND_CO_OWNER,
 	aa_song_add = Roles.SECOND_CO_OWNER,
 	aa_song_remove = Roles.SECOND_CO_OWNER,
@@ -621,6 +623,21 @@ handlers.aa_countdown = function(actor, args)
 		return false, "error"
 	end
 	log(actor, "aa_countdown", filtered .. " @ " .. os.date("!%Y-%m-%d %H:%M UTC", at), true)
+	return true
+end
+
+-- start a dropper event by hand on this server ("" = stop)
+handlers.aa_drop_event = function(actor, args)
+	local id = typeof(args) == "table" and args.id or nil
+	if id == "" then
+		DropEventService.Stop()
+		log(actor, "aa_drop_event_stop", "", false)
+		return true
+	end
+	if typeof(id) ~= "string" or not DropEventService.Begin(id) then
+		return false, "bad_request"
+	end
+	log(actor, "aa_drop_event", id, false)
 	return true
 end
 

@@ -815,6 +815,154 @@ test("real city + map", function()
 	print(string.format("  stores: %d walk-in shops", built))
 end)
 
+-- v0.2: dropper events, traffic, droppers ---------------------------------------------
+test("dropper events roll with their chances", function()
+	local DropEvents = requirePath(RS.Shared.DropEvents)
+	eq(#DropEvents.List, 7, "7 events")
+	eq(DropEvents.ById.germany.mult, 5)
+	eq(DropEvents.ById.germany.chance, 0.05)
+	eq(DropEvents.ById.tacos.mult, 1.4)
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	overrides["ServerScriptService/Server/Remotes"] = stub
+	local Service = requirePath(Server.DropEventService)
+	overrides["ServerScriptService/Server/Remotes"] = nil
+	local seen, none = {}, 0
+	local r = env.Random.new(3)
+	for _ = 1, 4000 do
+		local id = Service.Roll(r)
+		if id then
+			seen[id] = (seen[id] or 0) + 1
+		else
+			none += 1
+		end
+	end
+	for _, e in DropEvents.List do
+		assert((seen[e.id] or 0) > 0, e.id .. " never hit")
+	end
+	assert((seen.germany or 0) < (seen.tacos or 0), "Germany is the rare one")
+	assert(none > 0, "sometimes nothing hits")
+end)
+
+test("traffic lights: never green both ways", function()
+	local Phase = requirePath(RS.Shared.TrafficPhase)
+	local greenA, greenB = 0, 0
+	for t = 0, Phase.CYCLE * 3, 0.5 do
+		local a, b = Phase.State(t, 5)
+		assert(not (a ~= "R" and b ~= "R"), "both axes open at " .. t)
+		greenA += if a == "G" then 1 else 0
+		greenB += if b == "G" then 1 else 0
+	end
+	assert(math.abs(greenA - greenB) <= 1, "fair green time")
+	local Data = requirePath(RS.Shared.TrafficData)
+	assert(#Data.lights > 100, "traffic lights from OSM")
+	assert(#Data.cameras > 20, "speed cameras from OSM")
+end)
+
+test("Fahr-XP exchange drops the last digit", function()
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	for _, name in { "DataService", "EconomyService", "Remotes", "State" } do
+		overrides["ServerScriptService/Server/" .. name] = stub
+	end
+	local Traffic = requirePath(Server.TrafficService)
+	for _, name in { "DataService", "EconomyService", "Remotes", "State" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	local euros, rest = Traffic._exchange(1234)
+	eq(euros, 123)
+	eq(rest, 4)
+	eq(Traffic._exchange(9), 0)
+end)
+
+test("dropper tycoon in the apartment", function()
+	local Config = requirePath(RS.Shared.Config)
+	eq(#Config.DropperCosts, 10, "10 droppers")
+	eq(Config.DropperCosts[1], 0, "first is free")
+	eq(Config.DropperCosts[2], 1000)
+	eq(Config.DropperCosts[5], 100000)
+	eq(Config.DropperCosts[6], 200000, "then x2")
+	eq(Config.DropperCosts[10], 3200000)
+	eq(Config.DropperDrops[1], 500, "first drops 500")
+	local Tower = requirePath(Server.TowerBuilder)
+	assert(Tower.Units[1].frame, "flat frame")
+
+	local data = { bank = 5000, tx = {}, droppers = 0, dropCash = 0 }
+	overrides["ServerScriptService/Server/DataService"] = {
+		Get = function()
+			return data
+		end,
+	}
+	overrides["ServerScriptService/Server/EconomyService"] = {
+		TrySpend = function(_, amount)
+			if data.bank < amount then
+				return false
+			end
+			data.bank -= amount
+			return true
+		end,
+		Add = function(_, amount)
+			data.bank += amount
+			return true
+		end,
+	}
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	overrides["ServerScriptService/Server/Remotes"] = stub
+	overrides["ServerScriptService/Server/State"] = stub
+	local Droppers = requirePath(Server.DropperService)
+	for _, name in { "DataService", "EconomyService", "Remotes", "State" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	local player = {
+		UserId = 5,
+		GetAttribute = function(_, k)
+			return if k == "Apartment" then 1 else nil
+		end,
+	}
+	Droppers._build(player)
+	local t = Droppers._tycoon(player)
+	assert(t, "tycoon built")
+	eq(data.droppers, 1, "free first dropper")
+	assert(t.model:FindFirstChild("Dropper1"), "dropper 1")
+	assert(t.model:FindFirstChild("BuyPad"), "buy pad")
+	assert(t.model:FindFirstChild("Collector"), "collector")
+	-- buy dropper 2 (1000), 3 (3000), then 4 is too expensive
+	assert(Droppers.Buy(player), "buy 2")
+	assert(Droppers.Buy(player), "buy 3")
+	eq(data.bank, 1000)
+	local ok, err = Droppers.Buy(player)
+	eq(ok, false)
+	eq(err, "no_money")
+	eq(data.droppers, 3)
+	assert(t.model:FindFirstChild("Dropper3"), "dropper 3 built")
+	-- collecting moves the collector money to the bank
+	data.dropCash = 1500
+	eq(Droppers.Collect(player), 1500)
+	eq(data.bank, 2500)
+	eq(data.dropCash, 0)
+	-- all droppers stay inside the flat
+	local frame = Tower.Units[1].frame
+	for _, d in t.model:GetDescendants() do
+		if d:IsA("BasePart") then
+			local lp = frame:PointToObjectSpace(d.CFrame.Position)
+			assert(
+				math.abs(lp.X) < Tower.Units[1].w / 2 and math.abs(lp.Z) < Tower.Units[1].d / 2,
+				d.Name .. " outside the flat"
+			)
+		end
+	end
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
 	error("tests failed")

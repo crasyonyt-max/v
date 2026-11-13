@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
@@ -658,6 +659,28 @@ local function aaTab(root: ScrollingFrame)
 	showMusic()
 
 	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 8, Parent = root })
+
+	-- dropper events: start one by hand on this server (they also come by chance)
+	local dropEv = section(root, 9, "🎉 " .. Store.T("aa_drop_events"))
+	local evIndex = 1
+	local evButton: TextButton
+	local function evText()
+		local e = DropEvents.List[evIndex]
+		return string.format("%s %s · x%s · %d%%  ⟳", e.icon, e.name, tostring(e.mult), math.floor(e.chance * 100))
+	end
+	evButton = Make.Button(evText(), T.panel, function()
+		evIndex = evIndex % #DropEvents.List + 1
+		evButton.Text = evText()
+	end, { Parent = dropEv })
+	Make.Row({
+		half("▶ " .. Store.T("aa_play"), T.good, function()
+			act("aa_drop_event", { id = DropEvents.List[evIndex].id })
+		end),
+		half("⏹ " .. Store.T("stop"), T.bad, function()
+			act("aa_drop_event", { id = "" })
+		end),
+	}).Parent =
+		dropEv
 end
 
 local function inboxTab(root: ScrollingFrame)

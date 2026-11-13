@@ -57,6 +57,12 @@ Config.PaycheckInterval = 600 -- seconds between paychecks
 Config.MaxTransfer = 1000000
 Config.FuelPricePerLiter = 1.79
 
+-- Dropper tycoon in the apartment (10 max). Cost to buy dropper i, and what it drops
+-- every Config.DropInterval seconds (before dropper events).
+Config.DropperCosts = { 0, 1000, 3000, 10000, 100000, 200000, 400000, 800000, 1600000, 3200000 }
+Config.DropperDrops = { 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000 }
+Config.DropInterval = 60
+
 -- Vehicles
 Config.MaxSpawnedVehicles = 1 -- personal + job vehicles per player at once
 Config.StudsPerMeter = 1 / 0.28 -- Roblox convention used for speedometers

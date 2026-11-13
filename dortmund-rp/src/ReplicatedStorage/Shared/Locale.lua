@@ -265,6 +265,28 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_start = { de = "Starten (alle Server)", en = "Start (all servers)" },
 	stop = { de = "Stopp", en = "Stop" },
 	duration_min = { de = "Dauer in Minuten", en = "Duration in minutes" },
+	-- droppers
+	dropper_max = { de = "Du hast schon alle 10 Dropper.", en = "You already have all 10 droppers." },
+	dropper_not_yours = { de = "Das ist nicht deine Wohnung.", en = "This isn't your apartment." },
+	dropper_bought = { de = "✅ Dropper %d gekauft! Er droppt %s.", en = "✅ Bought dropper %d! It drops %s." },
+	dropper_collected = { de = "💶 %s eingesammelt!", en = "💶 Collected %s!" },
+	drop_event_start = { de = "%s %s! Dropper-Geld x%s", en = "%s %s! Dropper money x%s" },
+	drop_event_ends = { de = "endet in", en = "ends in" },
+	aa_drop_events = { de = "Dropper-Events (dieser Server)", en = "Dropper events (this server)" },
+	-- Fahr-XP (traffic)
+	drive_xp = { de = "Fahr-XP", en = "Driving XP" },
+	drive_xp_info = {
+		de = "Als Arbeitslos: grüne Ampeln und Blitzer im Limit geben Fahr-XP. Rote Ampel / zu schnell kostet Fahr-XP. Letzte Ziffer weg = Euro.",
+		en = "As unemployed: green lights and speed cameras within the limit give driving XP. Red lights / speeding cost XP. Drop the last digit = euros.",
+	},
+	drive_xp_exchange = { de = "In %s umtauschen", en = "Exchange for %s" },
+	drive_xp_low = { de = "Du brauchst mindestens 10 Fahr-XP.", en = "You need at least 10 driving XP." },
+	drive_xp_plus = { de = "🚗 +%d Fahr-XP", en = "🚗 +%d driving XP" },
+	red_light = { de = "🚦 Rote Ampel! -%d Fahr-XP", en = "🚦 Red light! -%d driving XP" },
+	speeding = {
+		de = "📸 Geblitzt: %d km/h bei %d! -%d Fahr-XP",
+		en = "📸 Speed camera: %d km/h in a %d zone! -%d driving XP",
+	},
 	aa_countdown = { de = "Countdown (alle Server)", en = "Countdown (all servers)" },
 	aa_countdown_title = { de = "Titel (leer = AA)", en = "Title (empty = AA)" },
 	aa_countdown_date = { de = "Datum TT.MM.JJJJ (leer = heute)", en = "Date DD.MM.YYYY (empty = today)" },
