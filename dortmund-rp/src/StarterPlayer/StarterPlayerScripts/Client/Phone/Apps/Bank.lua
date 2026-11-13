@@ -30,11 +30,20 @@ Phone.Register({
 		local driveCard = Make.Card({ LayoutOrder = 2, Parent = root })
 		local driveLabel = Make.Label("", 15, T.text, T.bold, { Parent = driveCard })
 		Make.Label(Store.T("drive_xp_info"), 11, T.sub, T.font, { Parent = driveCard })
-		local exchange = Make.Button("", T.good, function()
+		local busy = false
+		local exchange: TextButton
+		exchange = Make.Button("", T.good, function()
+			-- one tap = one exchange; nothing to exchange = nothing happens
+			if busy or exchange.AutoButtonColor == false then
+				return
+			end
+			busy = true
 			local r = Net.Request("DriveXP.Exchange")
 			if not r.ok then
 				Notify.Error(r.err)
 			end
+			task.wait(0.6)
+			busy = false
 		end, { Parent = driveCard })
 
 		-- transfer
@@ -88,9 +97,14 @@ Phone.Register({
 
 		local function render(state: { [string]: any })
 			balance.Text = Locale.Euro(state.bank or 0)
-			local dxp = math.floor(tonumber((state.jobXP or {}).Unemployed) or 0)
-			driveLabel.Text = "🚗 " .. Store.T("drive_xp") .. ": " .. dxp
-			exchange.Text = Store.T("drive_xp_exchange", Locale.Euro(dxp // 10))
+			local dxp = math.floor(tonumber(state.xp) or 0)
+			driveLabel.Text = "⭐ " .. Store.T("drive_xp") .. ": " .. dxp
+			local can = dxp >= 10
+			exchange.Text = if can
+				then Store.T("drive_xp_exchange", Locale.Euro(dxp // 10))
+				else Store.T("drive_xp_low")
+			exchange.AutoButtonColor = can
+			exchange.BackgroundColor3 = if can then T.good else T.panel
 			Make.Clear(history)
 			local tx = state.tx or {}
 			for i = #tx, 1, -1 do
