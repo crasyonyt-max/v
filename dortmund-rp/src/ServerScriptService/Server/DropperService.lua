@@ -176,7 +176,7 @@ local function updateLabel(t: Tycoon, data: { [string]: any })
 	local id = DropEventService.Current()
 	local e = id and DropEvents.ById[id]
 	t.info.Text = string.format("Dropper %d/%d", count(data), MAX)
-		.. (if e then string.format("  ·  %s x%g", e.icon, e.mult) else "")
+		.. (if e then string.format("  ·  %s %d%% x%g", e.icon, math.floor(e.chance * 100 + 0.5), e.mult) else "")
 end
 
 local function destroy(player: Player)
@@ -187,11 +187,13 @@ local function destroy(player: Player)
 	end
 end
 
+local enabled = true -- AA can switch the tycoons off for everyone (EventService)
+
 local function build(player: Player)
 	destroy(player)
 	local data = DataService.Get(player)
 	local n = player:GetAttribute("Apartment")
-	if not data or typeof(n) ~= "number" then
+	if not enabled or not data or typeof(n) ~= "number" then
 		return
 	end
 	local unit = nil
@@ -222,7 +224,7 @@ local function build(player: Player)
 		Color3.fromRGB(35, 35, 38),
 		Enum.Material.DiamondPlate
 	)
-	belt.AssemblyLinearVelocity = frame:VectorToWorldSpace(Vector3.new(-9, 0, 0))
+	belt.AssemblyLinearVelocity = frame:VectorToWorldSpace(Vector3.new(-12, 0, 0))
 	for _, z in { -1.7, 1.7 } do
 		part(
 			model,
@@ -328,30 +330,77 @@ function DropperService.Collect(player: Player): number
 	return amount
 end
 
--- what dropper i makes per drop right now (event included)
-function DropperService.Value(i: number): number
-	return (Config.DropperDrops[i] or 0) * DropEventService.Mult()
+-- One drop of dropper i: its value, and whether the running event hit it.
+function DropperService.Value(i: number, random: Random?): (number, boolean)
+	local mult, hit = DropEventService.Hit(random)
+	return (Config.DropperDrops[i] or 0) * mult, hit
 end
 
-local function dropCash(t: Tycoon, i: number, value: number)
+-- Turns the tycoons on / off for everyone (money waiting in collectors is kept).
+function DropperService.SetEnabled(on: boolean)
+	if on == enabled then
+		return
+	end
+	enabled = on
+	for _, player in Players:GetPlayers() do
+		if on then
+			task.spawn(build, player)
+		else
+			destroy(player)
+		end
+	end
+end
+
+function DropperService.Enabled(): boolean
+	return enabled
+end
+
+-- The cash you see falling onto the belt (the money itself is booked right away).
+-- Capped per apartment: droppers drop every second.
+local MAX_VISIBLE = 24
+local function dropCash(t: Tycoon, i: number, value: number, hit: boolean)
+	local alive = 0
+	for _, c in t.model:GetChildren() do
+		if c.Name == "Cash" then
+			alive += 1
+		end
+	end
+	if alive >= MAX_VISIBLE and not hit then
+		return
+	end
 	local cash = Instance.new("Part")
 	cash.Name = "Cash"
-	cash.Size = Vector3.new(1.2, 0.35, 0.7)
+	cash.Size = if hit then Vector3.new(1.5, 0.5, 0.9) else Vector3.new(1.2, 0.35, 0.7)
 	cash.CFrame = t.frame * CFrame.new(slotX(i), 5.6, 0)
-	cash.Color = Color3.fromRGB(70, 200, 90)
-	cash.Material = Enum.Material.SmoothPlastic
+	cash.Color = if hit then Color3.fromRGB(255, 205, 40) else Color3.fromRGB(70, 200, 90)
+	cash.Material = if hit then Enum.Material.Neon else Enum.Material.SmoothPlastic
 	cash.CanTouch = false
 	cash.CanQuery = false
 	cash.Parent = t.model
+	if hit then
+		local board = Instance.new("BillboardGui")
+		board.Size = UDim2.fromOffset(90, 26)
+		board.StudsOffsetWorldSpace = Vector3.new(0, 1.4, 0)
+		board.MaxDistance = 60
+		board.Parent = cash
+		local l = Instance.new("TextLabel")
+		l.Size = UDim2.fromScale(1, 1)
+		l.BackgroundTransparency = 1
+		l.Font = Enum.Font.GothamBlack
+		l.TextScaled = true
+		l.TextColor3 = Color3.fromRGB(255, 220, 60)
+		l.TextStrokeTransparency = 0.2
+		l.Text = "+" .. Locale.Euro(value)
+		l.Parent = board
+	end
 	pcall(function()
 		cash:SetNetworkOwner(nil)
 	end)
-	task.delay(9, function()
+	task.delay(5, function()
 		if cash.Parent then
 			cash:Destroy()
 		end
 	end)
-	local _ = value
 end
 
 DropperService._build = function(player: Player)
@@ -379,7 +428,7 @@ function DropperService.Start()
 	-- drops
 	task.spawn(function()
 		while true do
-			task.wait(0.5)
+			task.wait(0.25)
 			local now = os.clock()
 			for player, t in tycoons do
 				local data = DataService.Get(player)
@@ -387,10 +436,12 @@ function DropperService.Start()
 					local changed = false
 					for i = 1, count(data) do
 						if now - (t.last[i] or 0) >= DropperService.INTERVAL then
-							t.last[i] = now
-							local value = DropperService.Value(i)
+							-- keep an exact pace (every INTERVAL), but never catch up a long gap
+							local last = (t.last[i] or now) + DropperService.INTERVAL
+							t.last[i] = if now - last > DropperService.INTERVAL * 3 then now else last
+							local value, hit = DropperService.Value(i)
 							data.dropCash = (tonumber(data.dropCash) or 0) + value
-							dropCash(t, i, value)
+							dropCash(t, i, value, hit)
 							changed = true
 						end
 					end

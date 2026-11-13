@@ -270,9 +270,17 @@ local S: { [string]: { de: string, en: string } } = {
 	dropper_not_yours = { de = "Das ist nicht deine Wohnung.", en = "This isn't your apartment." },
 	dropper_bought = { de = "✅ Dropper %d gekauft! Er droppt %s.", en = "✅ Bought dropper %d! It drops %s." },
 	dropper_collected = { de = "💶 %s eingesammelt!", en = "💶 Collected %s!" },
-	drop_event_start = { de = "%s %s! Dropper-Geld x%s", en = "%s %s! Dropper money x%s" },
+	drop_event_start = {
+		de = "%s %s! %s%% der Drops x%s",
+		en = "%s %s! %s%% of drops x%s",
+	},
 	drop_event_ends = { de = "endet in", en = "ends in" },
-	aa_drop_events = { de = "Dropper-Events (dieser Server)", en = "Dropper events (this server)" },
+	aa_drop_events = { de = "Dropper & Dropper-Events (alle Server)", en = "Droppers & dropper events (all servers)" },
+	aa_droppers_on = { de = "Dropper an", en = "Droppers on" },
+	aa_droppers_off = { de = "Dropper aus", en = "Droppers off" },
+	aa_droppers_are_on = { de = "Dropper in den Wohnungen: an", en = "Droppers in the apartments: on" },
+	aa_droppers_are_off = { de = "Dropper in den Wohnungen: aus", en = "Droppers in the apartments: off" },
+	aa_no_drop_event = { de = "Kein Dropper-Event aktiv.", en = "No dropper event running." },
 	-- Fahr-XP (traffic)
 	drive_xp = { de = "Fahr-XP", en = "Driving XP" },
 	drive_xp_info = {

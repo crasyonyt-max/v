@@ -660,27 +660,68 @@ local function aaTab(root: ScrollingFrame)
 
 	Make.Label("🗓️ " .. Store.T("aa_weekly_info"), 12, T.sub, T.font, { LayoutOrder = 8, Parent = root })
 
-	-- dropper events: start one by hand on this server (they also come by chance)
+	-- dropper tycoons + dropper events (every server). Events only run when set here.
 	local dropEv = section(root, 9, "🎉 " .. Store.T("aa_drop_events"))
+	local droppersState = Make.Label("", 12, T.sub, T.bold, { Parent = dropEv })
+	Make.Row({
+		half("▶ " .. Store.T("aa_droppers_on"), T.good, function()
+			act("aa_droppers", { on = true })
+		end),
+		half("⏹ " .. Store.T("aa_droppers_off"), T.bad, function()
+			act("aa_droppers", { on = false })
+		end),
+	}).Parent =
+		dropEv
+	local eventState = Make.Label("", 12, T.sub, T.bold, { Parent = dropEv })
 	local evIndex = 1
 	local evButton: TextButton
 	local function evText()
 		local e = DropEvents.List[evIndex]
-		return string.format("%s %s · x%s · %d%%  ⟳", e.icon, e.name, tostring(e.mult), math.floor(e.chance * 100))
+		return string.format(
+			"%s %s · x%s · %d%%  ⟳",
+			e.icon,
+			e.name,
+			tostring(e.mult),
+			math.floor(e.chance * 100 + 0.5)
+		)
 	end
 	evButton = Make.Button(evText(), T.panel, function()
 		evIndex = evIndex % #DropEvents.List + 1
 		evButton.Text = evText()
 	end, { Parent = dropEv })
+	local evMinutes = Make.TextBox(Store.T("duration_min") .. " (10)", { Parent = dropEv })
 	Make.Row({
-		half("▶ " .. Store.T("aa_play"), T.good, function()
-			act("aa_drop_event", { id = DropEvents.List[evIndex].id })
+		half("▶ " .. Store.T("aa_start"), T.good, function()
+			act("aa_drop_event", {
+				id = DropEvents.List[evIndex].id,
+				minutes = math.floor(number(evMinutes.Text) or 10),
+			})
 		end),
 		half("⏹ " .. Store.T("stop"), T.bad, function()
 			act("aa_drop_event", { id = "" })
 		end),
 	}).Parent =
 		dropEv
+	local function showDrops()
+		droppersState.Text = "🏭 "
+			.. Store.T(if snap.droppersOff then "aa_droppers_are_off" else "aa_droppers_are_on")
+		local de = snap.dropEvent
+		local e = typeof(de) == "table" and DropEvents.ById[de.id]
+		eventState.Text = if e
+			then string.format(
+				"▶ %s %s · %d min",
+				e.icon,
+				e.name,
+				math.ceil((de.ends - workspace:GetServerTimeNow()) / 60)
+			)
+			else Store.T("aa_no_drop_event")
+	end
+	showDrops()
+	local base2 = showStatus
+	showStatus = function()
+		base2()
+		showDrops()
+	end
 end
 
 local function inboxTab(root: ScrollingFrame)

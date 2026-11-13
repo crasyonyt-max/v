@@ -515,9 +515,31 @@ test("AA events", function()
 	overrides["ServerScriptService/Server/PhoneService"] = stub()
 	overrides["ServerScriptService/Server/StoreService"] = stub()
 	overrides["ServerScriptService/Server/Remotes"] = stub()
+	local dropEvent, droppersOn = nil, true
+	overrides["ServerScriptService/Server/DropEventService"] = {
+		Set = function(id)
+			dropEvent = id
+		end,
+	}
+	overrides["ServerScriptService/Server/DropperService"] = {
+		SetEnabled = function(on)
+			droppersOn = on
+		end,
+	}
 	local Boosts = requirePath(Server.Boosts)
 	local Events = requirePath(Server.EventService)
-	for _, name in { "DataService", "EconomyService", "XPService", "PhoneService", "StoreService", "Remotes" } do
+	for _, name in
+		{
+			"DataService",
+			"EconomyService",
+			"XPService",
+			"PhoneService",
+			"StoreService",
+			"Remotes",
+			"DropEventService",
+			"DropperService",
+		}
+	do
 		overrides["ServerScriptService/Server/" .. name] = nil
 	end
 	fakeServices.DataStoreService, fakeServices.HttpService = nil, nil
@@ -581,6 +603,18 @@ test("AA events", function()
 	eq(Events.Snapshot().defaultOff, true, "paused")
 	assert(Events.SetDefaultMusic(true), "start")
 	eq(Events.Snapshot().defaultOff, false, "on again")
+
+	-- dropper events + dropper switch reach every server's services
+	assert(Events.SetDropEvent("crabs", 10), "drop event")
+	eq(dropEvent, "crabs")
+	eq(Events.Snapshot().dropEvent.id, "crabs")
+	assert(Events.SetDropEvent(nil), "stop drop event")
+	eq(dropEvent, nil)
+	assert(Events.SetDroppers(false), "droppers off")
+	eq(droppersOn, false)
+	eq(Events.Snapshot().droppersOff, true)
+	assert(Events.SetDroppers(true), "droppers on")
+	eq(droppersOn, true)
 
 	-- countdown: shown until a few minutes after it hits zero
 	assert(Events.SetCountdown("AA", os.time() + 3600), "countdown")
@@ -816,7 +850,7 @@ test("real city + map", function()
 end)
 
 -- v0.2: dropper events, traffic, droppers ---------------------------------------------
-test("dropper events roll with their chances", function()
+test("dropper events: each drop has the event's chance", function()
 	local DropEvents = requirePath(RS.Shared.DropEvents)
 	eq(#DropEvents.List, 7, "7 events")
 	eq(DropEvents.ById.germany.mult, 5)
@@ -828,23 +862,24 @@ test("dropper events roll with their chances", function()
 		end,
 	})
 	overrides["ServerScriptService/Server/Remotes"] = stub
+	cache["ServerScriptService/Server/DropEventService"] = nil
 	local Service = requirePath(Server.DropEventService)
 	overrides["ServerScriptService/Server/Remotes"] = nil
-	local seen, none = {}, 0
 	local r = env.Random.new(3)
-	for _ = 1, 4000 do
-		local id = Service.Roll(r)
-		if id then
-			seen[id] = (seen[id] or 0) + 1
-		else
-			none += 1
+	eq(Service.Hit(r), 1, "no event: no multiplier")
+	Service.Set("tacos", os.time() + 60)
+	eq(Service.Current(), "tacos")
+	local hits = 0
+	for _ = 1, 5000 do
+		local mult, hit = Service.Hit(r)
+		if hit then
+			hits += 1
+			eq(mult, 1.4)
 		end
 	end
-	for _, e in DropEvents.List do
-		assert((seen[e.id] or 0) > 0, e.id .. " never hit")
-	end
-	assert((seen.germany or 0) < (seen.tacos or 0), "Germany is the rare one")
-	assert(none > 0, "sometimes nothing hits")
+	assert(math.abs(hits / 5000 - 0.45) < 0.03, "about 45 % of drops hit: " .. hits)
+	Service.Set(nil)
+	eq(Service.Current(), nil, "stopped")
 end)
 
 test("traffic lights: never green both ways", function()
@@ -890,6 +925,10 @@ test("dropper tycoon in the apartment", function()
 	eq(Config.DropperCosts[6], 200000, "then x2")
 	eq(Config.DropperCosts[10], 3200000)
 	eq(Config.DropperDrops[1], 500, "first drops 500")
+	for i = 2, 10 do
+		eq(Config.DropperDrops[i], Config.DropperCosts[i], "dropper " .. i .. " drops its price")
+	end
+	eq(Config.DropInterval, 1, "every second")
 	local Tower = requirePath(Server.TowerBuilder)
 	assert(Tower.Units[1].frame, "flat frame")
 
@@ -919,6 +958,8 @@ test("dropper tycoon in the apartment", function()
 	})
 	overrides["ServerScriptService/Server/Remotes"] = stub
 	overrides["ServerScriptService/Server/State"] = stub
+	cache["ServerScriptService/Server/DropperService"] = nil
+	cache["ServerScriptService/Server/DropEventService"] = nil
 	local Droppers = requirePath(Server.DropperService)
 	for _, name in { "DataService", "EconomyService", "Remotes", "State" } do
 		overrides["ServerScriptService/Server/" .. name] = nil

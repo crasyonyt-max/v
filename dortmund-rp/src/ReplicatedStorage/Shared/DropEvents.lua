@@ -1,7 +1,7 @@
 --!strict
--- Dropper events: multiply the money droppers make while they run, with world effects.
--- Every few minutes each event rolls its chance (in random order); the first one that
--- hits runs. `rain` falls from the sky, `colors` drive the disco lights, `tint` colours the world.
+-- Dropper events: set by the Owner / Co-Owners in the AA tab (every server, own duration).
+-- While one runs, every drop has the event's `chance` to be worth `mult` times as much.
+-- `rain` falls from the sky, `colors` drive the disco lights, `tint` colours the world.
 
 export type DropEvent = {
 	id: string,
@@ -16,9 +16,6 @@ export type DropEvent = {
 }
 
 local DropEvents = {}
-
-DropEvents.ROLL_EVERY = 8 * 60 -- seconds between rolls (when no event runs)
-DropEvents.LENGTH = 5 * 60 -- how long an event runs
 
 DropEvents.List = {
 	{

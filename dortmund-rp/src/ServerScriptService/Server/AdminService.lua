@@ -28,7 +28,7 @@ local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
 local EventService = require(script.Parent.EventService)
 local Boosts = require(script.Parent.Boosts)
-local DropEventService = require(script.Parent.DropEventService)
+local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local VoteService = require(script.Parent.VoteService)
 local Locations = require(ReplicatedStorage.Shared.Locations)
 
@@ -85,6 +85,7 @@ local ACTIONS: { [string]: number } = {
 	aa_default_music = Roles.SECOND_CO_OWNER,
 	aa_countdown = Roles.SECOND_CO_OWNER,
 	aa_drop_event = Roles.SECOND_CO_OWNER,
+	aa_droppers = Roles.SECOND_CO_OWNER,
 	aa_countdown_stop = Roles.SECOND_CO_OWNER,
 	aa_song_add = Roles.SECOND_CO_OWNER,
 	aa_song_remove = Roles.SECOND_CO_OWNER,
@@ -626,18 +627,34 @@ handlers.aa_countdown = function(actor, args)
 	return true
 end
 
--- start a dropper event by hand on this server ("" = stop)
+-- dropper event on every server, for `minutes` ("" = stop)
 handlers.aa_drop_event = function(actor, args)
 	local id = typeof(args) == "table" and args.id or nil
 	if id == "" then
-		DropEventService.Stop()
-		log(actor, "aa_drop_event_stop", "", false)
+		if not EventService.SetDropEvent(nil) then
+			return false, "error"
+		end
+		log(actor, "aa_drop_event_stop", "", true)
 		return true
 	end
-	if typeof(id) ~= "string" or not DropEventService.Begin(id) then
+	local minutes = typeof(args) == "table" and Remotes.Check.Int(args.minutes, 1, 1440) or nil
+	if typeof(id) ~= "string" or not DropEvents.ById[id] or not minutes then
 		return false, "bad_request"
 	end
-	log(actor, "aa_drop_event", id, false)
+	if not EventService.SetDropEvent(id, minutes) then
+		return false, "error"
+	end
+	log(actor, "aa_drop_event", string.format("%s %d min", id, minutes), true)
+	return true
+end
+
+-- dropper tycoons in the apartments on / off (every server)
+handlers.aa_droppers = function(actor, args)
+	local on = typeof(args) == "table" and args.on == true
+	if not EventService.SetDroppers(on) then
+		return false, "error"
+	end
+	log(actor, if on then "aa_droppers_on" else "aa_droppers_off", "", true)
 	return true
 end
 

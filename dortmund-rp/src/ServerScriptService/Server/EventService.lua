@@ -23,6 +23,8 @@ local PhoneService = require(script.Parent.PhoneService)
 local Remotes = require(script.Parent.Remotes)
 local StoreService = require(script.Parent.StoreService)
 local XPService = require(script.Parent.XPService)
+local DropEventService = require(script.Parent.DropEventService)
+local DropperService = require(script.Parent.DropperService)
 
 local EventService = {}
 
@@ -43,6 +45,8 @@ type Saved = {
 	songs: { Song },
 	defaultOff: boolean?,
 	countdown: { title: string, at: number }?,
+	dropEvent: { id: string, ends: number }?,
+	droppersOff: boolean?,
 }
 
 local store: DataStore? = nil
@@ -137,6 +141,8 @@ local function snapshot(): { [string]: any }
 		music = saved.music,
 		defaultOff = saved.defaultOff == true,
 		countdown = saved.countdown,
+		dropEvent = saved.dropEvent,
+		droppersOff = saved.droppersOff == true,
 		songs = saved.songs,
 	}
 end
@@ -329,6 +335,13 @@ local function clean(v: any): Saved
 	if v.defaultOff == true then
 		out.defaultOff = true
 	end
+	local de = v.dropEvent
+	if typeof(de) == "table" and typeof(de.id) == "string" and typeof(de.ends) == "number" and de.ends > now then
+		out.dropEvent = { id = de.id, ends = de.ends }
+	end
+	if v.droppersOff == true then
+		out.droppersOff = true
+	end
 	-- countdowns stay a few minutes after they hit zero ("now!")
 	local c = v.countdown
 	if typeof(c) == "table" and typeof(c.at) == "number" and c.at + 300 > now then
@@ -347,6 +360,10 @@ end
 local function apply()
 	refreshBoosts()
 	syncDrops()
+	-- dropper event + dropper on/off, the same on every server
+	local de = saved.dropEvent
+	DropEventService.Set(if de then de.id else nil, if de then de.ends else nil)
+	DropperService.SetEnabled(saved.droppersOff ~= true)
 	local snap = snapshot()
 	lastSnapshot = HttpService:JSONEncode(snap)
 	Remotes.PushAll("Events", snap)
@@ -490,6 +507,20 @@ end
 
 -- The 24/7 background playlist (Config.DefaultMusic): on or paused, on every server.
 -- Countdown shown to everyone on every server (title already filtered, at = UTC).
+-- Dropper event on every server for `minutes` (nil id = stop).
+function EventService.SetDropEvent(id: string?, minutes: number?): boolean
+	return update(function(s)
+		s.dropEvent = if id then { id = id, ends = os.time() + math.floor((minutes or 5) * 60) } else nil
+	end)
+end
+
+-- Dropper tycoons in the apartments: on / off for everyone.
+function EventService.SetDroppers(on: boolean): boolean
+	return update(function(s)
+		s.droppersOff = if on then nil else true
+	end)
+end
+
 function EventService.SetCountdown(title: string, at: number): boolean
 	return update(function(s)
 		s.countdown = { title = title, at = at }
