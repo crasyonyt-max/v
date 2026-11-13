@@ -47,6 +47,7 @@ Locations.Sites = {
 	Police = { x = 396.1, z = 7093.3, yaw = 87.18, width = 228.6, depth = 171.4 },
 	FireRescue = { x = 463.1, z = -1031.2, yaw = -70.82, width = 228.6, depth = 171.4 },
 	Tower = { x = -503.1, z = 463.7, yaw = -163.99, width = 114.3, depth = 114.3 },
+	AdminTower = { x = -747.5, z = -290.0, yaw = 17.18, width = 114.3, depth = 114.3 },
 	LKW = { x = 5589.5, z = -93.0, yaw = -130.93, width = 285.7, depth = 214.3 },
 	DXL = { x = 4480.2, z = 5862.4, yaw = -43.11, width = 221.4, depth = 164.3 },
 	ADMC = { x = 2427.5, z = 7019.3, yaw = 3.93, width = 207.1, depth = 157.1 },

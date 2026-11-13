@@ -27,6 +27,7 @@ local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 local NewsService = require(script.Parent.NewsService)
 local EventService = require(script.Parent.EventService)
+local AdminTowerService = require(script.Parent.AdminTowerService)
 local Boosts = require(script.Parent.Boosts)
 local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local VoteService = require(script.Parent.VoteService)
@@ -59,6 +60,8 @@ local ACTIONS: { [string]: number } = {
 	freeze = SA,
 	tp_to = SA,
 	bring = SA,
+	detain = GA,
+	release = GA,
 	spectate = SA,
 	spawn_vehicle = SA,
 	announce = SA,
@@ -384,6 +387,31 @@ handlers.bring = function(actor, args)
 	end
 	(target.Character :: Model):PivotTo(to.CFrame * CFrame.new(0, 0, -4))
 	log(actor, "bring", target.Name, false)
+	return true
+end
+
+-- Admin Tower "Sonderraum": put a player in / let them out
+handlers.detain = function(actor, args)
+	local target, err = targetPlayer(actor, args)
+	if not target then
+		return false, err
+	end
+	if target == actor then
+		return false, "bad_target"
+	end
+	AdminTowerService.Detain(target)
+	log(actor, "detain", target.Name, true)
+	return true
+end
+
+handlers.release = function(actor, args)
+	local id = typeof(args) == "table" and Remotes.Check.Int(args.userId, 1, 1e12) or nil
+	local target = id and Players:GetPlayerByUserId(id)
+	if not target then
+		return false, if id then "target_offline" else "bad_target"
+	end
+	AdminTowerService.Release(target)
+	log(actor, "release", target.Name, true)
 	return true
 end
 

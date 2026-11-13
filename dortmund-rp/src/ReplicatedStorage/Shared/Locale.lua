@@ -265,6 +265,14 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_start = { de = "Starten (alle Server)", en = "Start (all servers)" },
 	stop = { de = "Stopp", en = "Stop" },
 	duration_min = { de = "Dauer in Minuten", en = "Duration in minutes" },
+	admin_only = { de = "🛡️ Nur für Admins.", en = "🛡️ Admins only." },
+	detained = {
+		de = "🚔 Du wurdest von einem Admin in den Sonderraum gebracht.",
+		en = "🚔 An admin put you in the holding room.",
+	},
+	released = { de = "✅ Du bist wieder frei.", en = "✅ You're free again." },
+	detain = { de = "Sonderraum", en = "Holding room" },
+	release = { de = "Freilassen", en = "Release" },
 	-- droppers
 	dropper_max = { de = "Du hast schon alle 10 Dropper.", en = "You already have all 10 droppers." },
 	dropper_not_yours = { de = "Das ist nicht deine Wohnung.", en = "This isn't your apartment." },

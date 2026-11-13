@@ -20,6 +20,7 @@ Remotes.IsReady = DataService.IsLoaded
 Players.CharacterAutoLoads = false
 MapBuilder.Build()
 require(Server.TrafficService).Build()
+require(Server.AdminTowerService).Build()
 Interaction.Start()
 task.spawn(require(Server.StoreBuilder).Build) -- NPCs load from the web; don't block spawning
 Players.CharacterAutoLoads = true
@@ -44,6 +45,7 @@ local services = {
 	require(Server.VoteService),
 	require(Server.HousingService),
 	require(Server.TrafficService),
+	require(Server.AdminTowerService),
 	require(Server.DropEventService),
 	require(Server.DropperService),
 }

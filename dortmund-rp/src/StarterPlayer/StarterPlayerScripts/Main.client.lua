@@ -28,6 +28,9 @@ require(Client.Controllers.TrafficLights)
 require(Client.Controllers.DropEventFX)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
+Net.On("OpenPC", function()
+	Phone.OpenPC()
+end)
 
 Net.On("Notify", Notify.Key)
 Net.On("Events", HUD.SetEvents)

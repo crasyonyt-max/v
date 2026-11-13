@@ -430,6 +430,7 @@ def main():
     # residential tower on the biggest surface car park near the Hbf (not real, wished for)
     hbf_x, hbf_z = 0.0, 0.0
     best_tower = None
+    tower_spots = []
     for wid, (nd, t) in ways.items():
         if t.get("amenity") == "parking" and t.get("parking", "surface") == "surface" and len(nd) > 3:
             c = centre_ll(wid)
@@ -442,8 +443,10 @@ def main():
             if min(sx, sz) < side or dist > 2600:
                 continue
             site = (cx, cz, -math.degrees(ang), side, side)
-            if site_clear(site) and (best_tower is None or dist < best_tower[0]):
-                best_tower = (dist, site)
+            if site_clear(site):
+                tower_spots.append((dist, site))
+                if best_tower is None or dist < best_tower[0]:
+                    best_tower = (dist, site)
     if best_tower:
         tx, tz, tyaw, tw, td = best_tower[1]
         # front towards the nearest road
@@ -453,6 +456,22 @@ def main():
         sites["Tower"] = (tx, tz, yaw, tw, td)
     else:
         print("no tower site found")
+
+    # admin tower: the next free car park near the Hbf, away from the residential tower
+    admin_tower = None
+    if best_tower:
+        for dist, site in sorted(tower_spots, key=lambda q: q[0]):
+            if math.hypot(site[0] - best_tower[1][0], site[1] - best_tower[1][1]) > 60 / M_PER_STUD:
+                admin_tower = site
+                break
+    if admin_tower:
+        ax, az, _, aw, ad = admin_tower
+        dd, rx, rz, _ = nearest_on_roads(ax, az)
+        nx, nz = ax - rx, az - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["AdminTower"] = (ax, az, yaw, aw, ad)
+    else:
+        print("no admin tower site found")
 
     # ADMC / DXL / LKW: look inside real commercial / industrial areas for a free plot
     def overlaps(site):

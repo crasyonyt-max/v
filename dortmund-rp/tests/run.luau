@@ -925,8 +925,12 @@ test("dropper tycoon in the apartment", function()
 	eq(Config.DropperCosts[6], 200000, "then x2")
 	eq(Config.DropperCosts[10], 3200000)
 	eq(Config.DropperDrops[1], 500, "first drops 500")
-	for i = 2, 10 do
+	for i = 2, 4 do
 		eq(Config.DropperDrops[i], Config.DropperCosts[i], "dropper " .. i .. " drops its price")
+	end
+	eq(Config.DropperDrops[10], 100000, "dropper 10: 100k per second")
+	for i = 2, 10 do
+		assert(Config.DropperDrops[i] > Config.DropperDrops[i - 1], "every dropper drops more")
 	end
 	eq(Config.DropInterval, 1, "every second")
 	local Tower = requirePath(Server.TowerBuilder)
@@ -1001,6 +1005,44 @@ test("dropper tycoon in the apartment", function()
 				d.Name .. " outside the flat"
 			)
 		end
+	end
+end)
+
+test("admin tower: site and offices", function()
+	local Locations = requirePath(RS.Shared.Locations)
+	assert(Locations.Sites.AdminTower, "admin tower site")
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	for _, name in { "DataService", "Remotes", "Roles" } do
+		overrides["ServerScriptService/Server/" .. name] = stub
+	end
+	local Tower = requirePath(Server.AdminTowerService)
+	for _, name in { "DataService", "Remotes", "Roles" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	local ids = Tower.AdminIds()
+	eq(ids[1], 10396317047, "owner first")
+	eq(ids[2], 3559943151, "then samder_nervt")
+	eq(#ids, 5, "five admins, no doubles")
+	assert(#ids <= 6, "one office each")
+	Tower.Build()
+	local model = env.workspace:FindFirstChild("Admin Tower")
+	assert(model, "built")
+	local pcs, cells = 0, 0
+	for _, d in model:GetDescendants() do
+		if d.Name == "PC" then
+			pcs += 1
+		elseif d.Name == "CellDoor" then
+			cells += 1
+		end
+	end
+	eq(pcs, 7, "6 office PCs + meeting room")
+	eq(cells, 1, "one Sonderraum")
+	for _, spot in { "Outside", "Lobby", "Offices", "Meeting", "Holding", "HoldingHall" } do
+		assert(Tower.Spot(spot), "spot " .. spot)
 	end
 end)
 

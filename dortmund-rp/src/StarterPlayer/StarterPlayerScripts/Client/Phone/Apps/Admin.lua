@@ -107,6 +107,17 @@ local function playerDetail(root: ScrollingFrame, info: { [string]: any }, back:
 		end),
 	}).Parent =
 		moves
+	if isGA then
+		Make.Row({
+			half("🚔 " .. Store.T("detain"), T.bad, function()
+				act("detain", { userId = id })
+			end),
+			half("✅ " .. Store.T("release"), T.good, function()
+				act("release", { userId = id })
+			end),
+		}).Parent =
+			moves
+	end
 	Make.Row({
 		half("🧊 Freeze", T.panel, function()
 			act("freeze", { userId = id })

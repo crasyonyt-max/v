@@ -41,6 +41,10 @@ local gui = New("ScreenGui", {
 
 local CLOSED = UDim2.new(1, -16, 1, 700)
 local OPEN = UDim2.new(1, -16, 1, -16)
+-- PC mode (office PCs in the Admin Tower): a wide monitor in the middle of the screen
+local PC_CLOSED = UDim2.new(0.5, 0, 1.5, 0)
+local PC_OPEN = UDim2.new(0.5, 0, 0.5, 0)
+local pcMode = false
 
 local body = New("Frame", {
 	Name = "Body",
@@ -52,9 +56,19 @@ local body = New("Frame", {
 	Visible = false,
 	Parent = gui,
 }, {
-	New("UIAspectRatioConstraint", { AspectRatio = 0.48 }),
-	New("UISizeConstraint", { MaxSize = Vector2.new(360, 750) }),
+	New("UIAspectRatioConstraint", { Name = "Aspect", AspectRatio = 0.48 }),
+	New("UISizeConstraint", { Name = "MaxSize", MaxSize = Vector2.new(360, 750) }),
 })
+
+local function setPcMode(on: boolean)
+	pcMode = on
+	local aspect = body:FindFirstChild("Aspect") :: UIAspectRatioConstraint
+	local max = body:FindFirstChild("MaxSize") :: UISizeConstraint
+	body.AnchorPoint = if on then Vector2.new(0.5, 0.5) else Vector2.new(1, 1)
+	body.Size = if on then UDim2.fromScale(0.82, 0.82) else UDim2.fromScale(0.36, 0.74)
+	aspect.AspectRatio = if on then 1.5 else 0.48
+	max.MaxSize = if on then Vector2.new(1000, 680) else Vector2.new(360, 750)
+end
 local bodyCorner = Make.Corner(34)
 bodyCorner.Parent = body
 local bodyStroke = Make.Stroke(Color3.fromRGB(60, 60, 60), 2)
@@ -321,8 +335,11 @@ function Phone.Open()
 	end
 	isOpen = true
 	styleBody()
+	body.Position = if pcMode then PC_CLOSED else CLOSED
 	body.Visible = true
-	TweenService:Create(body, TweenInfo.new(0.35, Enum.EasingStyle.Quint), { Position = OPEN }):Play()
+	TweenService
+		:Create(body, TweenInfo.new(0.35, Enum.EasingStyle.Quint), { Position = if pcMode then PC_OPEN else OPEN })
+		:Play()
 	local p = currentPhone()
 	if bootedPhone ~= p.id and not booting then
 		booting = true
@@ -348,13 +365,30 @@ function Phone.Close()
 		return
 	end
 	isOpen = false
-	local tw = TweenService:Create(body, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { Position = CLOSED })
+	local tw = TweenService:Create(
+		body,
+		TweenInfo.new(0.3, Enum.EasingStyle.Quint),
+		{ Position = if pcMode then PC_CLOSED else CLOSED }
+	)
 	tw:Play()
 	tw.Completed:Once(function()
 		if not isOpen then
 			body.Visible = false
+			if pcMode then
+				setPcMode(false) -- next time it's the phone again
+			end
 		end
 	end)
+end
+
+-- Opens the phone's apps on a PC screen (Admin Tower offices).
+function Phone.OpenPC()
+	if isOpen then
+		Phone.Close()
+		task.wait(0.35)
+	end
+	setPcMode(true)
+	Phone.Open()
 end
 
 function Phone.Toggle()
