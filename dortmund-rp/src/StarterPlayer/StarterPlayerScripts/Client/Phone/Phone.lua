@@ -42,7 +42,6 @@ local gui = New("ScreenGui", {
 local CLOSED = UDim2.new(1, -16, 1, 700)
 local OPEN = UDim2.new(1, -16, 1, -16)
 -- PC mode (office PCs in the Admin Tower): a wide monitor in the middle of the screen
-local PC_CLOSED = UDim2.new(0.5, 0, 1.5, 0)
 local PC_OPEN = UDim2.new(0.5, 0, 0.5, 0)
 local pcMode = false
 
@@ -60,14 +59,112 @@ local body = New("Frame", {
 	New("UISizeConstraint", { Name = "MaxSize", MaxSize = Vector2.new(360, 750) }),
 })
 
-local function setPcMode(on: boolean)
+-- PC mode: the phone's screen is shown ON the office monitor (a SurfaceGui on it),
+-- the camera looks at the monitor and you tap the apps there.
+local pcSurface: SurfaceGui? = nil
+local pcExit: ScreenGui? = nil
+local pcMonitor: BasePart? = nil
+local savedCamera: { [string]: any }? = nil
+local savedWalk: { [string]: number }? = nil
+
+local function setPcMode(on: boolean, monitor: BasePart?)
 	pcMode = on
 	local aspect = body:FindFirstChild("Aspect") :: UIAspectRatioConstraint
 	local max = body:FindFirstChild("MaxSize") :: UISizeConstraint
-	body.AnchorPoint = if on then Vector2.new(0.5, 0.5) else Vector2.new(1, 1)
-	body.Size = if on then UDim2.fromScale(0.82, 0.82) else UDim2.fromScale(0.36, 0.74)
-	aspect.AspectRatio = if on then 1.5 else 0.48
-	max.MaxSize = if on then Vector2.new(1000, 680) else Vector2.new(360, 750)
+	local camera = workspace.CurrentCamera
+	local hum = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if on and monitor then
+		pcMonitor = monitor
+		-- hide the monitor's own "NVDR OS" picture while the phone is on it
+		for _, g in monitor:GetChildren() do
+			if g:IsA("SurfaceGui") then
+				g.Enabled = false
+			end
+		end
+		local face = Enum.NormalId[(monitor:GetAttribute("ScreenFace") or "Front") :: string]
+		local surface = New("SurfaceGui", {
+			Name = "PCScreen",
+			Adornee = monitor,
+			Face = face,
+			SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
+			PixelsPerStud = 120,
+			LightInfluence = 0,
+			ResetOnSpawn = false,
+			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+			Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+		})
+		pcSurface = surface
+		body.Parent = surface
+		body.AnchorPoint = Vector2.new(0.5, 0.5)
+		body.SizeConstraint = Enum.SizeConstraint.RelativeXY
+		body.Size = UDim2.fromScale(1, 1)
+		aspect.AspectRatio = monitor.Size.X / monitor.Size.Y
+		max.MaxSize = Vector2.new(math.huge, math.huge)
+		-- camera in front of the screen, filling the view
+		local normal = monitor.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))
+		local center = monitor.Position + normal * (monitor.Size.Z / 2)
+		savedCamera = { type = camera.CameraType, fov = camera.FieldOfView, cf = camera.CFrame }
+		camera.CameraType = Enum.CameraType.Scriptable
+		camera.FieldOfView = 40
+		local distance = (monitor.Size.Y / 2) / math.tan(math.rad(20)) * 1.12
+		camera.CFrame = CFrame.lookAt(center + normal * distance, center)
+		if hum then
+			savedWalk = { walk = hum.WalkSpeed, jump = hum.JumpPower }
+			hum.WalkSpeed = 0
+			hum.JumpPower = 0
+		end
+		-- a way out (also the phone's own home bar / close)
+		local exitGui = New("ScreenGui", {
+			Name = "PCExit",
+			ResetOnSpawn = false,
+			DisplayOrder = 30,
+			Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+		})
+		pcExit = exitGui
+		Make.Button("✕ PC verlassen", T.bad, function()
+			Phone.Close()
+		end, {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -12),
+			Size = UDim2.fromOffset(170, 40),
+			TextSize = 16,
+			Parent = exitGui,
+		})
+		return
+	end
+	-- back to the normal phone
+	if pcSurface then
+		body.Parent = gui
+		pcSurface:Destroy()
+		pcSurface = nil
+	end
+	if pcExit then
+		pcExit:Destroy()
+		pcExit = nil
+	end
+	if pcMonitor then
+		for _, g in pcMonitor:GetChildren() do
+			if g:IsA("SurfaceGui") then
+				g.Enabled = true
+			end
+		end
+		pcMonitor = nil
+	end
+	if savedCamera then
+		camera.CameraType = savedCamera.type
+		camera.FieldOfView = savedCamera.fov
+		savedCamera = nil
+	end
+	if savedWalk and hum then
+		hum.WalkSpeed = savedWalk.walk
+		hum.JumpPower = savedWalk.jump
+	end
+	savedWalk = nil
+	body.AnchorPoint = Vector2.new(1, 1)
+	body.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	body.Size = UDim2.fromScale(0.36, 0.74)
+	aspect.AspectRatio = 0.48
+	max.MaxSize = Vector2.new(360, 750)
 end
 local bodyCorner = Make.Corner(34)
 bodyCorner.Parent = body
@@ -335,11 +432,13 @@ function Phone.Open()
 	end
 	isOpen = true
 	styleBody()
-	body.Position = if pcMode then PC_CLOSED else CLOSED
 	body.Visible = true
-	TweenService
-		:Create(body, TweenInfo.new(0.35, Enum.EasingStyle.Quint), { Position = if pcMode then PC_OPEN else OPEN })
-		:Play()
+	if pcMode then
+		body.Position = PC_OPEN -- on the monitor: just there
+	else
+		body.Position = CLOSED
+		TweenService:Create(body, TweenInfo.new(0.35, Enum.EasingStyle.Quint), { Position = OPEN }):Play()
+	end
 	local p = currentPhone()
 	if bootedPhone ~= p.id and not booting then
 		booting = true
@@ -365,29 +464,30 @@ function Phone.Close()
 		return
 	end
 	isOpen = false
-	local tw = TweenService:Create(
-		body,
-		TweenInfo.new(0.3, Enum.EasingStyle.Quint),
-		{ Position = if pcMode then PC_CLOSED else CLOSED }
-	)
+	if pcMode then
+		body.Visible = false
+		setPcMode(false) -- next time it's the phone again
+		return
+	end
+	local tw = TweenService:Create(body, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { Position = CLOSED })
 	tw:Play()
 	tw.Completed:Once(function()
 		if not isOpen then
 			body.Visible = false
-			if pcMode then
-				setPcMode(false) -- next time it's the phone again
-			end
 		end
 	end)
 end
 
--- Opens the phone's apps on a PC screen (Admin Tower offices).
-function Phone.OpenPC()
+-- Opens the phone's apps on a PC monitor (Admin Tower offices).
+function Phone.OpenPC(monitor: BasePart?)
+	if not monitor or not monitor:IsDescendantOf(workspace) then
+		return
+	end
 	if isOpen then
 		Phone.Close()
 		task.wait(0.35)
 	end
-	setPcMode(true)
+	setPcMode(true, monitor)
 	Phone.Open()
 end
 

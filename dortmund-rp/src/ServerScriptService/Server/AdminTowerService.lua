@@ -274,8 +274,9 @@ local function buildOffices(m: Instance, at: (number, number, number) -> CFrame,
 				Enum.Material.Glass
 			)
 			sign(monitor, Enum.NormalId.Front, "NVDR OS", Color3.fromRGB(57, 255, 20), Color3.fromRGB(10, 14, 20))
+			monitor:SetAttribute("ScreenFace", "Front")
 			prompt(monitor, "PC benutzen", "Büro", function(player)
-				Remotes.Push(player, "OpenPC", {})
+				Remotes.Push(player, "OpenPC", { monitor = monitor })
 			end)
 			local chair = Instance.new("Seat")
 			chair.Name = "Chair"
@@ -315,8 +316,10 @@ local function buildMeeting(m: Instance, at: (number, number, number) -> CFrame,
 		Enum.Material.Glass
 	)
 	sign(pc, Enum.NormalId.Front, "NVDR OS", Color3.fromRGB(57, 255, 20), Color3.fromRGB(10, 14, 20))
+	pc:SetAttribute("ScreenFace", "Front")
+	local monitor = pc
 	prompt(pc, "PC benutzen", "Besprechung", function(player)
-		Remotes.Push(player, "OpenPC", {})
+		Remotes.Push(player, "OpenPC", { monitor = monitor })
 	end)
 	spots.Meeting = at(W / 2 - 8, y + 0.5, 0)
 end

@@ -28,8 +28,8 @@ require(Client.Controllers.TrafficLights)
 require(Client.Controllers.DropEventFX)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
-Net.On("OpenPC", function()
-	Phone.OpenPC()
+Net.On("OpenPC", function(payload)
+	Phone.OpenPC(if typeof(payload) == "table" then payload.monitor else nil)
 end)
 
 Net.On("Notify", Notify.Key)
