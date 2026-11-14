@@ -30,7 +30,7 @@ local GameLog = require(script.Parent.GameLog)
 
 local VehicleService = {}
 
-local PLATE_FEE = 250
+local PLATE_FEE = 4000 -- changing a plate (the first one is free)
 local PAINT_FEE = 500
 local SELL_BACK = 0.5 -- the dealer buys cars back at 50 %
 

@@ -180,7 +180,7 @@ local S: { [string]: { de: string, en: string } } = {
 	choose_starter = { de = "Wähle dein kostenloses Startauto", en = "Choose your free starter car" },
 	plate = { de = "Kennzeichen", en = "Plate" },
 	color = { de = "Farbe (500 €)", en = "Colour (€500)" },
-	change_plate = { de = "Kennzeichen ändern (250 €)", en = "Change plate (€250)" },
+	change_plate = { de = "Kennzeichen ändern (4.000 €)", en = "Change plate (€4,000)" },
 	fuel = { de = "Tank", en = "Fuel" },
 	no_cars = { de = "Dein Motorrad kommt gleich …", en = "Your motorbike is on its way …" },
 	cars_refunded = {
