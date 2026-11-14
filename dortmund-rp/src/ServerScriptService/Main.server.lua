@@ -47,6 +47,7 @@ local services = {
 	require(Server.VehicleService),
 	require(Server.BusService),
 	require(Server.TrainService),
+	require(Server.QuakeService),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),
