@@ -4,8 +4,10 @@
 -- Passenger: line + destination and a big 🛑 HALT button (key H).
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local BusStopData = require(ReplicatedStorage.Shared.BusStopData)
 local Make = require(script.Parent.Parent.UI.Make)
 local Notify = require(script.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Net)
@@ -31,7 +33,7 @@ local gui = New("ScreenGui", {
 local panel = New("Frame", {
 	AnchorPoint = Vector2.new(0.5, 1),
 	Position = UDim2.new(0.5, 0, 1, -136),
-	Size = UDim2.fromOffset(340, 62),
+	Size = UDim2.fromOffset(340, 80),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 10),
 	BackgroundTransparency = 0.15,
 	Parent = gui,
@@ -50,6 +52,12 @@ local info = Make.Label("", 12, T.sub, T.bold, {
 	Position = UDim2.fromOffset(10, 36),
 	Size = UDim2.new(1, -20, 0, 20),
 	RichText = true,
+	Parent = panel,
+})
+
+local stopLabel = Make.Label("", 12, Color3.fromRGB(120, 220, 140), T.bold, {
+	Position = UDim2.fromOffset(10, 56),
+	Size = UDim2.new(1, -20, 0, 18),
 	Parent = panel,
 })
 
@@ -173,6 +181,21 @@ local function enter(model: Model, driver: boolean)
 		end)
 	)
 	refresh()
+	-- nearest stop (map data), updated twice a second
+	task.spawn(function()
+		while bus == model and model.Parent do
+			local pos = model:GetPivot().Position
+			local best, bestD = nil, 700
+			for _, st in BusStopData do
+				local d = math.sqrt((st[2] - pos.X) ^ 2 + (st[3] - pos.Z) ^ 2)
+				if d < bestD then
+					best, bestD = st, d
+				end
+			end
+			stopLabel.Text = if best then Store.T("bus_next_stop", best[1], math.floor(bestD * 0.28)) else ""
+			task.wait(0.5)
+		end
+	end)
 end
 
 function BusController.RequestStop()

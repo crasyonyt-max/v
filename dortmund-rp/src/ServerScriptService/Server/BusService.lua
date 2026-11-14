@@ -11,6 +11,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService = game:GetService("TextService")
 
+local BusStopService = require(script.Parent.BusStopService)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Economy = require(script.Parent.EconomyService)
 local GameLog = require(script.Parent.GameLog)
@@ -22,6 +23,11 @@ local BusService = {}
 
 local FARE = Config.BusFare or 5
 local TICKET_XP = 10
+local STOP_PAY = 40 -- € for the driver per stop served (doors opened at a stop)
+local STOP_XP = 15
+local STOP_RADIUS = 45 -- studs from the stop
+local STOP_AGAIN = 180 -- seconds before the same driver gets paid at the same stop again
+local served: { [Player]: { [number]: number } } = {}
 local SEAT_GAP = 4.4 -- studs between seat rows
 local MAX_ROWS = 10
 local LED = Color3.fromRGB(255, 170, 30)
@@ -189,6 +195,36 @@ local function onBoard(model: Model, seat: Seat, passenger: Player, owner: Playe
 	GameLog.Add("money", passenger, ("bus ticket %d € -> %s"):format(FARE, driver.Name))
 end
 
+-- Bus driver on duty opens the doors at a stop: paid once per stop (not twice in a row,
+-- and the same stop again only after STOP_AGAIN seconds).
+local function serveStop(model: Model)
+	local driver = driverOf(model)
+	local chassis = model.PrimaryPart
+	if not driver or not chassis or driver:GetAttribute("Job") ~= "Bus" then
+		return
+	end
+	if (chassis.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude > 8 then
+		return -- still rolling
+	end
+	local stop = BusStopService.Nearest(chassis.Position, STOP_RADIUS)
+	if not stop or model:GetAttribute("LastStop") == stop.index then
+		return
+	end
+	local mine = served[driver] or {}
+	served[driver] = mine
+	local now = os.clock()
+	if mine[stop.index] and now - mine[stop.index] < STOP_AGAIN then
+		return
+	end
+	mine[stop.index] = now
+	model:SetAttribute("LastStop", stop.index)
+	model:SetAttribute("StopsServed", (tonumber(model:GetAttribute("StopsServed")) or 0) + 1)
+	local paid = Economy.Earn(driver, STOP_PAY, "Haltestelle " .. stop.name)
+	pcall(XPService.Earn, driver, "Bus", STOP_XP, "Haltestelle")
+	Remotes.Push(driver, "Notify", { key = "bus_stop_served", args = { stop.name, paid } })
+end
+BusService.ServeStop = serveStop
+
 -- Adds the bus parts (before the model is parented). Everything is welded to the
 -- chassis, massless and non-colliding. Returns false for a model without a body.
 function BusService.Build(model: Model, freeRide: boolean): boolean
@@ -204,6 +240,7 @@ function BusService.Build(model: Model, freeRide: boolean): boolean
 	model:SetAttribute("StopRequest", false)
 	model:SetAttribute("TicketsSold", 0)
 	model:SetAttribute("TicketIncome", 0)
+	model:SetAttribute("StopsServed", 0)
 	model:SetAttribute("FreeRide", freeRide)
 	model:SetAttribute("AdminBus", freeRide)
 	model:SetAttribute("BusLine", if freeRide then "A" else "")
@@ -368,8 +405,14 @@ function BusService.Equip(model: Model, owner: Player, freeRide: boolean)
 			model:SetAttribute("StopRequest", false)
 		end
 	end
-	model:GetAttributeChangedSignal("Door1Open"):Connect(applyDoors)
-	model:GetAttributeChangedSignal("Door2Open"):Connect(applyDoors)
+	for _, attr in { "Door1Open", "Door2Open" } do
+		model:GetAttributeChangedSignal(attr):Connect(function()
+			applyDoors()
+			if model:GetAttribute(attr) then
+				serveStop(model)
+			end
+		end)
+	end
 	for _, a in { "BusLine", "BusDest", "StopRequest" } do
 		model:GetAttributeChangedSignal(a):Connect(function()
 			refreshDisplays(model)
@@ -409,6 +452,9 @@ local function cleanText(player: Player, text: string): string?
 end
 
 function BusService.Start()
+	Players.PlayerRemoving:Connect(function(player)
+		served[player] = nil
+	end)
 	-- driver: open / close door 1 or 2
 	Remotes.Handle("Bus.Door", function(player, door: any)
 		local model, isDriver = busOf(player)

@@ -112,6 +112,8 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🚫 Nur Admins dürfen in den Admin-Bus.",
 		en = "🚫 Only admins may ride the admin bus.",
 	},
+	bus_stop_served = { de = "🚏 Haltestelle %s bedient (+%s €)", en = "🚏 Served stop %s (+%s €)" },
+	bus_next_stop = { de = "🚏 Haltestelle: %s · %d m", en = "🚏 Stop: %s · %d m" },
 	bus_free_ride = { de = "🚌 Freie Fahrt!", en = "🚌 Free ride!" },
 	bus_no_money = { de = "Du hast keine %s € für das Busticket.", en = "You don't have %s € for the bus ticket." },
 	bus_ticket_bought = { de = "🎫 Busticket gekauft: %s €", en = "🎫 Bus ticket bought: %s €" },

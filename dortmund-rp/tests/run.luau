@@ -1298,6 +1298,17 @@ test("mall, underground garages and plate service", function()
 	Garages.Build()
 	Plates.Build()
 	local ws = env.workspace
+	-- bus stops from OSM: built, and found again near their position
+	local Stops = requirePath(Server.BusStopService)
+	local BusStopData = requirePath(RS.Shared.BusStopData)
+	Stops.Build()
+	local stopFolder = ws:FindFirstChild("BusStops")
+	assert(stopFolder, "bus stops built")
+	assert(#BusStopData >= 50, "bus stops around the city: " .. #BusStopData)
+	eq(#stopFolder:GetChildren(), #BusStopData, "one shelter per stop")
+	local first = Stops.Stops[1]
+	eq(Stops.Nearest(first.pos + roblox.Vector3.new(10, 0, 5), 45), first, "bus at the stop")
+	eq(Stops.Nearest(first.pos + roblox.Vector3.new(400, 0, 400), 45) == first, false, "far away: not this stop")
 	local mall = ws:FindFirstChild("Dortmund Mall")
 	assert(mall, "mall built")
 	local stores, special = 0, {}
