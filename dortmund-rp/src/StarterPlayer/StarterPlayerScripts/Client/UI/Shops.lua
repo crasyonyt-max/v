@@ -298,7 +298,7 @@ local function plateEditor(parent: Instance, order: number, label: string, curre
 	Make.Label(current or "–", 12, T.sub, T.font, { Parent = card })
 	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Parent = card })
 	Make.Label("DO-", 18, T.text, T.black, { Size = UDim2.fromOffset(44, 36), Parent = row })
-	local input = Make.TextBox("AB 1234", {
+	local input = Make.TextBox("AB 123", {
 		Text = string.match(current or "", "^DO%-(.+)$") or "",
 		Position = UDim2.fromOffset(46, 0),
 		Size = UDim2.new(1, -46, 1, 0),

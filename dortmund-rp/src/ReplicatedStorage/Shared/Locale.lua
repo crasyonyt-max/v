@@ -114,8 +114,8 @@ local S: { [string]: { de: string, en: string } } = {
 	tank_full = { de = "Der Tank ist voll.", en = "The tank is full." },
 	refueled = { de = "%d Liter getankt für %s.", en = "Refueled %d litres for %s." },
 	bad_plate = {
-		de = "Kennzeichen ungültig. Format: AB 1234 (Stadt ist immer DO)",
-		en = "Invalid plate. Format: AB 1234 (the city is always DO)",
+		de = "Kennzeichen ungültig. Format: AB 123 (Stadt immer DO, max. 3 Ziffern)",
+		en = "Invalid plate. Format: AB 123 (city always DO, max 3 digits)",
 	},
 	plate_taken = { de = "Dieses Kennzeichen ist schon vergeben.", en = "This plate is already taken." },
 	garage_full = { de = "Deine Garage ist voll.", en = "Your garage is full." },
@@ -271,6 +271,7 @@ local S: { [string]: { de: string, en: string } } = {
 	admin_fulllog = { de = "📜 Log", en = "📜 Log" },
 	full_log = { de = "Alles-Log (alle Server)", en = "Full log (all servers)" },
 	today = { de = "Heute", en = "Today" },
+	plate_filtered = { de = "Diese Buchstaben sind nicht erlaubt.", en = "These letters are not allowed." },
 	plate_service = { de = "ADMC Kennzeichen-Service", en = "ADMC plate service" },
 	plate_personal_title = {
 		de = "Persönliches Kennzeichen (Dienst- & Admin-Autos)",

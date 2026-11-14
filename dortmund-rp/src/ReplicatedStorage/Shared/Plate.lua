@@ -21,8 +21,8 @@ function Plate.Normalize(text: string): string?
 	return string.format("%s-%s %s%s", city :: string, letters :: string, digits :: string, suffix :: string)
 end
 
--- Custom plates in Dortmund RP: the city is always DO. "AB 1234", "do-ab 1234" and
--- "DO-AB 1234" all become "DO-AB 1234"; any other city is refused.
+-- Custom plates in Dortmund RP: the city is always DO, at most 3 digits. "AB 123",
+-- "do-ab 123" and "DO-AB 123" all become "DO-AB 123"; any other city is refused.
 function Plate.NormalizeDO(text: string): string?
 	if typeof(text) ~= "string" or #text > 16 then
 		return nil
@@ -37,6 +37,11 @@ function Plate.NormalizeDO(text: string): string?
 	if not p or string.sub(p, 1, 3) ~= "DO-" then
 		return nil
 	end
+	-- at most 3 digits (e.g. DO-AB 123)
+	local digits = string.match(p, " (%d+)")
+	if not digits or #digits > 3 then
+		return nil
+	end
 	return p
 end
 
@@ -47,7 +52,7 @@ function Plate.Random(city: string, rng: Random): string
 		return string.sub(alphabet, i, i)
 	end
 	local letters = letter() .. (if rng:NextNumber() < 0.7 then letter() else "")
-	return string.format("%s-%s %d", city, letters, rng:NextInteger(1, 9999))
+	return string.format("%s-%s %d", city, letters, rng:NextInteger(1, 999))
 end
 
 return Plate

@@ -61,7 +61,7 @@ Make.Label("DO-", 30, Color3.new(0, 0, 0), T.black, {
 	Size = UDim2.fromOffset(70, 52),
 	Parent = plate,
 })
-local input = Make.TextBox("AB 1234", {
+local input = Make.TextBox("AB 123", {
 	Position = UDim2.fromOffset(106, 6),
 	Size = UDim2.new(1, -112, 1, -12),
 	TextSize = 26,

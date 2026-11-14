@@ -91,6 +91,22 @@ local function releasePlate(text: string, userId: number)
 	end)
 end
 
+-- Plates are visible to everyone, so the letters must pass the text filter. Only the
+-- letters: the filter blocks 3-4 digit numbers (they look like personal data), and
+-- digits can't spell anything anyway.
+local function plateLettersOk(plateText: string, player: Player): boolean
+	local letters = string.match(plateText, "^%u+%-(%u+) ")
+	if not letters then
+		return false
+	end
+	local text = "DO " .. letters
+	local ok, filtered = pcall(function()
+		local result = TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PublicChat)
+		return result:GetNonChatStringForBroadcastAsync()
+	end)
+	return ok and filtered == text
+end
+
 local function newPlate(userId: number): string
 	for _ = 1, 8 do
 		local text = Plate.Random(Config.DefaultCityCode, rng)
@@ -846,12 +862,8 @@ function VehicleService.Start()
 			return Remotes.Fail("bad_plate")
 		end
 		-- Plates are visible to everyone, so they must pass the text filter unchanged.
-		local okFilter, filtered = pcall(function()
-			local result = TextService:FilterStringAsync(plateText, player.UserId, Enum.TextFilterContext.PublicChat)
-			return result:GetNonChatStringForBroadcastAsync()
-		end)
-		if not okFilter or filtered ~= plateText then
-			return Remotes.Fail("bad_plate")
+		if not plateLettersOk(plateText, player) then
+			return Remotes.Fail("plate_filtered")
 		end
 		-- the first own plate of a vehicle is free; changing it later costs a fee and
 		-- only works at the ADMC Kennzeichen-Service
@@ -888,12 +900,8 @@ function VehicleService.Start()
 		if not plateText then
 			return Remotes.Fail("bad_plate")
 		end
-		local okFilter, filtered = pcall(function()
-			local result = TextService:FilterStringAsync(plateText, player.UserId, Enum.TextFilterContext.PublicChat)
-			return result:GetNonChatStringForBroadcastAsync()
-		end)
-		if not okFilter or filtered ~= plateText then
-			return Remotes.Fail("bad_plate")
+		if not plateLettersOk(plateText, player) then
+			return Remotes.Fail("plate_filtered")
 		end
 		local fee = if data.personalPlate then PLATE_FEE else 0
 		if data.personalPlate and not Interaction.IsNear(player, "Shop", 25, "UI", "Plates") then
