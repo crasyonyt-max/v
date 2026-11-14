@@ -104,9 +104,10 @@ function Roles.Rank(player: Player): number
 	return staticRank(id)
 end
 
--- AA tab: Owner, both Co-Owner ranks, and the Game Admins in Config.AAExtra.
+-- AA tab: Owner, Co-Owners, and the Game Admins in Config.AAExtra
+-- (Second Co-Owners don't have it).
 function Roles.HasAA(player: Player): boolean
-	if Roles.Rank(player) >= Roles.SECOND_CO_OWNER then
+	if Roles.Rank(player) >= Roles.CO_OWNER then
 		return true
 	end
 	return Roles.IsGameAdmin(player) and table.find(Config.AAExtra, player.UserId) ~= nil

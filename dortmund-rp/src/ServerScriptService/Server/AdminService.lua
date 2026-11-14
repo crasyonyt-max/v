@@ -78,7 +78,7 @@ local ACTIONS: { [string]: number } = {
 	news_delete = GA,
 	vote_start = GA, -- votes run on every server
 	vote_end = GA,
-	-- AA: Owner + both Co-Owner ranks
+	-- AA: checked with Roles.HasAA (Owner, Co-Owners, Config.AAExtra)
 	aa_boost = Roles.SECOND_CO_OWNER,
 	aa_boost_stop = Roles.SECOND_CO_OWNER,
 	aa_gift = Roles.SECOND_CO_OWNER,
