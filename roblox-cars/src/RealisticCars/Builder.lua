@@ -93,6 +93,10 @@ function Builder.build(cfg, base)
 		end
 		p.Parent = opts.parent or bodyModel
 		weld(p, opts.weldTo)
+		-- Painted body panels get the "Body" tag so liveries can recolor them.
+		if color == paint and (material or PAINT) == PAINT and not opts.noTag then
+			CollectionService:AddTag(p, "Body")
+		end
 		return p
 	end
 	local function v(x, y, z)
@@ -122,10 +126,24 @@ function Builder.build(cfg, base)
 
 	-- Layer B (fenders, doors, hood, trunk) from the wheel tops to the belt line.
 	box("HoodEdge", v(W, belt - fenderBottom, noseLen), v(0, (fenderBottom + belt) / 2, fz + noseLen / 2), paint, PAINT, { class = "WedgePart" })
-	local doorFront, doorRear = -wbh + well, math.min(wbh - well, bedZ or math.huge)
+	local cargo = b.cargoBox
+	local cargoZ = cargo and L.z(cargo.from) or nil
+	local layerEnd = math.min(bedZ or rz, cargoZ or rz)
+	local doorFront, doorRear = -wbh + well, math.min(wbh - well, layerEnd)
 	zbox("FrontFenders", fz + noseLen, doorFront, fenderBottom, belt, W, paint)
 	local doors = zbox("Doors", doorFront, doorRear, fenderBottom, belt, W, accent)
-	zbox("RearQuarters", doorRear, bedZ or rz, fenderBottom, belt, W, paint)
+	zbox("RearQuarters", doorRear, layerEnd, fenderBottom, belt, W, paint)
+
+	-- Box body (trucks). With cargoBox.trailer it goes in a "Trailer" model.
+	local cargoParent = bodyModel
+	if cargo then
+		if cargo.trailer then
+			cargoParent = Instance.new("Model")
+			cargoParent.Name = "Trailer"
+			cargoParent.Parent = model
+		end
+		zbox("CargoBox", cargoZ, rz, fenderBottom, cargo.height, W, paint, PAINT, { parent = cargoParent })
+	end
 
 	if bedZ then
 		-- Pickup bed: floor at the fender line, thin walls and a tailgate.
@@ -149,7 +167,11 @@ function Builder.build(cfg, base)
 		})
 	end
 	glass("Windshield", v(cw, ch, zRF - zW), v(0, belt + ch / 2, (zW + zRF) / 2), nil, "WedgePart")
-	glass("SideGlass", v(cw, ch - 0.05, zRR - zRF), v(0, belt + (ch - 0.05) / 2, (zRF + zRR) / 2))
+	local glassEnd = b.sideWindowsTo and math.min(zRR, L.z(b.sideWindowsTo)) or zRR
+	glass("SideGlass", v(cw, ch - 0.05, glassEnd - zRF), v(0, belt + (ch - 0.05) / 2, (zRF + glassEnd) / 2))
+	if glassEnd < zRR - 0.01 then
+		zbox("SidePanel", glassEnd, zRR, belt, H - 0.05, cw, paint)
+	end
 	if zRB - zRR > 0.02 then
 		glass("RearGlass", v(cw, ch, zRB - zRR), v(0, belt + ch / 2, (zRR + zRB) / 2), CFrame.Angles(0, math.pi, 0), "WedgePart")
 	end
@@ -255,12 +277,116 @@ function Builder.build(cfg, base)
 		end
 	end
 
+	---------------------------------------------------------------- livery parts
+	-- Extra tagged parts for a livery system: accent band, stripe, lettering
+	-- panels, lightbar, flashers and window grilles (enable with cfg.liveryParts).
+	if cfg.liveryParts then
+		local function tagged(p, tag, attrs)
+			CollectionService:RemoveTag(p, "Body")
+			CollectionService:AddTag(p, tag)
+			for k, val in pairs(attrs or {}) do
+				p:SetAttribute(k, val)
+			end
+			return p
+		end
+		local function sides(fn)
+			for _, side in ipairs({ -1, 1 }) do
+				fn(side, side < 0 and "Left" or "Right")
+			end
+		end
+		local function lettering(name, size, center, faces, parent, slot)
+			local p = box(name, size, center, paint, PAINT, { parent = parent, transparency = 1 })
+			return tagged(p, "Lettering", { LetteringFaces = faces, LetteringSlot = slot })
+		end
+
+		-- Accent band low on the sides, between and around the wheel wells.
+		local accentY0, accentY1 = clear + 0.08, clear + 0.26
+		local segments = { { fz + 0.05, -wbh - well }, { -wbh + well, wbh - well }, { wbh + well, rz - 0.05 } }
+		sides(function(side)
+			for _, seg in ipairs(segments) do
+				if seg[2] - seg[1] > 0.05 then
+					tagged(box("AccentBand", v(0.012, accentY1 - accentY0, seg[2] - seg[1]),
+						v(side * (W / 2 + 0.004), (accentY0 + accentY1) / 2, (seg[1] + seg[2]) / 2), paint), "Accent")
+				end
+			end
+			-- Reflective stripe along the shoulder line.
+			local sh = belt - fenderBottom
+			tagged(box("Stripe", v(0.012, math.min(0.12, sh * 0.45), layerEnd - (fz + noseLen) - 0.02),
+				v(side * (W / 2 + 0.004), fenderBottom + sh * 0.45, (fz + noseLen + layerEnd) / 2), paint), "Stripe")
+		end)
+
+		-- Main lettering: on the cargo box, the van side panel, or the doors.
+		if cargo then
+			local y0, y1 = fenderBottom + 0.35, cargo.height - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, rz - cargoZ - 0.5), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (cargoZ + rz) / 2), face, cargoParent)
+				tagged(box("CargoStripe", v(0.012, 0.18, rz - cargoZ - 0.04), v(side * (W / 2 + 0.004), fenderBottom + 0.2, (cargoZ + rz) / 2), paint, PAINT, { parent = cargoParent }), "Stripe")
+			end)
+			lettering("RearLettering", v(W * 0.8, 0.5, 0.01), v(0, (fenderBottom + cargo.height) / 2, rz + 0.008), "Back", cargoParent)
+		elseif glassEnd < zRR - 0.3 then
+			local y0, y1 = belt + 0.15, H - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, zRR - glassEnd - 0.3), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (glassEnd + zRR) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.6, 0.22, 0.01), v(0, belt + 0.25, rz + 0.008), "Back")
+		else
+			local y0, y1 = accentY1 + 0.04, fenderBottom - 0.02
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, doorRear - doorFront - 0.1), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (doorFront + doorRear) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.5, 0.14, 0.01), v(0, tailY - 0.17, rz + 0.008), "Back")
+		end
+		-- Small organisation name on the front fenders (LetteringSlot "Secondary").
+		local fz0, fz1 = fz + noseLen + 0.05, -wbh - well - 0.02
+		if fz1 - fz0 > 0.12 then
+			sides(function(side, face)
+				lettering("SecondaryLettering", v(0.01, math.max(0.1, (belt - fenderBottom) * 0.8), fz1 - fz0), v(side * (W / 2 + 0.008), (fenderBottom + belt) / 2, (fz0 + fz1) / 2), face, nil, "Secondary")
+			end)
+		end
+
+		-- Lightbar on the roof (kept only for blue/orange lights).
+		local lightbar = Instance.new("Model")
+		lightbar.Name = "Lightbar"
+		lightbar:SetAttribute("ExtraName", "Lightbar")
+		CollectionService:AddTag(lightbar, "Extra")
+		lightbar.Parent = model
+		local zc = zRF + math.min(0.45, (zRR - zRF) / 2)
+		box("LightbarBase", v(cw * 0.8, 0.06, 0.24), v(0, H + 0.03, zc), col.trim, PAINT, { parent = lightbar })
+		sides(function(side)
+			local lamp = box("Beacon", v(cw * 0.38, 0.08, 0.2), v(side * cw * 0.2, H + 0.1, zc), Color3.fromRGB(30, 60, 160), NEON, { parent = lightbar })
+			tagged(lamp, "EmergencyLight")
+			local glow = Instance.new("PointLight")
+			glow.Range = 24
+			glow.Brightness = 5
+			glow.Enabled = false
+			glow.Parent = lamp
+			-- Front flashers in the grille (also used by unmarked cars).
+			local flasher = box("GrilleFlasher", v(0.1, 0.05, 0.02), v(side * W * 0.12, fenderBottom - 0.16, fz - 0.03), Color3.fromRGB(30, 60, 160), NEON, { parent = lights })
+			tagged(flasher, "EmergencyLight")
+		end)
+
+		-- Window grilles for vans (an "Extra", e.g. police prisoner transport).
+		if b.sideWindowsTo then
+			local grilles = Instance.new("Model")
+			grilles.Name = "WindowGrilles"
+			grilles:SetAttribute("ExtraName", "WindowGrilles")
+			CollectionService:AddTag(grilles, "Extra")
+			grilles.Parent = model
+			sides(function(side)
+				for i = 1, 5 do
+					local z = zRF + (glassEnd - zRF) * i / 6
+					box("GrilleBar", v(0.025, ch - 0.1, 0.025), v(side * (cw / 2 + 0.015), belt + (ch - 0.05) / 2, z), col.trim, METAL, { parent = grilles })
+				end
+			end)
+		end
+	end
+
 	---------------------------------------------------------------- interior & seats
 	box("Dashboard", v(cw - 0.08, 0.16, 0.3), v(0, belt - 0.02, zW + 0.22), col.trim)
 	local floorY = clear + 0.12
 	box("Floor", v(cw - 0.05, 0.03, zRB - zW), v(0, floorY, (zW + zRB) / 2), col.trim)
 
-	local seatTop = math.max(floorY + 0.08, math.min(clear + 0.33, H - 0.78))
+	local seatTop = b.seatHeight or math.max(floorY + 0.08, math.min(clear + 0.33, H - 0.78))
 	local frontZ = zRF + 0.32
 	local positions = { { -1, frontZ }, { 1, frontZ } }
 	if cfg.seats >= 4 then
@@ -322,6 +448,9 @@ function Builder.build(cfg, base)
 	end
 	hitbox("Hitbox", v(W, belt - clear - 0.1, b.length), v(0, (clear + 0.1 + belt) / 2, (fz + rz) / 2))
 	hitbox("CabinHitbox", v(cw, ch, zRB - zW), v(0, belt + ch / 2, (zW + zRB) / 2))
+	if cargo then
+		hitbox("CargoHitbox", v(W, cargo.height - belt, rz - cargoZ), v(0, (belt + cargo.height) / 2, (cargoZ + rz) / 2))
+	end
 
 	---------------------------------------------------------------- wheels
 	for name, wl in pairs(L.wheels) do

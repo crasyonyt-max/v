@@ -25,6 +25,7 @@ local PlayerData = require(script.Parent.PlayerDataAdapter)
 local Access = require(script.Parent.VehicleAccess)
 local LiveryApplier = require(script.Parent.LiveryApplier)
 local ServerAdmins = require(script.Parent.ServerAdmins)
+local ModelGenerator = require(script.Parent.VehicleModelGenerator)
 
 local Settings = VehicleConfig.Settings
 local COOLDOWN = 0.5 -- seconds between requests per player
@@ -44,7 +45,10 @@ local function vehiclesFolder()
 	return ServerStorage:FindFirstChild(Settings.VehiclesFolder)
 end
 
--- One startup warning listing every vehicle whose model is missing.
+-- Build drivable placeholder models for vehicles that have no model yet.
+ModelGenerator.GenerateMissing()
+
+-- One startup warning listing every vehicle whose model is still missing.
 do
 	local folder = vehiclesFolder()
 	local missing = {}

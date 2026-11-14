@@ -1,0 +1,2279 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+  <Item class="Folder" referent="RBX0">
+    <Properties>
+      <string name="Name">RealisticCars</string>
+    </Properties>
+    <Item class="ModuleScript" referent="RBX1">
+      <Properties>
+        <string name="Name">Builder</string>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Builds a car Model out of ordinary Parts from a config in Configs.lua.
+
+	Structure of a built car:
+	  Model (tag "RealisticCar", attribute CarType)
+	    Chassis        invisible root that carries all the mass (sets centre of mass + inertia)
+	      MountFL..RR  suspension top mounts (Attachments)
+	    Hitbox, CabinHitbox   invisible collision boxes
+	    Body           visual parts, all massless and welded to Chassis
+	    WheelFL..RR    tires driven by a Motor6D named "Motor" (spring + steer + spin)
+	    DriverSeat (VehicleSeat), Seat2..n (Seats), each with a ProximityPrompt
+]]
+
+local CollectionService = game:GetService("CollectionService")
+
+local Configs = require(script.Parent.Configs)
+local Layout = require(script.Parent.Layout)
+
+local MPS = Configs.METERS_PER_STUD
+local Builder = {}
+
+local NEON = Enum.Material.Neon
+local GLASS = Enum.Material.Glass
+local PAINT = Enum.Material.SmoothPlastic
+local METAL = Enum.Material.Metal
+
+function Builder.build(cfg, base)
+	local L = Layout.compute(cfg)
+	local b = cfg.body
+	local col = cfg.colors
+	local r, ww = cfg.wheelRadius, cfg.wheelWidth
+	local W, H, clear = b.width, b.height, b.clearance
+	local fz, rz = L.frontZ, L.rearZ
+	local wbh = cfg.wheelbase / 2
+	local paint = cfg.color
+	local accent = cfg.accentColor or paint
+
+	local model = Instance.new("Model")
+	model.Name = cfg.displayName
+	model:SetAttribute("CarType", cfg.key)
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+
+	local chassis = Instance.new("Part")
+	chassis.Name = "Chassis"
+	chassis.Size = L.ballastSize
+	chassis.CFrame = base * CFrame.new(L.com / MPS)
+	chassis.Transparency = 1
+	chassis.CanCollide = false
+	chassis.CanQuery = false
+	chassis.CanTouch = false
+	chassis.CustomPhysicalProperties = PhysicalProperties.new(8, 0.3, 0, 1, 1)
+	chassis.Parent = model
+	model.PrimaryPart = chassis
+
+	local bodyModel = Instance.new("Model")
+	bodyModel.Name = "Body"
+	bodyModel.Parent = model
+
+	-- Classic Welds with explicit offsets, so nothing depends on the order the
+	-- engine activates joints in (the wheel Motor6Ds move the tires).
+	local function weld(p, to)
+		to = to or chassis
+		local w = Instance.new("Weld")
+		w.Part0 = to
+		w.Part1 = p
+		w.C0 = to.CFrame:ToObjectSpace(p.CFrame)
+		w.Parent = p
+	end
+
+	-- size and center in meters, car space
+	local function box(name, size, center, color, material, opts)
+		opts = opts or {}
+		local p = Instance.new(opts.class or "Part")
+		p.Name = name
+		p.Size = size / MPS
+		p.CFrame = base * CFrame.new(center / MPS) * (opts.rot or CFrame.identity)
+		p.Color = color
+		p.Material = material or PAINT
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Massless = true
+		if opts.shape then
+			p.Shape = opts.shape
+		end
+		if opts.transparency then
+			p.Transparency = opts.transparency
+		end
+		if opts.reflectance then
+			p.Reflectance = opts.reflectance
+		end
+		p.Parent = opts.parent or bodyModel
+		weld(p, opts.weldTo)
+		-- Painted body panels get the "Body" tag so liveries can recolor them.
+		if color == paint and (material or PAINT) == PAINT and not opts.noTag then
+			CollectionService:AddTag(p, "Body")
+		end
+		return p
+	end
+	local function v(x, y, z)
+		return Vector3.new(x, y, z)
+	end
+	local function zbox(name, z0, z1, y0, y1, width, color, material, opts)
+		if z1 - z0 < 0.005 or y1 - y0 < 0.005 then
+			return nil
+		end
+		return box(name, v(width, y1 - y0, z1 - z0), v(0, (y0 + y1) / 2, (z0 + z1) / 2), color, material, opts)
+	end
+
+	---------------------------------------------------------------- lower body
+	local fenderBottom = 2 * r + 0.06
+	local belt = math.max(b.belt, fenderBottom + 0.12)
+	local well = r + 0.08
+	local coreW = W - 2 * (ww + 0.1)
+	local bedZ = b.bedStart and L.z(b.bedStart) or nil
+	local noseLen = b.noseLength or 0.32
+
+	-- Layer A (sills, bumpers, floor) with cut-outs for the wheel wells.
+	zbox("Nose", fz, -wbh - well, clear, fenderBottom, W, paint)
+	zbox("FrontWellCore", -wbh - well, -wbh + well, clear + 0.05, fenderBottom, coreW, col.trim)
+	zbox("Sill", -wbh + well, wbh - well, clear, fenderBottom, W, paint)
+	zbox("RearWellCore", wbh - well, wbh + well, clear + 0.05, fenderBottom, coreW, col.trim)
+	zbox("Tail", wbh + well, rz, clear, fenderBottom, W, paint)
+
+	-- Layer B (fenders, doors, hood, trunk) from the wheel tops to the belt line.
+	box("HoodEdge", v(W, belt - fenderBottom, noseLen), v(0, (fenderBottom + belt) / 2, fz + noseLen / 2), paint, PAINT, { class = "WedgePart" })
+	local cargo = b.cargoBox
+	local cargoZ = cargo and L.z(cargo.from) or nil
+	local layerEnd = math.min(bedZ or rz, cargoZ or rz)
+	local doorFront, doorRear = -wbh + well, math.min(wbh - well, layerEnd)
+	zbox("FrontFenders", fz + noseLen, doorFront, fenderBottom, belt, W, paint)
+	local doors = zbox("Doors", doorFront, doorRear, fenderBottom, belt, W, accent)
+	zbox("RearQuarters", doorRear, layerEnd, fenderBottom, belt, W, paint)
+
+	-- Box body (trucks). With cargoBox.trailer it goes in a "Trailer" model.
+	local cargoParent = bodyModel
+	if cargo then
+		if cargo.trailer then
+			cargoParent = Instance.new("Model")
+			cargoParent.Name = "Trailer"
+			cargoParent.Parent = model
+		end
+		zbox("CargoBox", cargoZ, rz, fenderBottom, cargo.height, W, paint, PAINT, { parent = cargoParent })
+	end
+
+	if bedZ then
+		-- Pickup bed: floor at the fender line, thin walls and a tailgate.
+		local t = 0.06
+		for _, side in ipairs({ -1, 1 }) do
+			box("BedSide", v(t, belt - fenderBottom, rz - bedZ), v(side * (W / 2 - t / 2), (fenderBottom + belt) / 2, (bedZ + rz) / 2), paint)
+		end
+		zbox("Tailgate", rz - t, rz, fenderBottom, belt, W - 2 * t, paint)
+		zbox("BedFront", bedZ, bedZ + t, fenderBottom, belt, W - 2 * t, paint)
+		zbox("BedLiner", bedZ + t, rz - t, fenderBottom, fenderBottom + 0.01, W - 2 * t, col.trim)
+	end
+
+	---------------------------------------------------------------- cabin
+	local zW, zRF, zRR, zRB = L.z(b.windshieldBase), L.z(b.roofFront), L.z(b.roofRear), L.z(b.rearBase)
+	local cw = W - 2 * b.cabinInset
+	local ch = H - belt
+	local glassOpts = { transparency = 0.35, reflectance = 0.15 }
+	local function glass(name, size, center, rot, class)
+		return box(name, size, center, col.glass, GLASS, {
+			transparency = glassOpts.transparency, reflectance = glassOpts.reflectance, rot = rot, class = class,
+		})
+	end
+	glass("Windshield", v(cw, ch, zRF - zW), v(0, belt + ch / 2, (zW + zRF) / 2), nil, "WedgePart")
+	local glassEnd = b.sideWindowsTo and math.min(zRR, L.z(b.sideWindowsTo)) or zRR
+	glass("SideGlass", v(cw, ch - 0.05, glassEnd - zRF), v(0, belt + (ch - 0.05) / 2, (zRF + glassEnd) / 2))
+	if glassEnd < zRR - 0.01 then
+		zbox("SidePanel", glassEnd, zRR, belt, H - 0.05, cw, paint)
+	end
+	if zRB - zRR > 0.02 then
+		glass("RearGlass", v(cw, ch, zRB - zRR), v(0, belt + ch / 2, (zRR + zRB) / 2), CFrame.Angles(0, math.pi, 0), "WedgePart")
+	end
+	box("Roof", v(cw + 0.02, 0.05, zRR - zRF + 0.03), v(0, H - 0.025, (zRF + zRR) / 2), paint)
+
+	-- Pillars
+	local function pillar(z0, y0, z1, y1, x)
+		local dz, dy = z1 - z0, y1 - y0
+		local len = math.sqrt(dz * dz + dy * dy)
+		local angle = -math.atan2(dy, dz)
+		box("Pillar", v(0.05, 0.06, len), v(x, (y0 + y1) / 2, (z0 + z1) / 2), paint, PAINT, { rot = CFrame.Angles(angle, 0, 0) })
+	end
+	for _, side in ipairs({ -1, 1 }) do
+		local x = side * (cw / 2)
+		pillar(zW, belt, zRF, H - 0.02, x) -- A
+		if zRB - zRR > 0.02 then
+			pillar(zRR, H - 0.02, zRB, belt, x) -- C
+		end
+		box("BPillar", v(0.04, ch - 0.05, 0.09), v(x, belt + (ch - 0.05) / 2, zRF + math.min(1.0, (zRR - zRF) * 0.45)), col.trim)
+		-- mirror
+		box("Mirror", v(0.13, 0.1, 0.17), v(side * (cw / 2 + 0.1), belt + 0.09, zW + 0.18), paint)
+	end
+
+	---------------------------------------------------------------- doors & trim
+	local nDoors = cfg.doors or 2
+	local frontDoorLen = nDoors == 4 and 1.05 or 1.3
+	local seamZ = { doorFront + 0.04, doorFront + 0.04 + frontDoorLen }
+	if nDoors == 4 then
+		table.insert(seamZ, math.min(doorRear - 0.04, seamZ[2] + 0.9))
+	end
+	for _, side in ipairs({ -1, 1 }) do
+		for i, z in ipairs(seamZ) do
+			box("DoorSeam", v(0.012, belt - clear - 0.14, 0.012), v(side * (W / 2 + 0.003), (clear + 0.1 + belt) / 2, z), col.trim)
+			if i < #seamZ or nDoors == 2 then
+				box("Handle", v(0.02, 0.03, 0.13), v(side * (W / 2 + 0.008), belt - 0.1, (i < #seamZ and seamZ[i + 1] or z) - 0.2), col.trim, METAL)
+			end
+		end
+	end
+	if cfg.police and doors then
+		for _, face in ipairs({ Enum.NormalId.Left, Enum.NormalId.Right }) do
+			local gui = Instance.new("SurfaceGui")
+			gui.Face = face
+			gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+			gui.PixelsPerStud = 40
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.fromScale(1, 1)
+			label.BackgroundTransparency = 1
+			label.Text = "POLICE"
+			label.TextScaled = true
+			label.Font = Enum.Font.GothamBlack
+			label.TextColor3 = Color3.fromRGB(20, 22, 26)
+			label.Parent = gui
+			gui.Parent = doors
+		end
+	end
+
+	-- Bumpers, grille, plates, exhaust
+	box("FrontBumper", v(W + 0.03, 0.2, 0.1), v(0, clear + 0.12, fz - 0.03), col.trim)
+	box("RearBumper", v(W + 0.03, 0.2, 0.1), v(0, clear + 0.12, rz + 0.03), col.trim)
+	box("Grille", v(W * 0.42, 0.15, 0.03), v(0, fenderBottom - 0.16, fz - 0.012), col.trim)
+	box("FrontPlate", v(0.52, 0.11, 0.02), v(0, clear + 0.27, fz - 0.085), Color3.fromRGB(235, 235, 230))
+	box("RearPlate", v(0.52, 0.11, 0.02), v(0, clear + 0.33, rz + 0.01), Color3.fromRGB(235, 235, 230))
+	local pipes = (cfg.key == "Sports" or cfg.key == "Muscle" or cfg.key == "Supercar") and { -1, 1 } or { 1 }
+	for _, side in ipairs(pipes) do
+		box("Exhaust", v(0.2, 0.085, 0.085), v(side * (W / 2 - 0.35), clear + 0.05, rz - 0.04), Color3.fromRGB(120, 120, 125), METAL, {
+			shape = Enum.PartType.Cylinder, rot = CFrame.Angles(0, math.pi / 2, 0),
+		})
+	end
+
+	---------------------------------------------------------------- lights
+	local lights = Instance.new("Model")
+	lights.Name = "Lights"
+	lights.Parent = model
+	local lightY = fenderBottom - 0.1
+	local tailY = belt - 0.17
+	for _, side in ipairs({ -1, 1 }) do
+		local head = box("Headlight", v(0.34, 0.12, 0.04), v(side * (W / 2 - 0.23), lightY, fz - 0.005), Color3.fromRGB(205, 205, 200), NEON, { parent = lights })
+		local beam = Instance.new("SpotLight")
+		beam.Face = Enum.NormalId.Front
+		beam.Range = 60
+		beam.Angle = 75
+		beam.Brightness = 4
+		beam.Shadows = true
+		beam.Enabled = false
+		beam.Parent = head
+		box("Taillight", v(0.32, 0.12, 0.04), v(side * (W / 2 - 0.21), tailY, rz + 0.005), Color3.fromRGB(110, 10, 10), NEON, { parent = lights })
+		box("ReverseLight", v(0.1, 0.08, 0.035), v(side * (W / 2 - 0.44), tailY, rz + 0.005), Color3.fromRGB(110, 110, 110), GLASS, { parent = lights })
+	end
+
+	if cfg.police then
+		local zc = (zRF + zRR) / 2 - 0.1
+		box("LightbarBase", v(cw * 0.8, 0.06, 0.24), v(0, H + 0.03, zc), col.trim, PAINT, { parent = lights })
+		for _, side in ipairs({ -1, 1 }) do
+			local name = side < 0 and "SirenRed" or "SirenBlue"
+			local color = side < 0 and Color3.fromRGB(90, 0, 0) or Color3.fromRGB(0, 0, 90)
+			local p = box(name, v(cw * 0.38, 0.07, 0.2), v(side * cw * 0.2, H + 0.095, zc), color, NEON, { parent = lights })
+			local glow = Instance.new("PointLight")
+			glow.Range = 24
+			glow.Brightness = 5
+			glow.Color = side < 0 and Color3.fromRGB(255, 30, 30) or Color3.fromRGB(40, 80, 255)
+			glow.Enabled = false
+			glow.Parent = p
+		end
+	end
+
+	---------------------------------------------------------------- livery parts
+	-- Extra tagged parts for a livery system: accent band, stripe, lettering
+	-- panels, lightbar, flashers and window grilles (enable with cfg.liveryParts).
+	if cfg.liveryParts then
+		local function tagged(p, tag, attrs)
+			CollectionService:RemoveTag(p, "Body")
+			CollectionService:AddTag(p, tag)
+			for k, val in pairs(attrs or {}) do
+				p:SetAttribute(k, val)
+			end
+			return p
+		end
+		local function sides(fn)
+			for _, side in ipairs({ -1, 1 }) do
+				fn(side, side < 0 and "Left" or "Right")
+			end
+		end
+		local function lettering(name, size, center, faces, parent, slot)
+			local p = box(name, size, center, paint, PAINT, { parent = parent, transparency = 1 })
+			return tagged(p, "Lettering", { LetteringFaces = faces, LetteringSlot = slot })
+		end
+
+		-- Accent band low on the sides, between and around the wheel wells.
+		local accentY0, accentY1 = clear + 0.08, clear + 0.26
+		local segments = { { fz + 0.05, -wbh - well }, { -wbh + well, wbh - well }, { wbh + well, rz - 0.05 } }
+		sides(function(side)
+			for _, seg in ipairs(segments) do
+				if seg[2] - seg[1] > 0.05 then
+					tagged(box("AccentBand", v(0.012, accentY1 - accentY0, seg[2] - seg[1]),
+						v(side * (W / 2 + 0.004), (accentY0 + accentY1) / 2, (seg[1] + seg[2]) / 2), paint), "Accent")
+				end
+			end
+			-- Reflective stripe along the shoulder line.
+			local sh = belt - fenderBottom
+			tagged(box("Stripe", v(0.012, math.min(0.12, sh * 0.45), layerEnd - (fz + noseLen) - 0.02),
+				v(side * (W / 2 + 0.004), fenderBottom + sh * 0.45, (fz + noseLen + layerEnd) / 2), paint), "Stripe")
+		end)
+
+		-- Main lettering: on the cargo box, the van side panel, or the doors.
+		if cargo then
+			local y0, y1 = fenderBottom + 0.35, cargo.height - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, rz - cargoZ - 0.5), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (cargoZ + rz) / 2), face, cargoParent)
+				tagged(box("CargoStripe", v(0.012, 0.18, rz - cargoZ - 0.04), v(side * (W / 2 + 0.004), fenderBottom + 0.2, (cargoZ + rz) / 2), paint, PAINT, { parent = cargoParent }), "Stripe")
+			end)
+			lettering("RearLettering", v(W * 0.8, 0.5, 0.01), v(0, (fenderBottom + cargo.height) / 2, rz + 0.008), "Back", cargoParent)
+		elseif glassEnd < zRR - 0.3 then
+			local y0, y1 = belt + 0.15, H - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, zRR - glassEnd - 0.3), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (glassEnd + zRR) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.6, 0.22, 0.01), v(0, belt + 0.25, rz + 0.008), "Back")
+		else
+			local y0, y1 = accentY1 + 0.04, fenderBottom - 0.02
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, doorRear - doorFront - 0.1), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (doorFront + doorRear) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.5, 0.14, 0.01), v(0, tailY - 0.17, rz + 0.008), "Back")
+		end
+		-- Small organisation name on the front fenders (LetteringSlot "Secondary").
+		local fz0, fz1 = fz + noseLen + 0.05, -wbh - well - 0.02
+		if fz1 - fz0 > 0.12 then
+			sides(function(side, face)
+				lettering("SecondaryLettering", v(0.01, math.max(0.1, (belt - fenderBottom) * 0.8), fz1 - fz0), v(side * (W / 2 + 0.008), (fenderBottom + belt) / 2, (fz0 + fz1) / 2), face, nil, "Secondary")
+			end)
+		end
+
+		-- Lightbar on the roof (kept only for blue/orange lights).
+		local lightbar = Instance.new("Model")
+		lightbar.Name = "Lightbar"
+		lightbar:SetAttribute("ExtraName", "Lightbar")
+		CollectionService:AddTag(lightbar, "Extra")
+		lightbar.Parent = model
+		local zc = zRF + math.min(0.45, (zRR - zRF) / 2)
+		box("LightbarBase", v(cw * 0.8, 0.06, 0.24), v(0, H + 0.03, zc), col.trim, PAINT, { parent = lightbar })
+		sides(function(side)
+			local lamp = box("Beacon", v(cw * 0.38, 0.08, 0.2), v(side * cw * 0.2, H + 0.1, zc), Color3.fromRGB(30, 60, 160), NEON, { parent = lightbar })
+			tagged(lamp, "EmergencyLight")
+			local glow = Instance.new("PointLight")
+			glow.Range = 24
+			glow.Brightness = 5
+			glow.Enabled = false
+			glow.Parent = lamp
+			-- Front flashers in the grille (also used by unmarked cars).
+			local flasher = box("GrilleFlasher", v(0.1, 0.05, 0.02), v(side * W * 0.12, fenderBottom - 0.16, fz - 0.03), Color3.fromRGB(30, 60, 160), NEON, { parent = lights })
+			tagged(flasher, "EmergencyLight")
+		end)
+
+		-- Window grilles for vans (an "Extra", e.g. police prisoner transport).
+		if b.sideWindowsTo then
+			local grilles = Instance.new("Model")
+			grilles.Name = "WindowGrilles"
+			grilles:SetAttribute("ExtraName", "WindowGrilles")
+			CollectionService:AddTag(grilles, "Extra")
+			grilles.Parent = model
+			sides(function(side)
+				for i = 1, 5 do
+					local z = zRF + (glassEnd - zRF) * i / 6
+					box("GrilleBar", v(0.025, ch - 0.1, 0.025), v(side * (cw / 2 + 0.015), belt + (ch - 0.05) / 2, z), col.trim, METAL, { parent = grilles })
+				end
+			end)
+		end
+	end
+
+	---------------------------------------------------------------- interior & seats
+	box("Dashboard", v(cw - 0.08, 0.16, 0.3), v(0, belt - 0.02, zW + 0.22), col.trim)
+	local floorY = clear + 0.12
+	box("Floor", v(cw - 0.05, 0.03, zRB - zW), v(0, floorY, (zW + zRB) / 2), col.trim)
+
+	local seatTop = b.seatHeight or math.max(floorY + 0.08, math.min(clear + 0.33, H - 0.78))
+	local frontZ = zRF + 0.32
+	local positions = { { -1, frontZ }, { 1, frontZ } }
+	if cfg.seats >= 4 then
+		local rearZ = math.min(frontZ + 0.85, zRR - 0.1)
+		table.insert(positions, { -1, rearZ })
+		table.insert(positions, { 1, rearZ })
+	end
+	local seatX = cw * 0.24
+	for i, pos in ipairs(positions) do
+		local x, z = pos[1] * seatX, pos[2]
+		box("SeatCushion", v(0.46, 0.1, 0.46), v(x, seatTop - 0.05, z), Color3.fromRGB(45, 45, 48))
+		box("SeatBack", v(0.46, 0.58, 0.1), v(x, seatTop + 0.27, z + 0.26), Color3.fromRGB(45, 45, 48), PAINT, { rot = CFrame.Angles(math.rad(-12), 0, 0) })
+
+		local seat = Instance.new(i == 1 and "VehicleSeat" or "Seat")
+		seat.Name = i == 1 and "DriverSeat" or ("Seat" .. i)
+		seat.Size = v(0.44, 0.06, 0.44) / MPS
+		seat.CFrame = base * CFrame.new(v(x, seatTop - 0.03, z) / MPS)
+		seat.Transparency = 1
+		seat.CanCollide = false
+		seat.Massless = true
+		if seat:IsA("VehicleSeat") then
+			seat.HeadsUpDisplay = false
+			seat.MaxSpeed = 0
+			seat.Torque = 0
+			seat.TurnSpeed = 0
+		end
+		seat.Parent = model
+		weld(seat)
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "EnterPrompt"
+		prompt.ActionText = i == 1 and "Drive" or "Ride"
+		prompt.ObjectText = cfg.displayName
+		prompt.HoldDuration = 0.15
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt.KeyboardKeyCode = i == 1 and Enum.KeyCode.E or Enum.KeyCode.Q
+		prompt.Parent = seat
+
+		if i == 1 then
+			box("SteeringWheel", v(0.035, 0.36, 0.36), v(x, seatTop + 0.36, z - 0.42), Color3.fromRGB(30, 30, 32), PAINT, {
+				shape = Enum.PartType.Cylinder, rot = CFrame.Angles(math.rad(-22), math.pi / 2, 0),
+			})
+		end
+	end
+
+	---------------------------------------------------------------- collision
+	local function hitbox(name, size, center)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size / MPS
+		p.CFrame = base * CFrame.new(center / MPS)
+		p.Transparency = 1
+		p.Massless = true
+		p.CanTouch = false
+		p.CustomPhysicalProperties = PhysicalProperties.new(1, 0.15, 0.1, 1, 1)
+		p.Parent = model
+		weld(p)
+	end
+	hitbox("Hitbox", v(W, belt - clear - 0.1, b.length), v(0, (clear + 0.1 + belt) / 2, (fz + rz) / 2))
+	hitbox("CabinHitbox", v(cw, ch, zRB - zW), v(0, belt + ch / 2, (zW + zRB) / 2))
+	if cargo then
+		hitbox("CargoHitbox", v(W, cargo.height - belt, rz - cargoZ), v(0, (belt + cargo.height) / 2, (cargoZ + rz) / 2))
+	end
+
+	---------------------------------------------------------------- wheels
+	for name, wl in pairs(L.wheels) do
+		local side = name:sub(2, 2) == "L" and -1 or 1
+		local center = wl.rest
+		local tire = box("Wheel" .. name, v(ww, 2 * r, 2 * r), center, Color3.fromRGB(24, 24, 24), PAINT, {
+			shape = Enum.PartType.Cylinder, parent = model,
+		})
+		tire:FindFirstChildOfClass("Weld"):Destroy()
+		local function onWheel(partName, size, offsetX, color, material, rot, shape)
+			box(partName, size, center + v(offsetX, 0, 0), color, material, {
+				parent = tire, weldTo = tire, rot = rot, shape = shape,
+			})
+		end
+		onWheel("Rim", v(ww + 0.012, 2 * r * 0.66, 2 * r * 0.66), 0, col.rim, METAL, nil, Enum.PartType.Cylinder)
+		onWheel("Hub", v(ww + 0.03, 0.11, 0.11), 0, col.trim, METAL, nil, Enum.PartType.Cylinder)
+		for k = 0, 2 do
+			onWheel("Spoke", v(0.014, 2 * r * 0.62, 0.055), side * (ww / 2 + 0.004), col.rim, METAL, CFrame.Angles(k * math.pi / 3, 0, 0))
+		end
+
+		local mount = Instance.new("Attachment")
+		mount.Name = "Mount" .. name
+		mount.Position = wl.mountLocal
+		mount.Parent = chassis
+
+		local motor = Instance.new("Motor6D")
+		motor.Name = "Motor"
+		motor.Part0 = chassis
+		motor.Part1 = tire
+		motor.C0 = CFrame.new(wl.mountLocal)
+		motor.C1 = CFrame.identity
+		motor.Parent = tire
+	end
+
+	---------------------------------------------------------------- sound & state
+	if Configs.ENGINE_SOUND_ID ~= "" then
+		local sound = Instance.new("Sound")
+		sound.Name = "Engine"
+		sound.SoundId = Configs.ENGINE_SOUND_ID
+		sound.Looped = true
+		sound.Volume = 0.5
+		sound.RollOffMaxDistance = 250
+		sound.Parent = chassis
+	end
+
+	model:SetAttribute("Steer", 0)
+	model:SetAttribute("RPM", cfg.engine.idleRPM)
+	model:SetAttribute("Throttle", 0)
+	model:SetAttribute("Gear", 0)
+	model:SetAttribute("Brake", false)
+	model:SetAttribute("Headlights", false)
+	model:SetAttribute("Siren", false)
+	CollectionService:AddTag(model, "RealisticCar")
+	return model
+end
+
+return Builder
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="RBX2">
+      <Properties>
+        <string name="Name">CarClient</string>
+        <token name="RunContext">2</token>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Realistic Cars - client
+
+	* While you drive: reads keyboard / gamepad / touch, runs the physics for
+	  your car, shows the dashboard HUD.
+	* For every car: animates wheels (suspension, steering, spin) and engine sound.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local CollectionService = game:GetService("CollectionService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local root = script.Parent
+local Configs = require(root.Configs)
+local Sim = require(root.Sim)
+local stateRemote = root:WaitForChild("CarState")
+local commandRemote = root:WaitForChild("CarCommand")
+
+local MPS = Configs.METERS_PER_STUD
+local TAU = math.pi * 2
+local VISUAL_RANGE = 450 -- studs
+
+local player = Players.LocalPlayer
+local driving = nil
+local handbrakeHeld = false
+local useMph = false
+local lastReset = 0
+
+-------------------------------------------------------------------------------
+-- HUD
+-------------------------------------------------------------------------------
+
+local function make(class, props, parent)
+	local inst = Instance.new(class)
+	for k, val in pairs(props) do
+		inst[k] = val
+	end
+	inst.Parent = parent
+	return inst
+end
+
+local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local gui = make("ScreenGui", { Name = "CarHUD", ResetOnSpawn = false, Enabled = false, IgnoreGuiInset = false }, player:WaitForChild("PlayerGui"))
+local panel = make("Frame", {
+	AnchorPoint = touchOnly and Vector2.new(0.5, 0) or Vector2.new(1, 1),
+	Position = touchOnly and UDim2.new(0.5, 0, 0, 8) or UDim2.new(1, -20, 1, -20),
+	Size = UDim2.fromOffset(300, 132),
+	BackgroundColor3 = Color3.fromRGB(12, 13, 16),
+	BackgroundTransparency = 0.3,
+}, gui)
+make("UICorner", { CornerRadius = UDim.new(0, 12) }, panel)
+
+local function label(props)
+	props.BackgroundTransparency = 1
+	props.TextColor3 = props.TextColor3 or Color3.fromRGB(240, 240, 240)
+	props.Font = props.Font or Enum.Font.GothamBold
+	return make("TextLabel", props, panel)
+end
+local speedLabel = label({ Position = UDim2.fromOffset(16, 6), Size = UDim2.fromOffset(170, 62), Text = "0", TextSize = 58, TextXAlignment = Enum.TextXAlignment.Left })
+local unitLabel = label({ Position = UDim2.fromOffset(18, 66), Size = UDim2.fromOffset(100, 18), Text = "km/h", TextSize = 15, Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(170, 170, 175), TextXAlignment = Enum.TextXAlignment.Left })
+local gearLabel = label({ Position = UDim2.new(1, -96, 0, 6), Size = UDim2.fromOffset(80, 62), Text = "N", TextSize = 58, TextXAlignment = Enum.TextXAlignment.Right })
+local modeLabel = label({ Position = UDim2.new(1, -136, 0, 66), Size = UDim2.fromOffset(120, 18), Text = "AUTO", TextSize = 14, Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(170, 170, 175), TextXAlignment = Enum.TextXAlignment.Right })
+local rpmBack = make("Frame", { Position = UDim2.new(0, 16, 1, -38), Size = UDim2.new(1, -32, 0, 10), BackgroundColor3 = Color3.fromRGB(45, 46, 52), BorderSizePixel = 0 }, panel)
+make("UICorner", { CornerRadius = UDim.new(0, 4) }, rpmBack)
+local redZone = make("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0.1, 1), BackgroundColor3 = Color3.fromRGB(120, 20, 24), BorderSizePixel = 0 }, rpmBack)
+make("UICorner", { CornerRadius = UDim.new(0, 4) }, redZone)
+local rpmFill = make("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(235, 235, 235), BorderSizePixel = 0, ZIndex = 2 }, rpmBack)
+make("UICorner", { CornerRadius = UDim.new(0, 4) }, rpmFill)
+local rpmLabel = label({ Position = UDim2.new(0, 16, 1, -24), Size = UDim2.fromOffset(110, 18), Text = "0 rpm", TextSize = 13, Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(170, 170, 175), TextXAlignment = Enum.TextXAlignment.Left })
+local assistLabel = label({ Position = UDim2.new(1, -196, 1, -24), Size = UDim2.fromOffset(180, 18), Text = "", TextSize = 13, RichText = true, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right })
+
+local helpText = table.concat({
+	"<b>W/S</b> throttle / brake (hold S to reverse)",
+	"<b>A/D</b> steer    <b>Space</b> handbrake",
+	"<b>E/Q</b> shift up / down (switches to manual)",
+	"<b>M</b> auto / manual   <b>T</b> traction control   <b>B</b> ABS",
+	"<b>L</b> headlights   <b>G</b> siren   <b>R</b> flip car",
+	"<b>U</b> km/h / mph   <b>F</b> get out   <b>H</b> hide help",
+	"Gamepad: RT/LT pedals, stick steer, X handbrake, RB/LB shift",
+}, "\n")
+local help = make("TextLabel", {
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.new(0, 20, 1, -20),
+	Size = UDim2.fromOffset(360, 132),
+	BackgroundColor3 = Color3.fromRGB(12, 13, 16),
+	BackgroundTransparency = 0.35,
+	Text = helpText,
+	RichText = true,
+	TextSize = 13,
+	Font = Enum.Font.Gotham,
+	TextColor3 = Color3.fromRGB(225, 225, 228),
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Visible = not touchOnly,
+}, gui)
+make("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingTop = UDim.new(0, 8) }, help)
+make("UICorner", { CornerRadius = UDim.new(0, 12) }, help)
+
+local function assistText(name, on, active)
+	if not on then
+		return string.format('<font color="#6a6a70">%s OFF</font>', name)
+	end
+	return string.format('<font color="%s">%s</font>', active and "#ffb020" or "#9a9aa0", name)
+end
+
+local function updateHud(sim, tel)
+	local cfg = sim.cfg
+	local speed = math.abs(tel.forward or tel.speed)
+	speedLabel.Text = tostring(math.floor(speed * (useMph and 2.23694 or 3.6) + 0.5))
+	unitLabel.Text = useMph and "mph" or "km/h"
+	gearLabel.Text = tel.gear == -1 and "R" or tel.gear == 0 and "N" or tostring(tel.gear)
+	modeLabel.Text = sim.auto and "AUTO" or "MANUAL"
+	local e = cfg.engine
+	rpmFill.Size = UDim2.fromScale(math.clamp(tel.rpm / e.maxRPM, 0, 1), 1)
+	rpmFill.BackgroundColor3 = tel.rpm > e.redline - 300 and Color3.fromRGB(255, 70, 60) or Color3.fromRGB(235, 235, 235)
+	redZone.Size = UDim2.fromScale(1 - e.redline / e.maxRPM + 0.02, 1)
+	rpmLabel.Text = string.format("%d rpm", math.floor(tel.rpm / 50 + 0.5) * 50)
+	assistLabel.Text = assistText("ABS", sim.absOn, tel.absActive) .. "   " .. assistText("TCS", sim.tcsOn, tel.tcsActive)
+end
+
+-------------------------------------------------------------------------------
+-- Input
+-------------------------------------------------------------------------------
+
+local function keyDown(...)
+	for _, k in ipairs({ ... }) do
+		if UserInputService:IsKeyDown(k) then
+			return true
+		end
+	end
+	return false
+end
+
+local function readInput(seat)
+	local K = Enum.KeyCode
+	local throttle, brake, steer, analog = 0, 0, 0, false
+	if not UserInputService:GetFocusedTextBox() then
+		throttle = keyDown(K.W, K.Up) and 1 or 0
+		brake = keyDown(K.S, K.Down) and 1 or 0
+		steer = (keyDown(K.D, K.Right) and 1 or 0) - (keyDown(K.A, K.Left) and 1 or 0)
+	end
+	if UserInputService:GetGamepadConnected(Enum.UserInputType.Gamepad1) then
+		for _, st in ipairs(UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1)) do
+			if st.KeyCode == K.ButtonR2 and st.Position.Z > 0.05 then
+				throttle = math.max(throttle, st.Position.Z)
+			elseif st.KeyCode == K.ButtonL2 and st.Position.Z > 0.05 then
+				brake = math.max(brake, st.Position.Z)
+			elseif st.KeyCode == K.Thumbstick1 and math.abs(st.Position.X) > 0.12 then
+				local x = (math.abs(st.Position.X) - 0.12) / 0.88
+				steer = math.sign(st.Position.X) * x ^ 1.4
+				analog = true
+			end
+		end
+	end
+	-- Touch thumbstick (and anything else that drives the VehicleSeat).
+	if throttle == 0 and brake == 0 then
+		local tf = seat.ThrottleFloat
+		throttle, brake = math.max(tf, 0), math.max(-tf, 0)
+	end
+	if steer == 0 then
+		steer = seat.SteerFloat
+	end
+	return throttle, brake, steer, analog
+end
+
+local function flipCar()
+	if not driving or os.clock() - lastReset < 2 then
+		return
+	end
+	lastReset = os.clock()
+	local chassis = driving.model:FindFirstChild("Chassis")
+	local cf = chassis.CFrame
+	local flat = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
+	if flat.Magnitude < 0.1 then
+		flat = Vector3.new(0, 0, -1)
+	end
+	local pos = cf.Position + Vector3.new(0, 6, 0)
+	driving.model:PivotTo(CFrame.lookAt(pos, pos + flat.Unit))
+	chassis.AssemblyLinearVelocity = Vector3.zero
+	chassis.AssemblyAngularVelocity = Vector3.zero
+	for _, w in ipairs(driving.sim.wheels) do
+		w.omega = 0
+	end
+end
+
+local function getOut()
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Sit = false
+		hum.Jump = true
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or not driving then
+		return
+	end
+	local K = Enum.KeyCode
+	local key = input.KeyCode
+	local sim = driving.sim
+	if key == K.E or key == K.ButtonR1 then
+		sim.auto = false
+		sim:shiftUp()
+	elseif key == K.Q or key == K.ButtonL1 then
+		sim.auto = false
+		sim:shiftDown()
+	elseif key == K.M then
+		sim.auto = not sim.auto
+		if sim.auto and sim.gear == 0 then
+			sim:shift(1)
+		end
+	elseif key == K.T then
+		sim.tcsOn = not sim.tcsOn
+	elseif key == K.B then
+		sim.absOn = not sim.absOn
+	elseif key == K.L or key == K.DPadUp then
+		commandRemote:FireServer(driving.model, "Headlights")
+	elseif key == K.G or key == K.DPadDown then
+		commandRemote:FireServer(driving.model, "Siren")
+	elseif key == K.R or key == K.ButtonY then
+		flipCar()
+	elseif key == K.U then
+		useMph = not useMph
+	elseif key == K.H then
+		help.Visible = not help.Visible
+	elseif key == K.F then
+		getOut()
+	end
+end)
+
+local function handbrakeAction(_, state)
+	handbrakeHeld = state == Enum.UserInputState.Begin
+	return Enum.ContextActionResult.Sink
+end
+
+-------------------------------------------------------------------------------
+-- Driving
+-------------------------------------------------------------------------------
+
+local function stopDriving()
+	if not driving then
+		return
+	end
+	driving = nil
+	handbrakeHeld = false
+	gui.Enabled = false
+	ContextActionService:UnbindAction("CarHandbrake")
+	ContextActionService:UnbindAction("CarFlip")
+	pcall(function()
+		ProximityPromptService.Enabled = true
+	end)
+end
+
+local function startDriving(seat)
+	local model = seat.Parent
+	local cfg = Configs.Cars[model:GetAttribute("CarType")]
+	if not cfg then
+		return
+	end
+	stopDriving()
+	local sim = Sim.fromModel(model, cfg)
+	-- Moving car: start the wheels rolling so they do not lock up.
+	local chassis = model:FindFirstChild("Chassis")
+	local vF = chassis.AssemblyLinearVelocity:Dot(chassis.CFrame.LookVector) * MPS
+	for _, w in ipairs(sim.wheels) do
+		w.omega = vF / w.radius
+	end
+	driving = { model = model, seat = seat, sim = sim, cfg = cfg, lastSend = 0, sent = {} }
+	gui.Enabled = true
+	ContextActionService:BindActionAtPriority("CarHandbrake", handbrakeAction, true, Enum.ContextActionPriority.High.Value + 50, Enum.KeyCode.Space, Enum.KeyCode.ButtonX)
+	ContextActionService:SetTitle("CarHandbrake", "Brake")
+	if touchOnly then
+		ContextActionService:BindAction("CarFlip", function(_, state)
+			if state == Enum.UserInputState.Begin then
+				flipCar()
+			end
+			return Enum.ContextActionResult.Sink
+		end, true)
+		ContextActionService:SetTitle("CarFlip", "Flip")
+	end
+	pcall(function()
+		ProximityPromptService.Enabled = false
+	end)
+end
+
+local function hookCharacter(char)
+	local hum = char:WaitForChild("Humanoid")
+	hum.Seated:Connect(function(active, seatPart)
+		if active and seatPart and seatPart:IsA("VehicleSeat") and seatPart.Parent and seatPart.Parent:GetAttribute("CarType") then
+			startDriving(seatPart)
+		else
+			stopDriving()
+		end
+	end)
+	hum.Died:Connect(stopDriving)
+end
+if player.Character then
+	task.spawn(hookCharacter, player.Character)
+end
+player.CharacterAdded:Connect(hookCharacter)
+
+-------------------------------------------------------------------------------
+-- Visuals for every car
+-------------------------------------------------------------------------------
+
+local visual = {} -- [model] = cache
+
+local function getCache(model)
+	local cache = visual[model]
+	if cache then
+		return cache
+	end
+	local cfg = Configs.Cars[model:GetAttribute("CarType")]
+	local chassis = model:FindFirstChild("Chassis")
+	if not cfg or not chassis then
+		return nil
+	end
+	cache = {
+		cfg = cfg,
+		chassis = chassis,
+		motors = Sim.getMotors(model),
+		mounts = Sim.getMounts(model),
+		params = Sim.makeRaycastParams(model),
+		paramsAge = os.clock(),
+		len = {},
+		spin = {},
+		sound = chassis:FindFirstChild("Engine"),
+	}
+	for _, name in ipairs({ "FL", "FR", "RL", "RR" }) do
+		cache.len[name] = cfg.suspension.restLength
+		cache.spin[name] = 0
+	end
+	visual[model] = cache
+	return cache
+end
+CollectionService:GetInstanceRemovedSignal("RealisticCar"):Connect(function(model)
+	visual[model] = nil
+end)
+
+local function setEngineSound(cache, rpm, throttle)
+	local sound = cache.sound
+	if sound then
+		local e = cache.cfg.engine
+		sound.PlaybackSpeed = 0.55 + (rpm / e.redline) * 1.25
+		sound.Volume = 0.25 + 0.35 * throttle
+	end
+end
+
+local function animateOtherCar(model, cache, dt)
+	local cfg, chassis = cache.cfg, cache.chassis
+	local cf = chassis.CFrame
+	local up = cf.UpVector
+	local vF = chassis.AssemblyLinearVelocity:Dot(cf.LookVector) * MPS
+	local steerAngle = model:GetAttribute("Steer") or 0
+	local s = cfg.suspension
+	if os.clock() - cache.paramsAge > 3 then
+		cache.params = Sim.makeRaycastParams(model)
+		cache.paramsAge = os.clock()
+	end
+	for name, motor in pairs(cache.motors) do
+		local origin = cf:PointToWorldSpace(cache.mounts[name])
+		local hit = workspace:Raycast(origin, -up * ((s.restLength + cfg.wheelRadius) / MPS), cache.params)
+		local target = s.restLength
+		if hit then
+			target = math.max((hit.Position - origin).Magnitude * MPS - cfg.wheelRadius, s.restLength - s.travel)
+		end
+		cache.len[name] += (target - cache.len[name]) * math.min(1, dt * 25)
+		cache.spin[name] = (cache.spin[name] + vF / cfg.wheelRadius * dt) % TAU
+		local steer = name:sub(1, 1) == "F" and steerAngle or 0
+		motor.Transform = CFrame.new(0, -cache.len[name] / MPS, 0) * CFrame.Angles(0, steer, 0) * CFrame.Angles(-cache.spin[name], 0, 0)
+	end
+	setEngineSound(cache, model:GetAttribute("RPM") or cfg.engine.idleRPM, model:GetAttribute("Throttle") or 0)
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	local d = driving
+	if d then
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not d.model.Parent or not hum or hum.SeatPart ~= d.seat then
+			stopDriving()
+		else
+			local sim = d.sim
+			local throttle, brake, steer, analog = readInput(d.seat)
+			local inp = sim.input
+			inp.throttle, inp.brake, inp.steer, inp.analog = throttle, brake, steer, analog
+			inp.handbrake = handbrakeHeld and 1 or 0
+			local tel = sim:step(dt)
+			sim:updateVisuals(sim.motors)
+			updateHud(sim, tel)
+			local cache = getCache(d.model)
+			if cache then
+				setEngineSound(cache, tel.rpm, tel.throttle)
+			end
+
+			d.lastSend += dt
+			if d.lastSend >= 0.08 then
+				d.lastSend = 0
+				local wheelSteer = (sim.wheels.FL.steer + sim.wheels.FR.steer) / 2
+				local brakeOn = tel.brake > 0.05
+				local s = d.sent
+				if math.abs((s.steer or 99) - wheelSteer) > 0.01 or math.abs((s.rpm or -1e9) - tel.rpm) > 40
+					or s.gear ~= tel.gear or s.brake ~= brakeOn or math.abs((s.throttle or -1) - tel.throttle) > 0.08 then
+					s.steer, s.rpm, s.gear, s.brake, s.throttle = wheelSteer, tel.rpm, tel.gear, brakeOn, tel.throttle
+					stateRemote:FireServer(d.model, wheelSteer, tel.rpm, tel.gear, brakeOn, tel.throttle)
+				end
+			end
+		end
+	end
+
+	local camPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or Vector3.zero
+	for _, model in ipairs(CollectionService:GetTagged("RealisticCar")) do
+		if not (driving and driving.model == model) and model.Parent then
+			local cache = getCache(model)
+			if cache and (cache.chassis.Position - camPos).Magnitude < VISUAL_RANGE then
+				animateOtherCar(model, cache, dt)
+			end
+		end
+	end
+end)
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="RBX3">
+      <Properties>
+        <string name="Name">CarServer</string>
+        <token name="RunContext">1</token>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Realistic Cars - server
+
+	* Spawns one of every car in a showroom row near the SpawnLocation.
+	* Gives the driver network ownership so their client runs the physics.
+	* Holds parked cars on their suspension with the brakes on.
+	* Runs lights, sirens and respawns.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+
+local root = script.Parent
+local Configs = require(root.Configs)
+local Builder = require(root.Builder)
+local Sim = require(root.Sim)
+
+-- The showroom is skipped when a game's own vehicle system spawns the cars
+-- (e.g. Dortmund RP's ServerScriptService/VehicleSystem).
+local SPAWN_SHOWROOM = not game:GetService("ServerScriptService"):FindFirstChild("VehicleSystem")
+local SPACING = 16 -- studs between showroom cars
+local ROW_DISTANCE = 45 -- studs in front of the SpawnLocation
+local RETURN_ABANDONED_AFTER = 180 -- seconds before an empty car away from home respawns
+
+local stateRemote = Instance.new("RemoteEvent")
+stateRemote.Name = "CarState"
+stateRemote.Parent = root
+local commandRemote = Instance.new("RemoteEvent")
+commandRemote.Name = "CarCommand"
+commandRemote.Parent = root
+
+local carFolder = Instance.new("Folder")
+carFolder.Name = "RealisticCars"
+carFolder.Parent = workspace
+
+local cars = {} -- [model] = record
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function updateLights(rec)
+	local model = rec.model
+	local lights = model:FindFirstChild("Lights")
+	if not lights then
+		return
+	end
+	local brake = model:GetAttribute("Brake")
+	local head = model:GetAttribute("Headlights")
+	local reverse = model:GetAttribute("Gear") == -1
+	for _, p in ipairs(lights:GetChildren()) do
+		if p.Name == "Headlight" then
+			p.Color = head and rgb(255, 252, 238) or rgb(205, 205, 200)
+			local beam = p:FindFirstChildOfClass("SpotLight")
+			if beam then
+				beam.Enabled = head
+			end
+		elseif p.Name == "Taillight" then
+			p.Color = brake and rgb(255, 30, 30) or head and rgb(170, 12, 12) or rgb(110, 10, 10)
+		elseif p.Name == "ReverseLight" then
+			p.Color = reverse and rgb(255, 255, 250) or rgb(110, 110, 110)
+			p.Material = reverse and Enum.Material.Neon or Enum.Material.Glass
+		end
+	end
+end
+
+local function park(rec)
+	local model = rec.model
+	rec.driver = nil
+	pcall(function()
+		model.Chassis:SetNetworkOwner(nil)
+	end)
+	rec.sim = Sim.fromModel(model, rec.cfg)
+	rec.sim:setParked(true)
+	model:SetAttribute("Throttle", 0)
+	model:SetAttribute("Brake", false)
+	model:SetAttribute("Gear", 0)
+	model:SetAttribute("Steer", 0)
+	model:SetAttribute("RPM", rec.cfg.engine.idleRPM)
+end
+
+-- Takes over any car model in the workspace: parked physics, driver hand-off,
+-- seats, lights.
+local function setupCar(model, cfg, key, home)
+	if cars[model] then
+		return cars[model]
+	end
+	local rec = { model = model, cfg = cfg, key = key, home = home, abandonedSince = nil }
+	cars[model] = rec
+	park(rec)
+
+	local engine = model.Chassis:FindFirstChild("Engine")
+	if engine then
+		engine.Playing = true
+	end
+
+	local driverSeat = model:FindFirstChild("DriverSeat")
+	driverSeat:GetPropertyChangedSignal("Occupant"):Connect(function()
+		local hum = driverSeat.Occupant
+		local plr = hum and Players:GetPlayerFromCharacter(hum.Parent)
+		if plr then
+			rec.driver = plr
+			rec.sim = nil
+			pcall(function()
+				model.Chassis:SetNetworkOwner(plr)
+			end)
+		else
+			park(rec)
+		end
+	end)
+
+	for _, seat in ipairs(model:GetChildren()) do
+		if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+			local prompt = seat:FindFirstChild("EnterPrompt")
+			if prompt then
+				prompt.Triggered:Connect(function(plr)
+					local char = plr.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health > 0 and not hum.SeatPart and not seat.Occupant then
+						seat:Sit(hum)
+					end
+				end)
+				seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+					prompt.Enabled = seat.Occupant == nil
+				end)
+			end
+		end
+	end
+
+	for _, attr in ipairs({ "Brake", "Headlights", "Gear" }) do
+		model:GetAttributeChangedSignal(attr):Connect(function()
+			updateLights(rec)
+		end)
+	end
+	model.Destroying:Connect(function()
+		cars[model] = nil
+	end)
+	updateLights(rec)
+	return rec
+end
+
+local function spawnCar(key, cframe)
+	local cfg = Configs.Cars[key]
+	assert(cfg, "Unknown car type: " .. tostring(key))
+	local model = Builder.build(cfg, cframe)
+	model.Parent = carFolder
+	return setupCar(model, cfg, key, cframe)
+end
+
+-- Cars spawned by other scripts (cloned from ServerStorage etc.)
+local function register(model)
+	if cars[model] or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+		return
+	end
+	local key = model:GetAttribute("CarType")
+	local cfg = Configs.Cars[key]
+	if cfg and model:FindFirstChild("Chassis") and model:FindFirstChild("DriverSeat") then
+		setupCar(model, cfg, key, model:GetPivot())
+	end
+end
+CollectionService:GetInstanceAddedSignal("RealisticCar"):Connect(register)
+for _, model in ipairs(CollectionService:GetTagged("RealisticCar")) do
+	task.spawn(register, model)
+end
+
+-- Client -> server: the driver reports steering, rpm and pedals for everyone else's visuals.
+stateRemote.OnServerEvent:Connect(function(plr, model, steer, rpm, gear, brake, throttle)
+	local rec = typeof(model) == "Instance" and cars[model]
+	if not rec or rec.driver ~= plr then
+		return
+	end
+	if type(steer) ~= "number" or type(rpm) ~= "number" or type(gear) ~= "number" or type(throttle) ~= "number" then
+		return
+	end
+	if steer ~= steer or rpm ~= rpm or throttle ~= throttle then
+		return -- NaN
+	end
+	model:SetAttribute("Steer", math.clamp(math.round(steer * 100) / 100, -1, 1))
+	model:SetAttribute("RPM", math.clamp(math.round(rpm / 25) * 25, 0, 20000))
+	model:SetAttribute("Gear", math.clamp(math.round(gear), -1, 10))
+	model:SetAttribute("Brake", brake == true)
+	model:SetAttribute("Throttle", math.clamp(math.round(throttle * 10) / 10, 0, 1))
+end)
+
+commandRemote.OnServerEvent:Connect(function(plr, model, command)
+	local rec = typeof(model) == "Instance" and cars[model]
+	if not rec or rec.driver ~= plr then
+		return
+	end
+	if command == "Headlights" then
+		model:SetAttribute("Headlights", not model:GetAttribute("Headlights"))
+	elseif command == "Siren" and (rec.cfg.police or (model:GetAttribute("LightType") or "none") ~= "none") then
+		model:SetAttribute("Siren", not model:GetAttribute("Siren"))
+	end
+end)
+
+-- Parked cars: the server holds them on their springs.
+RunService.Heartbeat:Connect(function(dt)
+	for _, rec in pairs(cars) do
+		if rec.sim and rec.model.Parent then
+			rec.sim:step(dt)
+		end
+	end
+end)
+
+-- Police lights
+task.spawn(function()
+	local flash = false
+	while true do
+		task.wait(0.13)
+		flash = not flash
+		for _, rec in pairs(cars) do
+			local lightType = rec.model:GetAttribute("LightType")
+			if lightType and lightType ~= "none" then
+				-- Livery-driven lights (tagged EmergencyLight), alternating left/right.
+				local on = rec.model:GetAttribute("Siren")
+				local hiddenWhenOff = lightType == "hidden_blue"
+				if not rec.emergency then
+					rec.emergency = {}
+					for _, part in ipairs(rec.model:GetDescendants()) do
+						if part:IsA("BasePart") and CollectionService:HasTag(part, "EmergencyLight") then
+							table.insert(rec.emergency, part)
+						end
+					end
+				end
+				local update = on or rec.sirenWasOn
+				rec.sirenWasOn = on
+				for _, part in ipairs(update and rec.emergency or {}) do
+					if part.Parent then
+						local left = rec.model.PrimaryPart.CFrame:PointToObjectSpace(part.Position).X < 0
+						local lit = on and (left == flash)
+						local base = part:GetAttribute("BaseTransparency") or 0
+						part.Transparency = lit and 0 or (on and 0.7 or (hiddenWhenOff and 1 or base))
+						part.Material = Enum.Material.Neon
+						for _, light in ipairs(part:GetChildren()) do
+							if light:IsA("Light") then
+								light.Enabled = lit
+							end
+						end
+					end
+				end
+			elseif rec.cfg.police then
+				local on = rec.model:GetAttribute("Siren")
+				local lights = rec.model:FindFirstChild("Lights")
+				local red = lights and lights:FindFirstChild("SirenRed")
+				local blue = lights and lights:FindFirstChild("SirenBlue")
+				if red and blue then
+					local redOn, blueOn = on and flash, on and not flash
+					red.Color = redOn and rgb(255, 40, 40) or rgb(90, 0, 0)
+					blue.Color = blueOn and rgb(50, 90, 255) or rgb(0, 0, 90)
+					red.PointLight.Enabled = redOn
+					blue.PointLight.Enabled = blueOn
+				end
+			end
+		end
+	end
+end)
+
+-------------------------------------------------------------------------------
+-- Showroom
+-------------------------------------------------------------------------------
+
+local function groundAt(pos)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { carFolder }
+	return workspace:Raycast(pos + Vector3.new(0, 300, 0), Vector3.new(0, -1200, 0), params)
+end
+
+local slots = {}
+
+local function spawnShowroom()
+	local spawn = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+	local origin = spawn and spawn.Position or Vector3.new(0, 0, 0)
+	if not groundAt(origin) then
+		local ground = Instance.new("Part")
+		ground.Name = "CarTestGround"
+		ground.Anchored = true
+		ground.Size = Vector3.new(2048, 4, 2048)
+		ground.Position = Vector3.new(origin.X, origin.Y - 2, origin.Z)
+		ground.Material = Enum.Material.Asphalt
+		ground.Color = Color3.fromRGB(70, 72, 76)
+		ground.Parent = workspace
+	end
+	local n = #Configs.Order
+	for i, key in ipairs(Configs.Order) do
+		local p = origin + Vector3.new((i - (n + 1) / 2) * SPACING, 0, -ROW_DISTANCE)
+		local hit = groundAt(p)
+		local y = hit and hit.Position.Y or origin.Y
+		local cf = CFrame.new(p.X, y + 0.2, p.Z) -- facing -Z, away from the spawn
+		slots[i] = { key = key, cframe = cf, rec = spawnCar(key, cf) }
+	end
+end
+
+-- Respawn destroyed cars, and return abandoned ones.
+task.spawn(function()
+	while true do
+		task.wait(3)
+		for _, slot in ipairs(slots) do
+			local rec = slot.rec
+			local model = rec.model
+			local occupied = false
+			if model.Parent then
+				for _, s in ipairs(model:GetChildren()) do
+					if (s:IsA("Seat") or s:IsA("VehicleSeat")) and s.Occupant then
+						occupied = true
+					end
+				end
+			end
+			local away = model.Parent and model.PrimaryPart
+				and (model.PrimaryPart.Position - slot.cframe.Position).Magnitude > 40
+			if not model.Parent then
+				slot.rec = spawnCar(slot.key, slot.cframe)
+			elseif away and not occupied then
+				rec.abandonedSince = rec.abandonedSince or os.clock()
+				if os.clock() - rec.abandonedSince > RETURN_ABANDONED_AFTER then
+					model:Destroy()
+					slot.rec = spawnCar(slot.key, slot.cframe)
+				end
+			else
+				rec.abandonedSince = nil
+			end
+		end
+	end
+end)
+
+_G.RealisticCars = {
+	Spawn = spawnCar, -- _G.RealisticCars.Spawn("Supercar", CFrame.new(0, 0, 0))
+	Configs = Configs,
+}
+
+if SPAWN_SHOWROOM then
+	spawnShowroom()
+end
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX4">
+      <Properties>
+        <string name="Name">Configs</string>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Realistic Cars - vehicle specifications
+
+	Every number here is in real-world SI units (meters, kilograms, newton-meters,
+	seconds). The simulation converts to studs using METERS_PER_STUD, so cars keep
+	their real proportions and performance whatever the place's Gravity is.
+
+	To add a car: copy an entry, give it a new key, and change the numbers.
+	Body measurements are taken from the FRONT BUMPER backwards (in meters).
+]]
+
+local Configs = {}
+
+-- 1 stud = 0.25 m. Roblox characters are about 5 studs tall, so this keeps
+-- people and cars in believable proportion.
+Configs.METERS_PER_STUD = 0.25
+
+-- Optional looping engine sound (an asset you own or one from the Creator
+-- Store, e.g. "rbxassetid://1234567890"). Leave empty for no sound.
+Configs.ENGINE_SOUND_ID = ""
+
+-- Order the showroom spawns cars in.
+Configs.Order = { "Sedan", "Hatchback", "Sports", "Supercar", "Muscle", "SUV", "Pickup", "Police", "Van", "Truck" }
+
+-- Shared defaults. Each car only lists what differs.
+local DEFAULT = {
+	tires = {
+		grip = 1.0, -- peak friction coefficient on dry tarmac
+		longB = 17, longC = 1.5, longE = 0, -- Pacejka "magic formula", longitudinal
+		latB = 16, latC = 1.35, latE = 0, -- Pacejka, lateral
+		loadSensitivity = 0.08, -- grip per unit load falls as load rises
+		rollingResistance = 0.014,
+		wheelInertia = 1.1, -- kg*m^2 per wheel (tire + rim + brake disc)
+	},
+	suspension = {
+		restLength = 0.30, -- spring length at full extension (m)
+		travel = 0.22, -- compression before the bump stop (m)
+		frequencyFront = 1.45, -- ride frequency (Hz): 1.2 soft .. 2.5 race car
+		frequencyRear = 1.6,
+		dampingRatio = 0.38, -- 0.25 floaty .. 0.6 stiff
+		antiRollFront = 16000, -- N per meter of left/right compression difference
+		antiRollRear = 9000,
+		rollCenterHeight = 0.22, -- tire forces act this high above the road (m)
+	},
+	brakes = {
+		maxTorque = 3400, -- total brake torque at full pedal (N*m)
+		frontBias = 0.67,
+		handbrakeTorque = 1600, -- rear wheels only
+	},
+	steering = {
+		maxAngle = 36, -- degrees at full lock, standing still
+		speedFactor = 0.055, -- lock is divided by (1 + speedFactor * m/s)
+	},
+	aero = { cd = 0.30, area = 2.2, downforce = 0 },
+	assists = { abs = true, tcs = true },
+	engine = {
+		inertia = 0.22, -- flywheel + crank (kg*m^2)
+		engineBrake = 55, -- N*m of drag at max rpm, throttle closed
+		launchRPM = 2400, -- clutch slips until this rpm at full throttle
+		creepTorque = 30, -- automatic gearbox idle creep (N*m)
+	},
+	transmission = {
+		shiftTime = 0.28,
+		efficiency = 0.86,
+		lsd = 0, -- limited slip lock (N*m per rad/s of wheel speed difference)
+		awdFrontSplit = 0.4,
+	},
+	colors = {
+		trim = Color3.fromRGB(28, 28, 30),
+		glass = Color3.fromRGB(22, 28, 34),
+		rim = Color3.fromRGB(190, 192, 198),
+	},
+}
+
+local Cars = {}
+
+Cars.Sedan = {
+	displayName = "Sedan",
+	mass = 1450, weightFront = 0.59, comHeight = 0.52,
+	color = Color3.fromRGB(46, 74, 122),
+	body = {
+		length = 4.80, width = 1.83, height = 1.45, clearance = 0.15, belt = 0.95, frontOverhang = 0.95,
+		windshieldBase = 1.75, roofFront = 2.45, roofRear = 3.45, rearBase = 4.00, cabinInset = 0.09,
+	},
+	wheelbase = 2.75, wheelRadius = 0.32, wheelWidth = 0.22,
+	engine = {
+		idleRPM = 750, redline = 6500, maxRPM = 6800,
+		torque = { { 1000, 175 }, { 2500, 228 }, { 4000, 245 }, { 5000, 240 }, { 6000, 214 }, { 6800, 188 } },
+	},
+	transmission = { drivetrain = "FWD", gears = { 3.60, 2.10, 1.45, 1.10, 0.87, 0.70 }, reverse = 3.4, finalDrive = 3.6 },
+	aero = { cd = 0.29, area = 2.2 },
+	seats = 5, doors = 4,
+}
+
+Cars.Hatchback = {
+	displayName = "Hot Hatch",
+	mass = 1250, weightFront = 0.62, comHeight = 0.52,
+	color = Color3.fromRGB(196, 32, 38),
+	body = {
+		length = 4.20, width = 1.79, height = 1.46, clearance = 0.14, belt = 0.95, frontOverhang = 0.88,
+		windshieldBase = 1.45, roofFront = 2.15, roofRear = 3.70, rearBase = 4.05, cabinInset = 0.09,
+	},
+	wheelbase = 2.62, wheelRadius = 0.32, wheelWidth = 0.23,
+	engine = {
+		idleRPM = 800, redline = 6800, maxRPM = 7000,
+		torque = { { 1000, 150 }, { 1800, 300 }, { 4500, 310 }, { 5500, 290 }, { 6500, 245 }, { 7000, 220 } },
+	},
+	transmission = { drivetrain = "FWD", gears = { 3.50, 2.05, 1.40, 1.08, 0.87, 0.72 }, reverse = 3.3, finalDrive = 3.95, lsd = 40, shiftTime = 0.2 },
+	suspension = { frequencyFront = 1.8, frequencyRear = 2.0, antiRollRear = 14000 },
+	tires = { grip = 1.05 },
+	brakes = { maxTorque = 3600 },
+	aero = { cd = 0.32, area = 2.15 },
+	seats = 4, doors = 4,
+}
+
+Cars.Sports = {
+	displayName = "Sports Coupe",
+	mass = 1400, weightFront = 0.52, comHeight = 0.46,
+	color = Color3.fromRGB(240, 196, 25),
+	body = {
+		length = 4.45, width = 1.86, height = 1.28, clearance = 0.12, belt = 0.82, frontOverhang = 0.92,
+		windshieldBase = 1.80, roofFront = 2.50, roofRear = 3.15, rearBase = 4.00, cabinInset = 0.12,
+	},
+	wheelbase = 2.57, wheelRadius = 0.33, wheelWidth = 0.27,
+	engine = {
+		idleRPM = 850, redline = 7600, maxRPM = 7900,
+		torque = { { 1000, 230 }, { 3000, 340 }, { 4500, 380 }, { 6000, 368 }, { 7500, 325 }, { 7900, 300 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 3.25, 2.20, 1.62, 1.26, 1.00, 0.82 }, reverse = 3.2, finalDrive = 3.73, lsd = 90, shiftTime = 0.16 },
+	suspension = { frequencyFront = 2.0, frequencyRear = 2.2, dampingRatio = 0.45, antiRollFront = 22000, antiRollRear = 14000, restLength = 0.26, travel = 0.17 },
+	tires = { grip = 1.12 },
+	brakes = { maxTorque = 4400, frontBias = 0.64 },
+	aero = { cd = 0.32, area = 2.0, downforce = 0.15 },
+	steering = { maxAngle = 34 },
+	seats = 2,
+}
+
+Cars.Supercar = {
+	displayName = "Supercar",
+	mass = 1520, weightFront = 0.42, comHeight = 0.42,
+	color = Color3.fromRGB(110, 190, 60),
+	body = {
+		length = 4.60, width = 1.98, height = 1.14, clearance = 0.10, belt = 0.80, frontOverhang = 1.00,
+		windshieldBase = 1.45, roofFront = 2.30, roofRear = 2.95, rearBase = 3.95, cabinInset = 0.16,
+	},
+	wheelbase = 2.65, wheelRadius = 0.35, wheelWidth = 0.31,
+	engine = {
+		idleRPM = 950, redline = 8500, maxRPM = 8700, inertia = 0.16,
+		torque = { { 1000, 310 }, { 3000, 460 }, { 5000, 545 }, { 6500, 565 }, { 8000, 525 }, { 8700, 480 } },
+		launchRPM = 3800,
+	},
+	transmission = { drivetrain = "AWD", awdFrontSplit = 0.32, gears = { 3.13, 2.12, 1.62, 1.30, 1.08, 0.90, 0.75 }, reverse = 3.0, finalDrive = 3.5, lsd = 120, shiftTime = 0.09 },
+	suspension = { frequencyFront = 2.3, frequencyRear = 2.5, dampingRatio = 0.5, antiRollFront = 28000, antiRollRear = 20000, restLength = 0.24, travel = 0.14 },
+	tires = { grip = 1.22, wheelInertia = 1.3 },
+	brakes = { maxTorque = 6200, frontBias = 0.62, handbrakeTorque = 2000 },
+	aero = { cd = 0.36, area = 2.0, downforce = 0.55 },
+	steering = { maxAngle = 32, speedFactor = 0.06 },
+	seats = 2,
+}
+
+Cars.Muscle = {
+	displayName = "Muscle Car",
+	mass = 1780, weightFront = 0.55, comHeight = 0.53,
+	color = Color3.fromRGB(24, 24, 26),
+	body = {
+		length = 4.82, width = 1.92, height = 1.37, clearance = 0.14, belt = 0.93, frontOverhang = 1.00,
+		windshieldBase = 2.05, roofFront = 2.65, roofRear = 3.40, rearBase = 4.15, cabinInset = 0.12,
+	},
+	wheelbase = 2.85, wheelRadius = 0.345, wheelWidth = 0.28,
+	engine = {
+		idleRPM = 700, redline = 6200, maxRPM = 6500, inertia = 0.3,
+		torque = { { 1000, 390 }, { 2500, 525 }, { 4000, 565 }, { 5000, 535 }, { 6000, 480 }, { 6500, 440 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 2.97, 2.07, 1.43, 1.00, 0.84, 0.56 }, reverse = 3.3, finalDrive = 3.55, lsd = 70 },
+	suspension = { frequencyFront = 1.6, frequencyRear = 1.7 },
+	tires = { grip = 1.03 },
+	brakes = { maxTorque = 4600 },
+	aero = { cd = 0.35, area = 2.3 },
+	seats = 4,
+}
+
+Cars.SUV = {
+	displayName = "SUV",
+	mass = 2150, weightFront = 0.53, comHeight = 0.68,
+	color = Color3.fromRGB(170, 172, 168),
+	body = {
+		length = 4.85, width = 1.95, height = 1.78, clearance = 0.21, belt = 1.12, frontOverhang = 0.90,
+		windshieldBase = 1.55, roofFront = 2.20, roofRear = 4.55, rearBase = 4.78, cabinInset = 0.08,
+	},
+	wheelbase = 2.90, wheelRadius = 0.38, wheelWidth = 0.26,
+	engine = {
+		idleRPM = 700, redline = 6000, maxRPM = 6200,
+		torque = { { 1000, 290 }, { 2000, 400 }, { 4000, 420 }, { 5000, 400 }, { 6000, 350 } },
+	},
+	transmission = { drivetrain = "AWD", awdFrontSplit = 0.4, gears = { 4.05, 2.40, 1.55, 1.15, 0.86, 0.69 }, reverse = 3.6, finalDrive = 3.73, shiftTime = 0.32 },
+	suspension = { restLength = 0.36, travel = 0.26, frequencyFront = 1.3, frequencyRear = 1.45, antiRollFront = 26000, antiRollRear = 14000 },
+	tires = { grip = 0.96, wheelInertia = 1.6 },
+	brakes = { maxTorque = 5200 },
+	aero = { cd = 0.37, area = 2.9 },
+	seats = 5, doors = 4,
+}
+
+Cars.Pickup = {
+	displayName = "Pickup Truck",
+	mass = 2300, weightFront = 0.58, comHeight = 0.72,
+	color = Color3.fromRGB(122, 30, 28),
+	body = {
+		length = 5.60, width = 2.00, height = 1.90, clearance = 0.23, belt = 1.18, frontOverhang = 0.95,
+		windshieldBase = 1.75, roofFront = 2.35, roofRear = 3.30, rearBase = 3.38, cabinInset = 0.07,
+		bedStart = 3.45,
+	},
+	wheelbase = 3.60, wheelRadius = 0.39, wheelWidth = 0.27,
+	engine = {
+		idleRPM = 650, redline = 5600, maxRPM = 5800, inertia = 0.35,
+		torque = { { 1000, 430 }, { 2500, 565 }, { 3500, 600 }, { 4500, 560 }, { 5600, 470 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 4.17, 2.34, 1.52, 1.14, 0.86, 0.69 }, reverse = 3.4, finalDrive = 3.55, shiftTime = 0.34 },
+	suspension = { restLength = 0.38, travel = 0.28, frequencyFront = 1.35, frequencyRear = 1.7, antiRollFront = 24000, antiRollRear = 6000 },
+	tires = { grip = 0.94, wheelInertia = 1.8 },
+	brakes = { maxTorque = 5400, frontBias = 0.7 },
+	aero = { cd = 0.42, area = 3.1 },
+	seats = 2,
+}
+
+Cars.Police = {
+	displayName = "Police Interceptor",
+	mass = 1850, weightFront = 0.55, comHeight = 0.54,
+	color = Color3.fromRGB(20, 22, 26),
+	accentColor = Color3.fromRGB(235, 235, 235), -- doors
+	police = true,
+	body = {
+		length = 5.05, width = 1.89, height = 1.48, clearance = 0.15, belt = 0.97, frontOverhang = 0.96,
+		windshieldBase = 1.85, roofFront = 2.55, roofRear = 3.62, rearBase = 4.20, cabinInset = 0.09,
+	},
+	wheelbase = 2.95, wheelRadius = 0.335, wheelWidth = 0.245,
+	engine = {
+		idleRPM = 700, redline = 6000, maxRPM = 6300, inertia = 0.28,
+		torque = { { 1000, 340 }, { 3000, 480 }, { 4400, 520 }, { 5500, 475 }, { 6300, 430 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 3.00, 2.10, 1.50, 1.15, 0.92, 0.72 }, reverse = 3.2, finalDrive = 3.40, lsd = 60, shiftTime = 0.22 },
+	suspension = { frequencyFront = 1.7, frequencyRear = 1.85, dampingRatio = 0.42, antiRollFront = 22000, antiRollRear = 12000 },
+	tires = { grip = 1.04 },
+	brakes = { maxTorque = 5000 },
+	aero = { cd = 0.31, area = 2.3 },
+	seats = 4, doors = 4,
+}
+
+Cars.Van = {
+	displayName = "Van",
+	mass = 2450, weightFront = 0.55, comHeight = 0.82,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 5.90, width = 2.00, height = 2.55, clearance = 0.18, belt = 1.15, frontOverhang = 0.95,
+		windshieldBase = 0.55, roofFront = 1.25, roofRear = 5.85, rearBase = 5.90, cabinInset = 0.04,
+		sideWindowsTo = 2.0, seatHeight = 0.78,
+	},
+	wheelbase = 3.66, wheelRadius = 0.36, wheelWidth = 0.24,
+	engine = {
+		idleRPM = 750, redline = 4200, maxRPM = 4500, inertia = 0.35, launchRPM = 1800, engineBrake = 70,
+		torque = { { 1000, 250 }, { 1600, 400 }, { 2800, 400 }, { 3800, 330 }, { 4500, 260 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 4.38, 2.86, 1.92, 1.37, 1.00, 0.82 }, reverse = 3.9, finalDrive = 3.92, shiftTime = 0.35 },
+	suspension = { restLength = 0.34, travel = 0.24, frequencyFront = 1.4, frequencyRear = 1.6, antiRollFront = 26000, antiRollRear = 12000 },
+	tires = { grip = 0.95, wheelInertia = 1.6 },
+	brakes = { maxTorque = 5200 },
+	aero = { cd = 0.36, area = 4.6 },
+	steering = { maxAngle = 38 },
+	seats = 2,
+}
+
+Cars.Truck = {
+	displayName = "Truck",
+	mass = 11000, weightFront = 0.5, comHeight = 1.3,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 8.00, width = 2.50, height = 3.20, clearance = 0.30, belt = 1.50, frontOverhang = 1.30,
+		windshieldBase = 0.12, roofFront = 0.70, roofRear = 2.30, rearBase = 2.34, cabinInset = 0.04,
+		sideWindowsTo = 1.8, seatHeight = 1.25, noseLength = 0.12,
+		cargoBox = { from = 2.45, height = 3.45 },
+	},
+	wheelbase = 4.50, wheelRadius = 0.50, wheelWidth = 0.32,
+	engine = {
+		idleRPM = 600, redline = 2300, maxRPM = 2500, inertia = 2.5, launchRPM = 1200, engineBrake = 300, creepTorque = 150,
+		torque = { { 800, 500 }, { 1100, 900 }, { 1700, 900 }, { 2200, 750 }, { 2500, 600 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 9.5, 6.6, 4.6, 3.3, 2.4, 1.7, 1.25, 1.0 }, reverse = 9.0, finalDrive = 3.1, shiftTime = 0.5, efficiency = 0.9 },
+	suspension = {
+		restLength = 0.40, travel = 0.20, frequencyFront = 1.6, frequencyRear = 1.8, dampingRatio = 0.4,
+		antiRollFront = 300000, antiRollRear = 250000, rollCenterHeight = 0.5,
+	},
+	tires = { grip = 0.85, wheelInertia = 12 },
+	brakes = { maxTorque = 40000, handbrakeTorque = 15000 },
+	aero = { cd = 0.6, area = 8.0 },
+	steering = { maxAngle = 40, speedFactor = 0.08 },
+	seats = 2,
+}
+
+-- Fill each car's missing values from DEFAULT.
+local function merge(defaults, overrides)
+	local out = {}
+	for k, v in pairs(defaults) do
+		out[k] = v
+	end
+	for k, v in pairs(overrides or {}) do
+		if type(v) == "table" and type(defaults[k]) == "table" and #v == 0 then
+			out[k] = merge(defaults[k], v)
+		else
+			out[k] = v
+		end
+	end
+	return out
+end
+
+for key, car in pairs(Cars) do
+	local full = merge(DEFAULT, car)
+	full.key = key
+	-- Wheel centres sit just inside the body sides.
+	full.trackWidth = full.body.width - full.wheelWidth - 0.04
+	Cars[key] = full
+end
+
+Configs.Cars = Cars
+return Configs
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX5">
+      <Properties>
+        <string name="Name">Layout</string>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Car geometry shared by the builder and the simulation.
+
+	Car space: origin on the ground, midway between the axles, centered left to
+	right. -Z is forward (Roblox LookVector), +X is right, +Y is up.
+]]
+
+local Configs = require(script.Parent.Configs)
+local MPS = Configs.METERS_PER_STUD
+
+local Layout = {}
+
+function Layout.compute(cfg)
+	local b = cfg.body
+	local wb = cfg.wheelbase
+	local r = cfg.wheelRadius
+	local s = cfg.suspension
+	local G = 9.81
+
+	local L = {}
+	L.frontZ = -(wb / 2 + b.frontOverhang) -- front bumper (m)
+	L.rearZ = L.frontZ + b.length -- rear bumper (m)
+	-- distance from the front bumper -> car-space z
+	L.z = function(fromFront)
+		return L.frontZ + fromFront
+	end
+
+	-- Centre of mass: weight distribution sets how far it sits behind the front axle.
+	L.com = Vector3.new(0, cfg.comHeight, -wb / 2 + wb * (1 - cfg.weightFront))
+
+	local function sag(freq)
+		return G / (2 * math.pi * freq) ^ 2
+	end
+	local track = cfg.trackWidth
+	L.wheels = {}
+	for _, name in ipairs({ "FL", "FR", "RL", "RR" }) do
+		local front = name:sub(1, 1) == "F"
+		local x = (name:sub(2, 2) == "L" and -1 or 1) * track / 2
+		local z = front and -wb / 2 or wb / 2
+		local mountY = r + s.restLength - sag(front and s.frequencyFront or s.frequencyRear)
+		local mount = Vector3.new(x, mountY, z)
+		L.wheels[name] = {
+			mount = mount, -- car space, meters
+			mountLocal = (mount - L.com) / MPS, -- relative to the chassis root, studs
+			rest = Vector3.new(x, r, z), -- wheel centre at static ride height
+		}
+	end
+
+	-- The invisible root part carries all the mass. Its size sets the car's
+	-- moments of inertia, so it is car-sized rather than physically realistic.
+	L.ballastSize = Vector3.new(b.width * 1.2, 0.6, b.length * 0.9) / MPS
+	return L
+end
+
+return Layout
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX6">
+      <Properties>
+        <string name="Name">Sim</string>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Realistic Cars - vehicle simulation
+
+	Runs on whoever owns the car's physics: the driver's client while someone is
+	driving, the server while it is parked. Works in SI units internally and
+	converts to studs at the edges.
+
+	Per frame:
+	  1. Raycast suspension per wheel: spring + damper + anti-roll bars.
+	  2. Engine -> clutch -> gearbox -> differential -> wheel torque.
+	  3. Wheel spin integrated semi-implicitly (stable at 60 Hz).
+	  4. Pacejka tire forces with combined slip, applied at the contact patch.
+	  5. Aerodynamic drag and downforce.
+	  6. Gravity corrected to real 9.81 m/s^2 for the car.
+]]
+
+local Tire = require(script.Parent.Tire)
+local Configs = require(script.Parent.Configs)
+
+local MPS = Configs.METERS_PER_STUD
+local G = 9.81
+local AIR_DENSITY = 1.225
+local LOW_SPEED = 2.0 -- m/s, below this slip uses a fixed denominator
+local TAU = math.pi * 2
+local RADS_PER_RPM = TAU / 60
+
+local abs, max, min, clamp, sign, sqrt = math.abs, math.max, math.min, math.clamp, math.sign, math.sqrt
+
+local function moveTowards(a, b, step)
+	if a < b then
+		return min(a + step, b)
+	end
+	return max(a - step, b)
+end
+
+local function torqueAt(curve, rpm)
+	if rpm <= curve[1][1] then
+		return curve[1][2] * max(rpm, 0) / curve[1][1]
+	end
+	for i = 2, #curve do
+		local a, b = curve[i - 1], curve[i]
+		if rpm <= b[1] then
+			return a[2] + (b[2] - a[2]) * (rpm - a[1]) / (b[1] - a[1])
+		end
+	end
+	return curve[#curve][2]
+end
+
+local Sim = {}
+Sim.__index = Sim
+Sim.torqueAt = torqueAt
+
+--[[
+	body: adapter table with
+	  getCFrame() -> CFrame of the root part
+	  getVelocity() -> Vector3 studs/s
+	  velocityAt(worldPos) -> Vector3 studs/s
+	  getMass() -> assembly mass (Roblox units)
+	  getGravity() -> studs/s^2
+	  impulse(Vector3), impulseAt(Vector3, worldPos)
+	  raycast(origin, direction) -> {Position, Normal} or nil
+	mounts: { FL = Vector3, FR = ..., RL = ..., RR = ... } in root-local studs
+]]
+function Sim.new(body, cfg, mounts)
+	local self = setmetatable({}, Sim)
+	self.body = body
+	self.cfg = cfg
+	self.tire = Tire.prepare(table.clone(cfg.tires))
+
+	local tr = cfg.transmission
+	local driven = { FL = false, FR = false, RL = false, RR = false }
+	local share = { FL = 0, FR = 0, RL = 0, RR = 0 }
+	if tr.drivetrain == "FWD" then
+		driven.FL, driven.FR, share.FL, share.FR = true, true, 0.5, 0.5
+	elseif tr.drivetrain == "RWD" then
+		driven.RL, driven.RR, share.RL, share.RR = true, true, 0.5, 0.5
+	else
+		local f = tr.awdFrontSplit
+		driven.FL, driven.FR, driven.RL, driven.RR = true, true, true, true
+		share.FL, share.FR, share.RL, share.RR = f / 2, f / 2, (1 - f) / 2, (1 - f) / 2
+	end
+
+	local s = cfg.suspension
+	self.wheels = {}
+	for _, name in ipairs({ "FL", "FR", "RL", "RR" }) do
+		local front = name:sub(1, 1) == "F"
+		local cornerMass = cfg.mass * (front and cfg.weightFront or 1 - cfg.weightFront) / 2
+		local freq = front and s.frequencyFront or s.frequencyRear
+		local k = cornerMass * (TAU * freq) ^ 2
+		local w = {
+			name = name,
+			front = front,
+			left = name:sub(2, 2) == "L",
+			mount = mounts[name],
+			cornerMass = cornerMass,
+			Fz0 = cornerMass * G,
+			k = k,
+			c = 2 * s.dampingRatio * sqrt(k * cornerMass),
+			radius = cfg.wheelRadius,
+			inertia = cfg.tires.wheelInertia,
+			driven = driven[name],
+			driveShare = share[name],
+			brakeShare = front and cfg.brakes.frontBias / 2 or (1 - cfg.brakes.frontBias) / 2,
+			omega = 0,
+			spin = 0,
+			length = s.restLength - cornerMass * G / k,
+			comp = 0,
+			grounded = false,
+			steer = 0,
+			kappa = 0,
+			alpha = 0,
+			Fz = 0,
+			absCut = 0,
+		}
+		self.wheels[name] = w
+		table.insert(self.wheels, w)
+	end
+
+	self.gear = 1
+	self.rpm = cfg.engine.idleRPM
+	self.shiftTimer = 0
+	self.sinceShift = 0
+	self.auto = true
+	self.tcsOn = cfg.assists.tcs
+	self.absOn = cfg.assists.abs
+	self.tcsCut = 0
+	self.steer = 0
+	self.steerAngle = 0
+	self.coupled = false
+	self.parked = false
+	self.input = { throttle = 0, brake = 0, steer = 0, handbrake = 0, analog = false }
+	self.telemetry = { speed = 0, rpm = self.rpm, gear = 1, tcsActive = false, absActive = false }
+	return self
+end
+
+function Sim:ratio(gear)
+	local tr = self.cfg.transmission
+	if gear == -1 then
+		return -tr.reverse
+	elseif gear == 0 then
+		return 0
+	end
+	return tr.gears[gear]
+end
+
+function Sim:shift(gear)
+	gear = clamp(gear, -1, #self.cfg.transmission.gears)
+	if gear ~= self.gear then
+		self.gear = gear
+		self.shiftTimer = self.cfg.transmission.shiftTime
+		self.sinceShift = 0
+	end
+end
+
+function Sim:shiftUp()
+	self:shift(self.gear + 1)
+end
+
+function Sim:shiftDown()
+	self:shift(self.gear - 1)
+end
+
+-- Holds the car still with every brake on (used while nobody is driving).
+function Sim:setParked(parked)
+	self.parked = parked
+	if parked then
+		self.auto = false
+		self.gear = 0
+		self.input = { throttle = 0, brake = 1, steer = 0, handbrake = 1, analog = false }
+	end
+end
+
+function Sim:step(dt)
+	dt = clamp(dt, 1 / 240, 1 / 30)
+	local cfg, body, inp = self.cfg, self.body, self.input
+	local e, tr, s = cfg.engine, cfg.transmission, cfg.suspension
+
+	local cf = body.getCFrame()
+	local up = cf.UpVector
+	local look = cf.LookVector
+	local massR = body.getMass()
+	-- Newtons -> Roblox force units, so the car accelerates like `cfg.mass` kg.
+	local K = massR / (cfg.mass * MPS)
+	local vel = body.getVelocity() * MPS
+	local speed = vel.Magnitude
+	local vForward = vel:Dot(look)
+
+	-- 6. Real gravity for the car, whatever workspace.Gravity is.
+	body.impulse(Vector3.new(0, massR * (body.getGravity() - G / MPS) * dt, 0))
+
+	-- Pedals. In automatic, holding brake at a stop selects reverse.
+	local throttle, brake = inp.throttle, inp.brake
+	if self.auto then
+		if self.gear >= 1 and inp.brake > 0.1 and inp.throttle < 0.05 and vForward < 0.6 then
+			self:shift(-1)
+		elseif self.gear == -1 and inp.throttle > 0.1 and inp.brake < 0.05 and vForward > -0.6 then
+			self:shift(1)
+		elseif self.gear == 0 then
+			self:shift(1)
+		end
+		if self.gear == -1 then
+			throttle, brake = inp.brake, inp.throttle
+		end
+	end
+
+	-- Steering: speed-sensitive lock with Ackermann geometry.
+	if inp.analog then
+		self.steer = inp.steer
+	else
+		local returning = inp.steer == 0 or inp.steer * self.steer < 0
+		self.steer = moveTowards(self.steer, inp.steer, (returning and 5 or 2.6) * dt)
+	end
+	local maxAngle = math.rad(cfg.steering.maxAngle) / (1 + cfg.steering.speedFactor * max(vForward, 0))
+	local steerAngle = -self.steer * maxAngle -- positive = left
+	self.steerAngle = steerAngle
+	local track = cfg.trackWidth
+	if abs(steerAngle) > 1e-4 then
+		local R = cfg.wheelbase / math.tan(abs(steerAngle))
+		local inner = math.atan(cfg.wheelbase / (R - track / 2)) * sign(steerAngle)
+		local outer = math.atan(cfg.wheelbase / (R + track / 2)) * sign(steerAngle)
+		local leftInner = steerAngle > 0
+		self.wheels.FL.steer = leftInner and inner or outer
+		self.wheels.FR.steer = leftInner and outer or inner
+	else
+		self.wheels.FL.steer, self.wheels.FR.steer = 0, 0
+	end
+
+	-- 2. Drivetrain.
+	local ratio = self:ratio(self.gear)
+	local totalRatio = ratio * tr.finalDrive
+	local wheelOmega = 0
+	for _, w in ipairs(self.wheels) do
+		wheelOmega += w.omega * w.driveShare
+	end
+	local clutchRPM = wheelOmega * totalRatio / RADS_PER_RPM
+	self.shiftTimer = max(0, self.shiftTimer - dt)
+	self.sinceShift += dt
+
+	local thr = throttle * (1 - self.tcsCut)
+	local engineTorque = 0
+	self.coupled = false
+	if ratio == 0 or self.shiftTimer > 0 then
+		local target = e.idleRPM + thr * (e.redline - e.idleRPM)
+		self.rpm = moveTowards(self.rpm, target, (target > self.rpm and 9000 or 5000) * dt)
+	else
+		local slipTarget = e.idleRPM + thr * (e.launchRPM - e.idleRPM)
+		if clutchRPM < slipTarget then
+			-- Clutch / torque converter slipping: engine held near slipTarget.
+			self.rpm = moveTowards(self.rpm, slipTarget, 8000 * dt)
+			engineTorque = torqueAt(e.torque, self.rpm) * thr
+			if self.auto and thr < 0.05 and brake < 0.05 then
+				engineTorque = e.creepTorque
+			end
+		else
+			self.coupled = true
+			self.rpm = clutchRPM
+			if self.rpm >= e.maxRPM then
+				thr = 0 -- rev limiter
+			end
+			engineTorque = torqueAt(e.torque, self.rpm) * thr - e.engineBrake * (1 - thr) * (self.rpm / e.maxRPM)
+		end
+	end
+
+	-- Automatic gear changes.
+	if self.auto and self.gear >= 1 and self.shiftTimer == 0 and self.sinceShift > 0.6 then
+		local gears = tr.gears
+		if self.rpm > e.redline - 250 and self.gear < #gears and self.coupled then
+			self:shift(self.gear + 1)
+		elseif self.gear > 1 then
+			local lowerRPM = clutchRPM * gears[self.gear - 1] / gears[self.gear]
+			local downAt = e.idleRPM + (0.22 + 0.45 * throttle) * (e.redline - e.idleRPM)
+			if self.rpm < downAt and lowerRPM < e.redline - 900 then
+				self:shift(self.gear - 1)
+			end
+		end
+	end
+
+	local axleTorque = engineTorque * totalRatio * tr.efficiency
+	local reflectedInertia = self.coupled and e.inertia * totalRatio * totalRatio or 0
+
+	-- 1. Suspension.
+	local wheels = self.wheels
+	for _, w in ipairs(wheels) do
+		local origin = cf:PointToWorldSpace(w.mount)
+		w.origin = origin
+		local hit = body.raycast(origin, -up * ((s.restLength + w.radius) / MPS))
+		if hit then
+			local springLen = (hit.Position - origin).Magnitude * MPS - w.radius
+			local minLen = s.restLength - s.travel
+			w.bump = max(0, minLen - springLen)
+			w.length = max(springLen, minLen)
+			w.comp = s.restLength - w.length
+			w.grounded = true
+			w.hitPos = hit.Position
+			w.normal = hit.Normal
+		else
+			w.grounded = false
+			w.comp = 0
+			w.bump = 0
+			w.length = moveTowards(w.length, s.restLength, dt * 2)
+		end
+	end
+	local function antiRoll(l, r, stiffness)
+		local f = stiffness * (l.comp - r.comp)
+		l.arb = l.grounded and f or 0
+		r.arb = r.grounded and -f or 0
+	end
+	antiRoll(wheels.FL, wheels.FR, s.antiRollFront)
+	antiRoll(wheels.RL, wheels.RR, s.antiRollRear)
+
+	local maxSlip, absActive = 0, false
+	local tp = self.tire
+	local hb = inp.handbrake
+	local brakeTorque = cfg.brakes.maxTorque * brake
+
+	for _, w in ipairs(wheels) do
+		local r = w.radius
+		local I = w.inertia + reflectedInertia * w.driveShare
+		local Tdrive = axleTorque * w.driveShare
+		if w.driven and tr.lsd > 0 then
+			local other = wheels[(w.front and "F" or "R") .. (w.left and "R" or "L")]
+			Tdrive += tr.lsd * (other.omega - w.omega) * 0.5
+		end
+		local Tb = brakeTorque * w.brakeShare * (1 - w.absCut)
+		if not w.front then
+			Tb += cfg.brakes.handbrakeTorque * 0.5 * hb
+		end
+
+		if not w.grounded then
+			w.Fz = 0
+			w.omega += Tdrive / I * dt
+			w.omega *= 1 - min(1, 0.4 * dt)
+			local stop = Tb * dt / I
+			w.omega = abs(w.omega) <= stop and 0 or w.omega - sign(w.omega) * stop
+		else
+			-- Spring + damper + anti-roll + bump stop, pushing the body up.
+			local compVel = -(body.velocityAt(w.origin) * MPS):Dot(up)
+			local Fs = w.k * w.comp + w.c * compVel + w.arb + w.k * 8 * w.bump
+			Fs = clamp(Fs, 0, w.Fz0 * 8)
+			w.Fz = Fs
+			body.impulseAt(up * (Fs * K * dt), w.origin)
+
+			-- Tire frame on the road surface.
+			local n = w.normal
+			local a = w.steer
+			local fwd = cf:VectorToWorldSpace(Vector3.new(-math.sin(a), 0, -math.cos(a)))
+			fwd = fwd - n * fwd:Dot(n)
+			if fwd.Magnitude > 1e-3 then
+				fwd = fwd.Unit
+				local right = fwd:Cross(n)
+				local vC = body.velocityAt(w.hitPos) * MPS
+				local vx, vy = vC:Dot(fwd), vC:Dot(right)
+				local denom = max(abs(vx), LOW_SPEED)
+				local alpha = math.atan(vy / denom)
+
+				-- 3. Wheel spin, linearised implicit step against tire force.
+				local function fx(om)
+					local Fx = Tire.forces((om * r - vx) / denom, alpha, Fs, w.Fz0, tp)
+					return Fx
+				end
+				local F0 = fx(w.omega)
+				local dF = (fx(w.omega + 0.05) - F0) / 0.05
+				w.omega += (Tdrive - r * F0) / (I / dt + r * max(dF, 0))
+				local stop = Tb * dt / I
+				w.omega = abs(w.omega) <= stop and 0 or w.omega - sign(w.omega) * stop
+
+				-- 4. Tire forces with the new wheel speed.
+				local kappa = (w.omega * r - vx) / denom
+				local Fx, Fy = Tire.forces(kappa, alpha, Fs, w.Fz0, tp)
+				Fx -= sign(vx) * tp.rollingResistance * Fs * min(1, abs(vx) / 0.5)
+				-- Never push the contact patch past the wheel's own surface speed
+				-- (or sideways past zero) in a single frame.
+				local slipV = w.omega * r - vx
+				if Fx * slipV > 0 then
+					local lim = w.cornerMass * abs(slipV) / dt
+					Fx = clamp(Fx, -lim, lim)
+				elseif slipV == 0 then
+					Fx = 0
+				end
+				local limY = w.cornerMass * abs(vy) / dt
+				Fy = clamp(Fy, -limY, limY)
+
+				w.kappa, w.alpha, w.vx = kappa, alpha, vx
+				local point = w.hitPos + up * (s.rollCenterHeight / MPS)
+				body.impulseAt((fwd * Fx + right * Fy) * (K * dt), point)
+
+				-- ABS releases a wheel that starts to lock.
+				if self.absOn and brake > 0.05 and kappa < -0.12 and abs(vx) > 2 then
+					w.absCut = moveTowards(w.absCut, 0.75, dt * 25)
+					absActive = true
+				else
+					w.absCut = moveTowards(w.absCut, 0, dt * 12)
+				end
+				if w.driven and abs(vx) < 60 then
+					maxSlip = max(maxSlip, kappa * sign(totalRatio))
+				end
+			end
+		end
+		w.spin = (w.spin + w.omega * dt) % TAU
+	end
+
+	-- Traction control trims the throttle when the driven wheels spin up.
+	if self.tcsOn and maxSlip > 0.14 then
+		self.tcsCut = moveTowards(self.tcsCut, 0.85, dt * 6)
+	else
+		self.tcsCut = moveTowards(self.tcsCut, 0, dt * 2.5)
+	end
+
+	-- 5. Aerodynamics.
+	if speed > 0.5 then
+		local q = 0.5 * AIR_DENSITY * speed * speed
+		local ae = cfg.aero
+		local force = vel.Unit * (-q * ae.cd * ae.area) - up * (q * ae.downforce * ae.area)
+		body.impulse(force * (K * dt))
+	end
+
+	local t = self.telemetry
+	t.speed = speed
+	t.forward = vForward
+	t.rpm = self.rpm
+	t.gear = self.gear
+	t.tcsActive = self.tcsCut > 0.05
+	t.absActive = absActive
+	t.throttle = throttle
+	t.brake = brake
+	return t
+end
+
+-- Positions the visual wheels (Motor6D.Transform) from the simulated state.
+function Sim:updateVisuals(motors)
+	for _, w in ipairs(self.wheels) do
+		local m = motors[w.name]
+		if m then
+			m.Transform = CFrame.new(0, -w.length / MPS, 0) * CFrame.Angles(0, w.steer, 0) * CFrame.Angles(-w.spin, 0, 0)
+		end
+	end
+end
+
+-------------------------------------------------------------------------------
+-- Roblox bindings
+-------------------------------------------------------------------------------
+
+function Sim.getMounts(model)
+	local chassis = model:FindFirstChild("Chassis")
+	local mounts = {}
+	for _, name in ipairs({ "FL", "FR", "RL", "RR" }) do
+		mounts[name] = chassis:FindFirstChild("Mount" .. name).Position
+	end
+	return mounts
+end
+
+function Sim.getMotors(model)
+	local motors = {}
+	for _, name in ipairs({ "FL", "FR", "RL", "RR" }) do
+		local tire = model:FindFirstChild("Wheel" .. name, true)
+		motors[name] = tire and tire:FindFirstChild("Motor")
+	end
+	return motors
+end
+
+function Sim.makeRaycastParams(model)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = false
+	local list = { model }
+	for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+		if plr.Character then
+			table.insert(list, plr.Character)
+		end
+	end
+	params.FilterDescendantsInstances = list
+	return params
+end
+
+function Sim.fromModel(model, cfg)
+	local root = model:FindFirstChild("Chassis")
+	local params = Sim.makeRaycastParams(model)
+	local lastRefresh = os.clock()
+	local body = {
+		getCFrame = function()
+			return root.CFrame
+		end,
+		getVelocity = function()
+			return root.AssemblyLinearVelocity
+		end,
+		velocityAt = function(p)
+			return root:GetVelocityAtPosition(p)
+		end,
+		getMass = function()
+			return root.AssemblyMass
+		end,
+		getGravity = function()
+			return workspace.Gravity
+		end,
+		impulse = function(j)
+			root:ApplyImpulse(j)
+		end,
+		impulseAt = function(j, p)
+			root:ApplyImpulseAtPosition(j, p)
+		end,
+		raycast = function(origin, dir)
+			if os.clock() - lastRefresh > 1 then
+				lastRefresh = os.clock()
+				params = Sim.makeRaycastParams(model)
+			end
+			return workspace:Raycast(origin, dir, params)
+		end,
+	}
+	local sim = Sim.new(body, cfg, Sim.getMounts(model))
+	sim.model = model
+	sim.root = root
+	sim.motors = Sim.getMotors(model)
+	return sim
+end
+
+return Sim
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX7">
+      <Properties>
+        <string name="Name">Tire</string>
+        <ProtectedString name="Source"><![CDATA[--[[
+	Tire model: Pacejka "magic formula" with combined slip.
+
+	slip ratio  (kappa) = (wheel surface speed - road speed) / road speed
+	slip angle  (alpha) = angle between where the tire points and where it moves
+
+	Grip rises with slip up to a peak (about 10% slip / 8 degrees), then falls
+	off into a slide. Braking and cornering share one budget of grip: brake
+	hard in a corner and the car runs wide, like a real one.
+]]
+
+local Tire = {}
+
+local atan, sin, sqrt = math.atan, math.sin, math.sqrt
+
+function Tire.magic(x, B, C, D, E)
+	local Bx = B * x
+	return D * sin(C * atan(Bx - E * (Bx - atan(Bx))))
+end
+
+-- Slip value where the magic formula peaks, found numerically.
+function Tire.peak(B, C, E)
+	local best, bestX = -math.huge, 0
+	for i = 1, 400 do
+		local x = i * 0.001
+		local f = Tire.magic(x, B, C, 1, E)
+		if f > best then
+			best, bestX = f, x
+		end
+	end
+	return bestX
+end
+
+-- Precompute the peaks for a tire parameter table (done once per car).
+function Tire.prepare(t)
+	t.kPeak = Tire.peak(t.longB, t.longC, t.longE)
+	t.aPeak = Tire.peak(t.latB, t.latC, t.latE)
+	return t
+end
+
+--[[
+	Returns longitudinal and lateral force (newtons).
+	kappa : slip ratio (positive = wheel spinning faster than the road)
+	alpha : slip angle in radians (positive = sliding to the tire's right)
+	Fz    : vertical load (N)
+	Fz0   : nominal load used for load sensitivity (N)
+	Fx > 0 pushes the car forward; Fy > 0 pushes it to the tire's right.
+]]
+function Tire.forces(kappa, alpha, Fz, Fz0, t)
+	if Fz <= 0 then
+		return 0, 0
+	end
+	local sk = kappa / t.kPeak
+	local sa = alpha / t.aPeak
+	local rho = sqrt(sk * sk + sa * sa)
+	if rho < 1e-9 then
+		return 0, 0
+	end
+	local mu = t.grip * math.max(0.6, 1 - t.loadSensitivity * (Fz / Fz0 - 1))
+	local D = mu * Fz
+	local Fx = Tire.magic(rho * t.kPeak, t.longB, t.longC, D, t.longE) * (sk / rho)
+	local Fy = -Tire.magic(rho * t.aPeak, t.latB, t.latC, D, t.latE) * (sa / rho)
+	return Fx, Fy
+end
+
+return Tire
+]]></ProtectedString>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>

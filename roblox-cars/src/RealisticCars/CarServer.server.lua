@@ -9,13 +9,16 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 local root = script.Parent
 local Configs = require(root.Configs)
 local Builder = require(root.Builder)
 local Sim = require(root.Sim)
 
-local SPAWN_SHOWROOM = true -- set false and call _G.RealisticCars.Spawn(key, cframe) yourself
+-- The showroom is skipped when a game's own vehicle system spawns the cars
+-- (e.g. Dortmund RP's ServerScriptService/VehicleSystem).
+local SPAWN_SHOWROOM = not game:GetService("ServerScriptService"):FindFirstChild("VehicleSystem")
 local SPACING = 16 -- studs between showroom cars
 local ROW_DISTANCE = 45 -- studs in front of the SpawnLocation
 local RETURN_ABANDONED_AFTER = 180 -- seconds before an empty car away from home respawns
@@ -77,13 +80,13 @@ local function park(rec)
 	model:SetAttribute("RPM", rec.cfg.engine.idleRPM)
 end
 
-local function spawnCar(key, cframe)
-	local cfg = Configs.Cars[key]
-	assert(cfg, "Unknown car type: " .. tostring(key))
-	local model = Builder.build(cfg, cframe)
-	model.Parent = carFolder
-
-	local rec = { model = model, cfg = cfg, key = key, home = cframe, abandonedSince = nil }
+-- Takes over any car model in the workspace: parked physics, driver hand-off,
+-- seats, lights.
+local function setupCar(model, cfg, key, home)
+	if cars[model] then
+		return cars[model]
+	end
+	local rec = { model = model, cfg = cfg, key = key, home = home, abandonedSince = nil }
 	cars[model] = rec
 	park(rec)
 
@@ -137,6 +140,30 @@ local function spawnCar(key, cframe)
 	return rec
 end
 
+local function spawnCar(key, cframe)
+	local cfg = Configs.Cars[key]
+	assert(cfg, "Unknown car type: " .. tostring(key))
+	local model = Builder.build(cfg, cframe)
+	model.Parent = carFolder
+	return setupCar(model, cfg, key, cframe)
+end
+
+-- Cars spawned by other scripts (cloned from ServerStorage etc.)
+local function register(model)
+	if cars[model] or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+		return
+	end
+	local key = model:GetAttribute("CarType")
+	local cfg = Configs.Cars[key]
+	if cfg and model:FindFirstChild("Chassis") and model:FindFirstChild("DriverSeat") then
+		setupCar(model, cfg, key, model:GetPivot())
+	end
+end
+CollectionService:GetInstanceAddedSignal("RealisticCar"):Connect(register)
+for _, model in ipairs(CollectionService:GetTagged("RealisticCar")) do
+	task.spawn(register, model)
+end
+
 -- Client -> server: the driver reports steering, rpm and pedals for everyone else's visuals.
 stateRemote.OnServerEvent:Connect(function(plr, model, steer, rpm, gear, brake, throttle)
 	local rec = typeof(model) == "Instance" and cars[model]
@@ -163,7 +190,7 @@ commandRemote.OnServerEvent:Connect(function(plr, model, command)
 	end
 	if command == "Headlights" then
 		model:SetAttribute("Headlights", not model:GetAttribute("Headlights"))
-	elseif command == "Siren" and rec.cfg.police then
+	elseif command == "Siren" and (rec.cfg.police or (model:GetAttribute("LightType") or "none") ~= "none") then
 		model:SetAttribute("Siren", not model:GetAttribute("Siren"))
 	end
 end)
@@ -184,7 +211,36 @@ task.spawn(function()
 		task.wait(0.13)
 		flash = not flash
 		for _, rec in pairs(cars) do
-			if rec.cfg.police then
+			local lightType = rec.model:GetAttribute("LightType")
+			if lightType and lightType ~= "none" then
+				-- Livery-driven lights (tagged EmergencyLight), alternating left/right.
+				local on = rec.model:GetAttribute("Siren")
+				local hiddenWhenOff = lightType == "hidden_blue"
+				if not rec.emergency then
+					rec.emergency = {}
+					for _, part in ipairs(rec.model:GetDescendants()) do
+						if part:IsA("BasePart") and CollectionService:HasTag(part, "EmergencyLight") then
+							table.insert(rec.emergency, part)
+						end
+					end
+				end
+				local update = on or rec.sirenWasOn
+				rec.sirenWasOn = on
+				for _, part in ipairs(update and rec.emergency or {}) do
+					if part.Parent then
+						local left = rec.model.PrimaryPart.CFrame:PointToObjectSpace(part.Position).X < 0
+						local lit = on and (left == flash)
+						local base = part:GetAttribute("BaseTransparency") or 0
+						part.Transparency = lit and 0 or (on and 0.7 or (hiddenWhenOff and 1 or base))
+						part.Material = Enum.Material.Neon
+						for _, light in ipairs(part:GetChildren()) do
+							if light:IsA("Light") then
+								light.Enabled = lit
+							end
+						end
+					end
+				end
+			elseif rec.cfg.police then
 				local on = rec.model:GetAttribute("Siren")
 				local lights = rec.model:FindFirstChild("Lights")
 				local red = lights and lights:FindFirstChild("SirenRed")

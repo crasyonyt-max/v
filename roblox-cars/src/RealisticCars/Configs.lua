@@ -20,7 +20,7 @@ Configs.METERS_PER_STUD = 0.25
 Configs.ENGINE_SOUND_ID = ""
 
 -- Order the showroom spawns cars in.
-Configs.Order = { "Sedan", "Hatchback", "Sports", "Supercar", "Muscle", "SUV", "Pickup", "Police" }
+Configs.Order = { "Sedan", "Hatchback", "Sports", "Supercar", "Muscle", "SUV", "Pickup", "Police", "Van", "Truck" }
 
 -- Shared defaults. Each car only lists what differs.
 local DEFAULT = {
@@ -243,6 +243,56 @@ Cars.Police = {
 	brakes = { maxTorque = 5000 },
 	aero = { cd = 0.31, area = 2.3 },
 	seats = 4, doors = 4,
+}
+
+Cars.Van = {
+	displayName = "Van",
+	mass = 2450, weightFront = 0.55, comHeight = 0.82,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 5.90, width = 2.00, height = 2.55, clearance = 0.18, belt = 1.15, frontOverhang = 0.95,
+		windshieldBase = 0.55, roofFront = 1.25, roofRear = 5.85, rearBase = 5.90, cabinInset = 0.04,
+		sideWindowsTo = 2.0, seatHeight = 0.78,
+	},
+	wheelbase = 3.66, wheelRadius = 0.36, wheelWidth = 0.24,
+	engine = {
+		idleRPM = 750, redline = 4200, maxRPM = 4500, inertia = 0.35, launchRPM = 1800, engineBrake = 70,
+		torque = { { 1000, 250 }, { 1600, 400 }, { 2800, 400 }, { 3800, 330 }, { 4500, 260 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 4.38, 2.86, 1.92, 1.37, 1.00, 0.82 }, reverse = 3.9, finalDrive = 3.92, shiftTime = 0.35 },
+	suspension = { restLength = 0.34, travel = 0.24, frequencyFront = 1.4, frequencyRear = 1.6, antiRollFront = 26000, antiRollRear = 12000 },
+	tires = { grip = 0.95, wheelInertia = 1.6 },
+	brakes = { maxTorque = 5200 },
+	aero = { cd = 0.36, area = 4.6 },
+	steering = { maxAngle = 38 },
+	seats = 2,
+}
+
+Cars.Truck = {
+	displayName = "Truck",
+	mass = 11000, weightFront = 0.5, comHeight = 1.3,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 8.00, width = 2.50, height = 3.20, clearance = 0.30, belt = 1.50, frontOverhang = 1.30,
+		windshieldBase = 0.12, roofFront = 0.70, roofRear = 2.30, rearBase = 2.34, cabinInset = 0.04,
+		sideWindowsTo = 1.8, seatHeight = 1.25, noseLength = 0.12,
+		cargoBox = { from = 2.45, height = 3.45 },
+	},
+	wheelbase = 4.50, wheelRadius = 0.50, wheelWidth = 0.32,
+	engine = {
+		idleRPM = 600, redline = 2300, maxRPM = 2500, inertia = 2.5, launchRPM = 1200, engineBrake = 300, creepTorque = 150,
+		torque = { { 800, 500 }, { 1100, 900 }, { 1700, 900 }, { 2200, 750 }, { 2500, 600 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 9.5, 6.6, 4.6, 3.3, 2.4, 1.7, 1.25, 1.0 }, reverse = 9.0, finalDrive = 3.1, shiftTime = 0.5, efficiency = 0.9 },
+	suspension = {
+		restLength = 0.40, travel = 0.20, frequencyFront = 1.6, frequencyRear = 1.8, dampingRatio = 0.4,
+		antiRollFront = 300000, antiRollRear = 250000, rollCenterHeight = 0.5,
+	},
+	tires = { grip = 0.85, wheelInertia = 12 },
+	brakes = { maxTorque = 40000, handbrakeTorque = 15000 },
+	aero = { cd = 0.6, area = 8.0 },
+	steering = { maxAngle = 40, speedFactor = 0.08 },
+	seats = 2,
 }
 
 -- Fill each car's missing values from DEFAULT.

@@ -101,6 +101,10 @@ function Builder.build(cfg, base)
 		end
 		p.Parent = opts.parent or bodyModel
 		weld(p, opts.weldTo)
+		-- Painted body panels get the "Body" tag so liveries can recolor them.
+		if color == paint and (material or PAINT) == PAINT and not opts.noTag then
+			CollectionService:AddTag(p, "Body")
+		end
 		return p
 	end
 	local function v(x, y, z)
@@ -130,10 +134,24 @@ function Builder.build(cfg, base)
 
 	-- Layer B (fenders, doors, hood, trunk) from the wheel tops to the belt line.
 	box("HoodEdge", v(W, belt - fenderBottom, noseLen), v(0, (fenderBottom + belt) / 2, fz + noseLen / 2), paint, PAINT, { class = "WedgePart" })
-	local doorFront, doorRear = -wbh + well, math.min(wbh - well, bedZ or math.huge)
+	local cargo = b.cargoBox
+	local cargoZ = cargo and L.z(cargo.from) or nil
+	local layerEnd = math.min(bedZ or rz, cargoZ or rz)
+	local doorFront, doorRear = -wbh + well, math.min(wbh - well, layerEnd)
 	zbox("FrontFenders", fz + noseLen, doorFront, fenderBottom, belt, W, paint)
 	local doors = zbox("Doors", doorFront, doorRear, fenderBottom, belt, W, accent)
-	zbox("RearQuarters", doorRear, bedZ or rz, fenderBottom, belt, W, paint)
+	zbox("RearQuarters", doorRear, layerEnd, fenderBottom, belt, W, paint)
+
+	-- Box body (trucks). With cargoBox.trailer it goes in a "Trailer" model.
+	local cargoParent = bodyModel
+	if cargo then
+		if cargo.trailer then
+			cargoParent = Instance.new("Model")
+			cargoParent.Name = "Trailer"
+			cargoParent.Parent = model
+		end
+		zbox("CargoBox", cargoZ, rz, fenderBottom, cargo.height, W, paint, PAINT, { parent = cargoParent })
+	end
 
 	if bedZ then
 		-- Pickup bed: floor at the fender line, thin walls and a tailgate.
@@ -157,7 +175,11 @@ function Builder.build(cfg, base)
 		})
 	end
 	glass("Windshield", v(cw, ch, zRF - zW), v(0, belt + ch / 2, (zW + zRF) / 2), nil, "WedgePart")
-	glass("SideGlass", v(cw, ch - 0.05, zRR - zRF), v(0, belt + (ch - 0.05) / 2, (zRF + zRR) / 2))
+	local glassEnd = b.sideWindowsTo and math.min(zRR, L.z(b.sideWindowsTo)) or zRR
+	glass("SideGlass", v(cw, ch - 0.05, glassEnd - zRF), v(0, belt + (ch - 0.05) / 2, (zRF + glassEnd) / 2))
+	if glassEnd < zRR - 0.01 then
+		zbox("SidePanel", glassEnd, zRR, belt, H - 0.05, cw, paint)
+	end
 	if zRB - zRR > 0.02 then
 		glass("RearGlass", v(cw, ch, zRB - zRR), v(0, belt + ch / 2, (zRR + zRB) / 2), CFrame.Angles(0, math.pi, 0), "WedgePart")
 	end
@@ -263,12 +285,116 @@ function Builder.build(cfg, base)
 		end
 	end
 
+	---------------------------------------------------------------- livery parts
+	-- Extra tagged parts for a livery system: accent band, stripe, lettering
+	-- panels, lightbar, flashers and window grilles (enable with cfg.liveryParts).
+	if cfg.liveryParts then
+		local function tagged(p, tag, attrs)
+			CollectionService:RemoveTag(p, "Body")
+			CollectionService:AddTag(p, tag)
+			for k, val in pairs(attrs or {}) do
+				p:SetAttribute(k, val)
+			end
+			return p
+		end
+		local function sides(fn)
+			for _, side in ipairs({ -1, 1 }) do
+				fn(side, side < 0 and "Left" or "Right")
+			end
+		end
+		local function lettering(name, size, center, faces, parent, slot)
+			local p = box(name, size, center, paint, PAINT, { parent = parent, transparency = 1 })
+			return tagged(p, "Lettering", { LetteringFaces = faces, LetteringSlot = slot })
+		end
+
+		-- Accent band low on the sides, between and around the wheel wells.
+		local accentY0, accentY1 = clear + 0.08, clear + 0.26
+		local segments = { { fz + 0.05, -wbh - well }, { -wbh + well, wbh - well }, { wbh + well, rz - 0.05 } }
+		sides(function(side)
+			for _, seg in ipairs(segments) do
+				if seg[2] - seg[1] > 0.05 then
+					tagged(box("AccentBand", v(0.012, accentY1 - accentY0, seg[2] - seg[1]),
+						v(side * (W / 2 + 0.004), (accentY0 + accentY1) / 2, (seg[1] + seg[2]) / 2), paint), "Accent")
+				end
+			end
+			-- Reflective stripe along the shoulder line.
+			local sh = belt - fenderBottom
+			tagged(box("Stripe", v(0.012, math.min(0.12, sh * 0.45), layerEnd - (fz + noseLen) - 0.02),
+				v(side * (W / 2 + 0.004), fenderBottom + sh * 0.45, (fz + noseLen + layerEnd) / 2), paint), "Stripe")
+		end)
+
+		-- Main lettering: on the cargo box, the van side panel, or the doors.
+		if cargo then
+			local y0, y1 = fenderBottom + 0.35, cargo.height - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, rz - cargoZ - 0.5), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (cargoZ + rz) / 2), face, cargoParent)
+				tagged(box("CargoStripe", v(0.012, 0.18, rz - cargoZ - 0.04), v(side * (W / 2 + 0.004), fenderBottom + 0.2, (cargoZ + rz) / 2), paint, PAINT, { parent = cargoParent }), "Stripe")
+			end)
+			lettering("RearLettering", v(W * 0.8, 0.5, 0.01), v(0, (fenderBottom + cargo.height) / 2, rz + 0.008), "Back", cargoParent)
+		elseif glassEnd < zRR - 0.3 then
+			local y0, y1 = belt + 0.15, H - 0.35
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, zRR - glassEnd - 0.3), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (glassEnd + zRR) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.6, 0.22, 0.01), v(0, belt + 0.25, rz + 0.008), "Back")
+		else
+			local y0, y1 = accentY1 + 0.04, fenderBottom - 0.02
+			sides(function(side, face)
+				lettering("Lettering", v(0.01, y1 - y0, doorRear - doorFront - 0.1), v(side * (W / 2 + 0.008), (y0 + y1) / 2, (doorFront + doorRear) / 2), face)
+			end)
+			lettering("RearLettering", v(W * 0.5, 0.14, 0.01), v(0, tailY - 0.17, rz + 0.008), "Back")
+		end
+		-- Small organisation name on the front fenders (LetteringSlot "Secondary").
+		local fz0, fz1 = fz + noseLen + 0.05, -wbh - well - 0.02
+		if fz1 - fz0 > 0.12 then
+			sides(function(side, face)
+				lettering("SecondaryLettering", v(0.01, math.max(0.1, (belt - fenderBottom) * 0.8), fz1 - fz0), v(side * (W / 2 + 0.008), (fenderBottom + belt) / 2, (fz0 + fz1) / 2), face, nil, "Secondary")
+			end)
+		end
+
+		-- Lightbar on the roof (kept only for blue/orange lights).
+		local lightbar = Instance.new("Model")
+		lightbar.Name = "Lightbar"
+		lightbar:SetAttribute("ExtraName", "Lightbar")
+		CollectionService:AddTag(lightbar, "Extra")
+		lightbar.Parent = model
+		local zc = zRF + math.min(0.45, (zRR - zRF) / 2)
+		box("LightbarBase", v(cw * 0.8, 0.06, 0.24), v(0, H + 0.03, zc), col.trim, PAINT, { parent = lightbar })
+		sides(function(side)
+			local lamp = box("Beacon", v(cw * 0.38, 0.08, 0.2), v(side * cw * 0.2, H + 0.1, zc), Color3.fromRGB(30, 60, 160), NEON, { parent = lightbar })
+			tagged(lamp, "EmergencyLight")
+			local glow = Instance.new("PointLight")
+			glow.Range = 24
+			glow.Brightness = 5
+			glow.Enabled = false
+			glow.Parent = lamp
+			-- Front flashers in the grille (also used by unmarked cars).
+			local flasher = box("GrilleFlasher", v(0.1, 0.05, 0.02), v(side * W * 0.12, fenderBottom - 0.16, fz - 0.03), Color3.fromRGB(30, 60, 160), NEON, { parent = lights })
+			tagged(flasher, "EmergencyLight")
+		end)
+
+		-- Window grilles for vans (an "Extra", e.g. police prisoner transport).
+		if b.sideWindowsTo then
+			local grilles = Instance.new("Model")
+			grilles.Name = "WindowGrilles"
+			grilles:SetAttribute("ExtraName", "WindowGrilles")
+			CollectionService:AddTag(grilles, "Extra")
+			grilles.Parent = model
+			sides(function(side)
+				for i = 1, 5 do
+					local z = zRF + (glassEnd - zRF) * i / 6
+					box("GrilleBar", v(0.025, ch - 0.1, 0.025), v(side * (cw / 2 + 0.015), belt + (ch - 0.05) / 2, z), col.trim, METAL, { parent = grilles })
+				end
+			end)
+		end
+	end
+
 	---------------------------------------------------------------- interior & seats
 	box("Dashboard", v(cw - 0.08, 0.16, 0.3), v(0, belt - 0.02, zW + 0.22), col.trim)
 	local floorY = clear + 0.12
 	box("Floor", v(cw - 0.05, 0.03, zRB - zW), v(0, floorY, (zW + zRB) / 2), col.trim)
 
-	local seatTop = math.max(floorY + 0.08, math.min(clear + 0.33, H - 0.78))
+	local seatTop = b.seatHeight or math.max(floorY + 0.08, math.min(clear + 0.33, H - 0.78))
 	local frontZ = zRF + 0.32
 	local positions = { { -1, frontZ }, { 1, frontZ } }
 	if cfg.seats >= 4 then
@@ -330,6 +456,9 @@ function Builder.build(cfg, base)
 	end
 	hitbox("Hitbox", v(W, belt - clear - 0.1, b.length), v(0, (clear + 0.1 + belt) / 2, (fz + rz) / 2))
 	hitbox("CabinHitbox", v(cw, ch, zRB - zW), v(0, belt + ch / 2, (zW + zRB) / 2))
+	if cargo then
+		hitbox("CargoHitbox", v(W, cargo.height - belt, rz - cargoZ), v(0, (belt + cargo.height) / 2, (cargoZ + rz) / 2))
+	end
 
 	---------------------------------------------------------------- wheels
 	for name, wl in pairs(L.wheels) do
@@ -835,13 +964,16 @@ end)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 local root = script.Parent
 local Configs = require(root.Configs)
 local Builder = require(root.Builder)
 local Sim = require(root.Sim)
 
-local SPAWN_SHOWROOM = true -- set false and call _G.RealisticCars.Spawn(key, cframe) yourself
+-- The showroom is skipped when a game's own vehicle system spawns the cars
+-- (e.g. Dortmund RP's ServerScriptService/VehicleSystem).
+local SPAWN_SHOWROOM = not game:GetService("ServerScriptService"):FindFirstChild("VehicleSystem")
 local SPACING = 16 -- studs between showroom cars
 local ROW_DISTANCE = 45 -- studs in front of the SpawnLocation
 local RETURN_ABANDONED_AFTER = 180 -- seconds before an empty car away from home respawns
@@ -903,13 +1035,13 @@ local function park(rec)
 	model:SetAttribute("RPM", rec.cfg.engine.idleRPM)
 end
 
-local function spawnCar(key, cframe)
-	local cfg = Configs.Cars[key]
-	assert(cfg, "Unknown car type: " .. tostring(key))
-	local model = Builder.build(cfg, cframe)
-	model.Parent = carFolder
-
-	local rec = { model = model, cfg = cfg, key = key, home = cframe, abandonedSince = nil }
+-- Takes over any car model in the workspace: parked physics, driver hand-off,
+-- seats, lights.
+local function setupCar(model, cfg, key, home)
+	if cars[model] then
+		return cars[model]
+	end
+	local rec = { model = model, cfg = cfg, key = key, home = home, abandonedSince = nil }
 	cars[model] = rec
 	park(rec)
 
@@ -963,6 +1095,30 @@ local function spawnCar(key, cframe)
 	return rec
 end
 
+local function spawnCar(key, cframe)
+	local cfg = Configs.Cars[key]
+	assert(cfg, "Unknown car type: " .. tostring(key))
+	local model = Builder.build(cfg, cframe)
+	model.Parent = carFolder
+	return setupCar(model, cfg, key, cframe)
+end
+
+-- Cars spawned by other scripts (cloned from ServerStorage etc.)
+local function register(model)
+	if cars[model] or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+		return
+	end
+	local key = model:GetAttribute("CarType")
+	local cfg = Configs.Cars[key]
+	if cfg and model:FindFirstChild("Chassis") and model:FindFirstChild("DriverSeat") then
+		setupCar(model, cfg, key, model:GetPivot())
+	end
+end
+CollectionService:GetInstanceAddedSignal("RealisticCar"):Connect(register)
+for _, model in ipairs(CollectionService:GetTagged("RealisticCar")) do
+	task.spawn(register, model)
+end
+
 -- Client -> server: the driver reports steering, rpm and pedals for everyone else's visuals.
 stateRemote.OnServerEvent:Connect(function(plr, model, steer, rpm, gear, brake, throttle)
 	local rec = typeof(model) == "Instance" and cars[model]
@@ -989,7 +1145,7 @@ commandRemote.OnServerEvent:Connect(function(plr, model, command)
 	end
 	if command == "Headlights" then
 		model:SetAttribute("Headlights", not model:GetAttribute("Headlights"))
-	elseif command == "Siren" and rec.cfg.police then
+	elseif command == "Siren" and (rec.cfg.police or (model:GetAttribute("LightType") or "none") ~= "none") then
 		model:SetAttribute("Siren", not model:GetAttribute("Siren"))
 	end
 end)
@@ -1010,7 +1166,36 @@ task.spawn(function()
 		task.wait(0.13)
 		flash = not flash
 		for _, rec in pairs(cars) do
-			if rec.cfg.police then
+			local lightType = rec.model:GetAttribute("LightType")
+			if lightType and lightType ~= "none" then
+				-- Livery-driven lights (tagged EmergencyLight), alternating left/right.
+				local on = rec.model:GetAttribute("Siren")
+				local hiddenWhenOff = lightType == "hidden_blue"
+				if not rec.emergency then
+					rec.emergency = {}
+					for _, part in ipairs(rec.model:GetDescendants()) do
+						if part:IsA("BasePart") and CollectionService:HasTag(part, "EmergencyLight") then
+							table.insert(rec.emergency, part)
+						end
+					end
+				end
+				local update = on or rec.sirenWasOn
+				rec.sirenWasOn = on
+				for _, part in ipairs(update and rec.emergency or {}) do
+					if part.Parent then
+						local left = rec.model.PrimaryPart.CFrame:PointToObjectSpace(part.Position).X < 0
+						local lit = on and (left == flash)
+						local base = part:GetAttribute("BaseTransparency") or 0
+						part.Transparency = lit and 0 or (on and 0.7 or (hiddenWhenOff and 1 or base))
+						part.Material = Enum.Material.Neon
+						for _, light in ipairs(part:GetChildren()) do
+							if light:IsA("Light") then
+								light.Enabled = lit
+							end
+						end
+					end
+				end
+			elseif rec.cfg.police then
 				local on = rec.model:GetAttribute("Siren")
 				local lights = rec.model:FindFirstChild("Lights")
 				local red = lights and lights:FindFirstChild("SirenRed")
@@ -1131,7 +1316,7 @@ Configs.METERS_PER_STUD = 0.25
 Configs.ENGINE_SOUND_ID = ""
 
 -- Order the showroom spawns cars in.
-Configs.Order = { "Sedan", "Hatchback", "Sports", "Supercar", "Muscle", "SUV", "Pickup", "Police" }
+Configs.Order = { "Sedan", "Hatchback", "Sports", "Supercar", "Muscle", "SUV", "Pickup", "Police", "Van", "Truck" }
 
 -- Shared defaults. Each car only lists what differs.
 local DEFAULT = {
@@ -1354,6 +1539,56 @@ Cars.Police = {
 	brakes = { maxTorque = 5000 },
 	aero = { cd = 0.31, area = 2.3 },
 	seats = 4, doors = 4,
+}
+
+Cars.Van = {
+	displayName = "Van",
+	mass = 2450, weightFront = 0.55, comHeight = 0.82,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 5.90, width = 2.00, height = 2.55, clearance = 0.18, belt = 1.15, frontOverhang = 0.95,
+		windshieldBase = 0.55, roofFront = 1.25, roofRear = 5.85, rearBase = 5.90, cabinInset = 0.04,
+		sideWindowsTo = 2.0, seatHeight = 0.78,
+	},
+	wheelbase = 3.66, wheelRadius = 0.36, wheelWidth = 0.24,
+	engine = {
+		idleRPM = 750, redline = 4200, maxRPM = 4500, inertia = 0.35, launchRPM = 1800, engineBrake = 70,
+		torque = { { 1000, 250 }, { 1600, 400 }, { 2800, 400 }, { 3800, 330 }, { 4500, 260 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 4.38, 2.86, 1.92, 1.37, 1.00, 0.82 }, reverse = 3.9, finalDrive = 3.92, shiftTime = 0.35 },
+	suspension = { restLength = 0.34, travel = 0.24, frequencyFront = 1.4, frequencyRear = 1.6, antiRollFront = 26000, antiRollRear = 12000 },
+	tires = { grip = 0.95, wheelInertia = 1.6 },
+	brakes = { maxTorque = 5200 },
+	aero = { cd = 0.36, area = 4.6 },
+	steering = { maxAngle = 38 },
+	seats = 2,
+}
+
+Cars.Truck = {
+	displayName = "Truck",
+	mass = 11000, weightFront = 0.5, comHeight = 1.3,
+	color = Color3.fromRGB(235, 235, 235),
+	body = {
+		length = 8.00, width = 2.50, height = 3.20, clearance = 0.30, belt = 1.50, frontOverhang = 1.30,
+		windshieldBase = 0.12, roofFront = 0.70, roofRear = 2.30, rearBase = 2.34, cabinInset = 0.04,
+		sideWindowsTo = 1.8, seatHeight = 1.25, noseLength = 0.12,
+		cargoBox = { from = 2.45, height = 3.45 },
+	},
+	wheelbase = 4.50, wheelRadius = 0.50, wheelWidth = 0.32,
+	engine = {
+		idleRPM = 600, redline = 2300, maxRPM = 2500, inertia = 2.5, launchRPM = 1200, engineBrake = 300, creepTorque = 150,
+		torque = { { 800, 500 }, { 1100, 900 }, { 1700, 900 }, { 2200, 750 }, { 2500, 600 } },
+	},
+	transmission = { drivetrain = "RWD", gears = { 9.5, 6.6, 4.6, 3.3, 2.4, 1.7, 1.25, 1.0 }, reverse = 9.0, finalDrive = 3.1, shiftTime = 0.5, efficiency = 0.9 },
+	suspension = {
+		restLength = 0.40, travel = 0.20, frequencyFront = 1.6, frequencyRear = 1.8, dampingRatio = 0.4,
+		antiRollFront = 300000, antiRollRear = 250000, rollCenterHeight = 0.5,
+	},
+	tires = { grip = 0.85, wheelInertia = 12 },
+	brakes = { maxTorque = 40000, handbrakeTorque = 15000 },
+	aero = { cd = 0.6, area = 8.0 },
+	steering = { maxAngle = 40, speedFactor = 0.08 },
+	seats = 2,
 }
 
 -- Fill each car's missing values from DEFAULT.

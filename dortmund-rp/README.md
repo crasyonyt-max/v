@@ -2,11 +2,15 @@
 
 ## Install (Studio)
 1. Drag `ReplicatedStorage.rbxmx` into **ReplicatedStorage**. It adds `VehicleConfig` and `LiveryConfig`.
-2. Drag `VehicleSystem.rbxmx` into **ServerScriptService**.
-3. Create a folder **ServerStorage/Vehicles**. Put each car model in it, named exactly as its `Name` in VehicleConfig (for example `Opal Astro Kombi`). Missing models are listed once as a warning at startup and can't be spawned until you add them.
+2. Drag `RealisticCars.rbxmx` into **ReplicatedStorage**. It adds the driving physics, the HUD and the part-built car bodies.
+3. Drag `VehicleSystem.rbxmx` into **ServerScriptService**.
 4. Game Settings → Security → turn on **Enable Studio Access to API Services** to test saving in Studio.
 
-Alternatively, run `rojo serve`. `default.project.json` maps everything.
+On server start, every vehicle without a model in `ServerStorage/Vehicles` gets a **drivable 3D placeholder** built from parts. It comes with all the livery parts (stripes, accent band, lettering, lightbar, window grilles, LKW cargo box), so liveries and lights work right away. When you put a real model with the same name in `ServerStorage/Vehicles`, it is used instead. Body shapes are chosen in `VehicleModelGenerator` (`BODY_RULES`).
+
+In game: press **E** at a car to drive, **G** for the blue/orange lights, **L** for headlights, **H** for all controls.
+
+Alternatively, run `rojo serve`. `default.project.json` maps everything, including `../roblox-cars`.
 
 ## Tagging your models (CollectionService / Tag Editor)
 | Tag | What happens |

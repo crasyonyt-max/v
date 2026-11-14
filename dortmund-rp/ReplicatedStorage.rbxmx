@@ -14,7 +14,7 @@
 	  Inherit           name of another preset to start from
 	  TrailerPresets    list of preset names; a random one paints the model's "Trailer"
 
-	A color slot that is left out keeps the color the part has in the model.
+	A Stripe or Accent color that is left out uses the Body color.
 	No logos or symbols anywhere: everything is plain text lettering.
 ]]
 

@@ -10,7 +10,9 @@
 	                              Attribute LetteringSlot = "Secondary" uses SecondaryLettering.
 	  "EmergencyLight"            colored by LightType. Hidden for "none" and "hidden_blue"
 	                              (the model attribute LightsHidden tells your light script).
-	  "Extra" + attribute ExtraName   kept only if the vehicle lists that extra.
+	  "Extra" + attribute ExtraName   kept only if the vehicle lists that extra. The extra
+	                              "Lightbar" is kept automatically for blue/orange lights.
+	  Stripe and Accent use the Body color when the livery doesn't set them.
 
 	A child Model named "Trailer" gets a random trailer preset if the livery has
 	TrailerPresets (LKW).
@@ -85,7 +87,9 @@ local function paint(container, livery, skip)
 	for _, d in ipairs(container:GetDescendants()) do
 		if d:IsA("BasePart") and not (skip and d:IsDescendantOf(skip)) then
 			for _, slot in ipairs(LiveryConfig.ColorSlots) do
-				local color = livery.Colors[slot]
+				-- Stripe/Accent fall back to the body color, so civilian cars
+				-- built with stripe parts show one solid paint.
+				local color = livery.Colors[slot] or livery.Colors.Body
 				if color and CollectionService:HasTag(d, slot) then
 					d.Color = color
 				end
@@ -127,8 +131,8 @@ local function applyLights(model, lightType)
 	end
 end
 
-local function applyExtras(model, extras)
-	local wanted = {}
+local function applyExtras(model, extras, lightType)
+	local wanted = { Lightbar = lightType == "blue" or lightType == "orange" }
 	for _, name in ipairs(extras or {}) do
 		wanted[name] = true
 	end
@@ -184,7 +188,7 @@ function LiveryApplier.ApplyVehicle(model, vehicle, customColors)
 	end
 
 	applyLights(model, vehicle.LightType)
-	applyExtras(model, vehicle.Extras)
+	applyExtras(model, vehicle.Extras, vehicle.LightType)
 	model:SetAttribute("LiveryLocked", not vehicle.Repaintable)
 end
 

@@ -1,9 +1,13 @@
 {
   "name": "DortmundRP-Vehicles",
+  "emitLegacyScripts": false,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
-      "$path": "src/ReplicatedStorage"
+      "$path": "src/ReplicatedStorage",
+      "RealisticCars": {
+        "$path": "../roblox-cars/src/RealisticCars"
+      }
     },
     "ServerScriptService": {
       "VehicleSystem": {

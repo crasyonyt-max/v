@@ -1,5 +1,5 @@
 <roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
-<Item class="Folder" referent="RBX9"><Properties><string name="Name">VehicleSystem</string></Properties>
+<Item class="Folder" referent="RBX10"><Properties><string name="Name">VehicleSystem</string></Properties>
 <Item class="ModuleScript" referent="RBX3"><Properties><string name="Name">AdminConfig</string><ProtectedString name="Source"><![CDATA[--[[
 	AdminConfig (server only)
 
@@ -37,7 +37,9 @@ return AdminConfig
 	                              Attribute LetteringSlot = "Secondary" uses SecondaryLettering.
 	  "EmergencyLight"            colored by LightType. Hidden for "none" and "hidden_blue"
 	                              (the model attribute LightsHidden tells your light script).
-	  "Extra" + attribute ExtraName   kept only if the vehicle lists that extra.
+	  "Extra" + attribute ExtraName   kept only if the vehicle lists that extra. The extra
+	                              "Lightbar" is kept automatically for blue/orange lights.
+	  Stripe and Accent use the Body color when the livery doesn't set them.
 
 	A child Model named "Trailer" gets a random trailer preset if the livery has
 	TrailerPresets (LKW).
@@ -112,7 +114,9 @@ local function paint(container, livery, skip)
 	for _, d in ipairs(container:GetDescendants()) do
 		if d:IsA("BasePart") and not (skip and d:IsDescendantOf(skip)) then
 			for _, slot in ipairs(LiveryConfig.ColorSlots) do
-				local color = livery.Colors[slot]
+				-- Stripe/Accent fall back to the body color, so civilian cars
+				-- built with stripe parts show one solid paint.
+				local color = livery.Colors[slot] or livery.Colors.Body
 				if color and CollectionService:HasTag(d, slot) then
 					d.Color = color
 				end
@@ -154,8 +158,8 @@ local function applyLights(model, lightType)
 	end
 end
 
-local function applyExtras(model, extras)
-	local wanted = {}
+local function applyExtras(model, extras, lightType)
+	local wanted = { Lightbar = lightType == "blue" or lightType == "orange" }
 	for _, name in ipairs(extras or {}) do
 		wanted[name] = true
 	end
@@ -211,7 +215,7 @@ function LiveryApplier.ApplyVehicle(model, vehicle, customColors)
 	end
 
 	applyLights(model, vehicle.LightType)
-	applyExtras(model, vehicle.Extras)
+	applyExtras(model, vehicle.Extras, vehicle.LightType)
 	model:SetAttribute("LiveryLocked", not vehicle.Repaintable)
 end
 
@@ -878,7 +882,124 @@ end
 
 return Access
 ]]></ProtectedString></Properties></Item>
-<Item class="Script" referent="RBX8"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--[[
+<Item class="ModuleScript" referent="RBX8"><Properties><string name="Name">VehicleModelGenerator</string><ProtectedString name="Source"><![CDATA[--[[
+	VehicleModelGenerator (server only)
+
+	For every vehicle in VehicleConfig whose model is missing from
+	ServerStorage/Vehicles, this builds a drivable placeholder car out of parts
+	(using ReplicatedStorage/RealisticCars). Each placeholder comes with the
+	tagged livery parts (Body, Stripe, Accent, Lettering, EmergencyLight,
+	extras, Trailer).
+
+	When you add a real model with the same name, the generator leaves it alone.
+	Placeholders get the attribute Placeholder = true.
+
+	BODY_RULES decides which body/physics type a vehicle gets: the first rule
+	whose text appears in the model name wins. Add a rule to change the shape.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig"))
+
+local Generator = {}
+
+-- Body tweaks (meters) on top of a RealisticCars type. Only shape changes here;
+-- size-critical values (width, wheelbase, wheels) stay with the type's physics.
+local KOMBI = { roofRear = 4.25, rearBase = 4.65 } -- estate roof on the Sedan
+local LKW = { length = 9.0, cargoBox = { from = 2.45, height = 3.6, trailer = true } }
+
+local CATEGORY_RULES = {
+	LKW = { Type = "Truck", Body = LKW },
+}
+
+local BODY_RULES = {
+	{ Type = "Supercar", Match = { "Chiran", "Jesco", "Huayro", "AMX Uno", "Neverra", "Black Series", "750S", "SF90", "Venino", "One:1" } },
+	{ Type = "Sports", Match = { "Elfer", "Kayman", "Kontinental", "300 SL", "Taikan", "e-tran" } },
+	{ Type = "Pickup", Match = { "Raptur" } },
+	{ Type = "Truck", Match = { "Ategon", "TGM", "Econ", "Panter", "TGL", "Atekon", "TGX", "Aktros", "Skandia", "FH16", "Arokos", "Unimug" } },
+	{ Type = "Van", Match = { "Sprintor", "Vitto", "Transporta", "Krafter", "TGE", "Kaddy", "E-Van" } },
+	{ Type = "Sedan", Body = KOMBI, Match = { "Kombi", "Variant", "Touring", "Avant", "E-Klasse T" } },
+	{ Type = "SUV", Match = { "Tiguar", "Makan", "G-Klasse", "Uros", "Kullinan", "Turan", "S-Maxx", "X1", "GLX", "G 63", "Defendor", "Kruiser", "Range Rider", "DBX", "Active Tourer" } },
+	{ Type = "Muscle", Match = { "Fantom", "Maybeck", "i7", "EQS" } }, -- big, heavy saloons
+	{ Type = "Hatchback", Match = { "Sanderro", "Pikanto", "Korsa", "Pollo", "Golfo", "Fiesto", "Käfa", "Mantra", "Formentor", "RX3" } },
+}
+local DEFAULT_RULE = { Type = "Sedan" }
+
+function Generator.RuleFor(vehicle)
+	local byCategory = CATEGORY_RULES[vehicle.Category]
+	if byCategory then
+		return byCategory
+	end
+	for _, rule in ipairs(BODY_RULES) do
+		for _, text in ipairs(rule.Match) do
+			if string.find(vehicle.Model, text, 1, true) then
+				return rule
+			end
+		end
+	end
+	return DEFAULT_RULE
+end
+
+-- Builds placeholders for missing models. Returns how many were built.
+function Generator.GenerateMissing()
+	local carsFolder = ReplicatedStorage:FindFirstChild("RealisticCars")
+	if not carsFolder then
+		warn("[VehicleModelGenerator] ReplicatedStorage/RealisticCars is missing, so no placeholder cars can be built.")
+		return 0
+	end
+	local Builder = require(carsFolder:WaitForChild("Builder"))
+	local Configs = require(carsFolder:WaitForChild("Configs"))
+
+	local folderName = VehicleConfig.Settings.VehiclesFolder
+	local folder = ServerStorage:FindFirstChild(folderName)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = folderName
+		folder.Parent = ServerStorage
+	end
+
+	local built = 0
+	for _, vehicle in ipairs(VehicleConfig.List) do
+		if not folder:FindFirstChild(vehicle.Model) then
+			local rule = Generator.RuleFor(vehicle)
+			local preset = Configs.Cars[rule.Type]
+			if not preset then
+				warn(("[VehicleModelGenerator] unknown body type %q for %s"):format(rule.Type, vehicle.Model))
+				continue
+			end
+			local cfg = table.clone(preset)
+			cfg.body = table.clone(preset.body)
+			for k, val in pairs(rule.Body or {}) do
+				cfg.body[k] = val
+			end
+			cfg.displayName = vehicle.Model
+			cfg.police = nil
+			cfg.accentColor = nil
+			cfg.liveryParts = true
+			cfg.color = vehicle.Livery.Colors.Body or preset.color
+
+			local ok, model = pcall(Builder.build, cfg, CFrame.new(0, 0, 0))
+			if ok then
+				model.Name = vehicle.Model
+				model:SetAttribute("Placeholder", true)
+				model.Parent = folder
+				built += 1
+			else
+				warn(("[VehicleModelGenerator] could not build %s: %s"):format(vehicle.Model, tostring(model)))
+			end
+		end
+	end
+	if built > 0 then
+		print(("[VehicleModelGenerator] built %d placeholder vehicle model(s) in ServerStorage/%s"):format(built, folderName))
+	end
+	return built
+end
+
+return Generator
+]]></ProtectedString></Properties></Item>
+<Item class="Script" referent="RBX9"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--[[
 	VehicleService (server Script)
 
 	Creates ReplicatedStorage/VehicleRemotes. Every request is checked here on
@@ -905,6 +1026,7 @@ local PlayerData = require(script.Parent.PlayerDataAdapter)
 local Access = require(script.Parent.VehicleAccess)
 local LiveryApplier = require(script.Parent.LiveryApplier)
 local ServerAdmins = require(script.Parent.ServerAdmins)
+local ModelGenerator = require(script.Parent.VehicleModelGenerator)
 
 local Settings = VehicleConfig.Settings
 local COOLDOWN = 0.5 -- seconds between requests per player
@@ -924,7 +1046,10 @@ local function vehiclesFolder()
 	return ServerStorage:FindFirstChild(Settings.VehiclesFolder)
 end
 
--- One startup warning listing every vehicle whose model is missing.
+-- Build drivable placeholder models for vehicles that have no model yet.
+ModelGenerator.GenerateMissing()
+
+-- One startup warning listing every vehicle whose model is still missing.
 do
 	local folder = vehiclesFolder()
 	local missing = {}
