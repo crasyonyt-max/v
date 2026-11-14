@@ -98,6 +98,7 @@ function State.Snapshot(player: Player): { [string]: any }?
 		currentJobXP = jobXP,
 		vehicles = data.vehicles,
 		starterChosen = data.starterChosen,
+		carStarterChosen = data.carStarterChosen == true,
 		phones = data.phones,
 		phone = data.phone,
 		wallpaper = data.wallpaper,

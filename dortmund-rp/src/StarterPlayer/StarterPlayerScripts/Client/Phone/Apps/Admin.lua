@@ -336,7 +336,7 @@ end
 local function vehiclesTab(root: ScrollingFrame)
 	local isGA = Store.Rank() >= GAME_ADMIN
 	local order = 0
-	for _, category in { "Admin", "Starter", "Job" } do
+	for _, category in { "Admin", "Starter", "CarStarter", "Job", "Dealer", "Pack" } do
 		order += 1
 		local card = section(root, order, category)
 		for _, v in Vehicles.ByCategory(category) do

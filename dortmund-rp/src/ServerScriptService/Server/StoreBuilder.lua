@@ -430,6 +430,7 @@ function StoreBuilder.Build()
 	end
 	local shops = Locations.Shops :: any
 	pcall(salesperson, root, shops.Handyland, "Verkäuferin", Color3.fromRGB(0, 110, 220))
+	pcall(salesperson, root, shops.Dealership, "Autoverkäufer", Color3.fromRGB(30, 30, 35))
 end
 
 return StoreBuilder

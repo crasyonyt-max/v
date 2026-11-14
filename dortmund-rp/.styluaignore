@@ -4,3 +4,7 @@ src/ReplicatedStorage/Shared/Locations.lua
 src/ServerStorage/ToolboxCars.lua
 src/ServerScriptService/Server/CarModels.lua
 src/ReplicatedStorage/Shared/TrafficData.lua
+src/ReplicatedStorage/RealisticCars
+src/ReplicatedStorage/VehicleConfig.lua
+src/ReplicatedStorage/LiveryConfig.lua
+src/ServerScriptService/Server/Cars

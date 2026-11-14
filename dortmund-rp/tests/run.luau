@@ -83,16 +83,29 @@ local fakeServices = {
 		GetTagged = function(_, tag)
 			return tagged[tag] or {}
 		end,
+		HasTag = function(_, inst, tag)
+			return table.find(tagged[tag] or {}, inst) ~= nil
+		end,
+		RemoveTag = function(_, inst, tag)
+			local list = tagged[tag] or {}
+			local i = table.find(list, inst)
+			if i then
+				table.remove(list, i)
+			end
+		end,
+		GetInstanceAddedSignal = function()
+			return { Connect = function() end }
+		end,
 	},
 }
 
 local fakeGame = {
 	GetService = function(_, name: string)
-		if name == "ReplicatedStorage" or name == "ServerScriptService" or name == "ServerStorage" then
-			return pathProxy({ name })
-		end
 		if fakeServices[name] then
 			return fakeServices[name]
+		end
+		if name == "ReplicatedStorage" or name == "ServerScriptService" or name == "ServerStorage" then
+			return pathProxy({ name })
 		end
 		return dataModel:GetService(name)
 	end,
@@ -232,17 +245,26 @@ local VehicleBuilder = requirePath(Server.VehicleBuilder)
 test("vehicle catalog: one motorbike", function()
 	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
-	eq(#Vehicles.ByCategory("Admin"), 1, "admin bike")
-	eq(#Vehicles.ByCategory("Dealer"), 0, "dealership closed")
+	eq(#Vehicles.ByCategory("Admin"), 11, "admin bike + 10 admin cars")
+	eq(#Vehicles.ByCategory("Dealer"), 20, "dealership cars")
+	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
+	eq(#Vehicles.ByCategory("Pack"), 25, "gamepass pack cars")
 	for _, job in { "Police", "Fire", "Rettungsdienst", "Notarzt", "ADMC", "DXL", "LKW" } do
 		local list = Vehicles.ForJob(job)
-		eq(#list, 1, job .. " bike")
+		assert(#list > 1, job .. ": bike + cars")
+		eq(list[1].body, "bike", job .. ": the bike comes first")
 		eq(list[1].xp or 0, 0, job .. " bike free")
 		assert(VehicleBuilder.Schemes[list[1].livery], job .. " has no livery")
 	end
 	for _, v in Vehicles.List do
-		eq(v.body, "bike", v.id)
+		assert(v.body == "bike" or v.car, v.id .. " is neither bike nor car")
+		if v.category == "Pack" then
+			assert(table.find(Vehicles.PackOrder, v.pack), v.id .. " has an unknown pack " .. tostring(v.pack))
+		end
 	end
+	-- every job has its bike first, then its cars by XP
+	eq(Vehicles.ForJob("Rettungsdienst")[1].id, "motorrad_rettungsdienst")
+	assert(#Vehicles.ForJob("Rettungsdienst") > 1, "rescue cars (EMS) mapped to Rettungsdienst")
 	-- refunds for the removed cars
 	eq(Vehicles.LegacyPrices.lambardini_uros, 250000)
 	eq(Vehicles.LegacyPrices.bugarti_chiran, 3000000)
@@ -628,6 +650,9 @@ end)
 
 -- Every bike builds ---------------------------------------------------------------
 for _, v in Vehicles.List do
+	if v.car then
+		continue -- cars are built by RealisticCars (own test below)
+	end
 	test("build " .. v.id, function()
 		local model = VehicleBuilder.Build(v)
 		assert(model.PrimaryPart, "no primary part")
@@ -827,7 +852,7 @@ test("real city + map", function()
 			uis[ui] = true
 		end
 	end
-	assert(uis.Handyland and not uis.Dealership, "shops: Handyland yes, Autohaus closed")
+	assert(uis.Handyland and uis.Dealership, "shops: Handyland and Autohaus")
 
 	local StoreBuilder = requirePath(Server.StoreBuilder)
 	StoreBuilder.Build()
@@ -1117,6 +1142,35 @@ test("votes are shared by all servers", function()
 	assert(Votes.End(), "ended")
 	eq(Votes.IsRunning(), false)
 	assert(mem.current.ends <= os.time(), "end saved too")
+end)
+
+test("every car builds and gets its livery", function()
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local storage = roblox.Instance.new("Folder")
+	local oldStorage = fakeServices.ServerStorage
+	fakeServices.ServerStorage = storage
+	cache["ServerScriptService/Server/Cars/VehicleModelGenerator"] = nil
+	local Generator = requirePath(pathProxy({ "ServerScriptService", "Server", "Cars", "VehicleModelGenerator" }))
+	local Applier = requirePath(pathProxy({ "ServerScriptService", "Server", "Cars", "LiveryApplier" }))
+	fakeServices.ServerStorage = oldStorage
+	local built, failed = 0, {}
+	for _, v in VehicleConfig.List do
+		local ok, err = pcall(function()
+			local template = Generator.Get(v)
+			assert(template, "no model")
+			local model = template:Clone()
+			assert(model.PrimaryPart and model:FindFirstChild("DriverSeat"), "chassis + driver seat")
+			Applier.ApplyVehicle(model, v, nil)
+			model:Destroy()
+		end)
+		if ok then
+			built += 1
+		else
+			table.insert(failed, v.Id .. ": " .. tostring(err))
+		end
+	end
+	eq(#failed, 0, table.concat(failed, "\n"))
+	print(string.format("  cars: %d built", built))
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

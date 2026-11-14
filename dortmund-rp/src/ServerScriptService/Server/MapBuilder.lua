@@ -126,6 +126,15 @@ function MapBuilder.Build()
 		"📱 Handyland"
 	)
 
+	marker(
+		"Shop",
+		shops.Dealership.marker[1],
+		shops.Dealership.marker[2],
+		Color3.fromRGB(240, 240, 240),
+		{ UI = "Dealership", ActionText = "Autohaus", ObjectText = "Autohaus Westfalendamm" },
+		"🚗 Autohaus"
+	)
+
 	for _, f in Locations.Fuel do
 		marker(
 			"Refuel",

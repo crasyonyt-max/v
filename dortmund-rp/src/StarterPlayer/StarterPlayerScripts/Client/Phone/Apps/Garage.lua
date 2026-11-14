@@ -1,5 +1,5 @@
 --!strict
--- Garage: spawn / park your motorbike, plate, paint colour.
+-- Garage: free starter car pick, spawn / park your vehicles, plate, paint colour.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -22,7 +22,7 @@ end
 
 Phone.Register({
 	id = "garage",
-	icon = "🏍️",
+	icon = "🚗",
 	color = Color3.fromRGB(80, 85, 95),
 	order = 5,
 	build = function(container)
@@ -31,6 +31,23 @@ Phone.Register({
 
 		local function render(state: { [string]: any })
 			Make.Clear(root)
+			-- one free car to pick (once)
+			if not state.carStarterChosen then
+				Make.Label(Store.T("choose_starter"), 15, T.text, T.bold, { LayoutOrder = -10, Parent = root })
+				for i, id in Vehicles.CarStarterIds do
+					local def = Vehicles.ById[id]
+					local card = Make.Card({ LayoutOrder = -10 + i, Parent = root })
+					New(
+						"Frame",
+						{ Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = def.color, Parent = card },
+						{ Make.Corner(3) }
+					)
+					Make.Label(def.name, 14, T.text, T.bold, { Parent = card })
+					Make.Button(Store.T("free"), T.good, function()
+						req("Vehicle.ChooseStarter", id)
+					end, { Parent = card })
+				end
+			end
 			Make.Button("🅿️ " .. Store.T("despawn"), T.panel, function()
 				req("Vehicle.Despawn")
 			end, { LayoutOrder = 1, Parent = root })

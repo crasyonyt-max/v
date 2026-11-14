@@ -3,7 +3,8 @@
 -- Civilians ride it in their own paint colour; on duty (job garage) it comes in
 -- the job livery. `id` values are saved in player data: never rename an id.
 --
--- category: "Starter" (the free bike everyone owns) | "Job" | "Admin"
+-- category: "Starter" (the free bike everyone owns) | "CarStarter" (one free car to pick)
+--           | "Dealer" | "Pack" (gamepass + price) | "Job" | "Admin"
 -- speed: top speed in km/h, accel: 0-100 feel (1 = slow, 3 = very fast)
 
 export type Vehicle = {
@@ -22,6 +23,8 @@ export type Vehicle = {
 	emergency: boolean?,
 	livery: string?, -- "Police" | "Fire" | "Rescue" | "ADMC" | "DXL" | "LKW" | "Admin"
 	note: string?,
+	car: string?, -- VehicleConfig id (cars); nil = motorbike
+	repaintable: boolean?,
 }
 
 local Vehicles = {}
@@ -78,6 +81,45 @@ table.insert(list, {
 	accel = 2.8,
 	color = Color3.fromRGB(255, 115, 0),
 })
+
+-- CARS (RealisticCars + VehicleConfig/LiveryConfig in ReplicatedStorage) -------------
+-- Every car of VehicleConfig becomes an entry here; `car` is its VehicleConfig id.
+local VehicleConfig = require(script.Parent.Parent:WaitForChild("VehicleConfig")) :: any
+local JOB_OF = { EMS = "Rettungsdienst" } -- their job names -> ours
+local PACK_OF =
+	{ ELECTRIC = "Electric", HYPERCAR = "Hypercar", OFFROAD = "Offroad", LUXURY = "Luxury", CLASSIC = "Classic" }
+Vehicles.CarStarterIds = {} :: { string }
+for _, v in VehicleConfig.List do
+	local entry: Vehicle = {
+		id = v.Id,
+		name = v.Name,
+		category = "Dealer",
+		price = v.Price,
+		body = "car",
+		speed = 0,
+		accel = 1,
+		color = v.Livery.Colors.Body or Color3.fromRGB(200, 200, 200),
+		car = v.Id,
+		emergency = v.LightType ~= "none",
+		repaintable = v.Repaintable,
+	}
+	if v.Category == "Starter" then
+		entry.category = "CarStarter"
+		table.insert(Vehicles.CarStarterIds, v.Id)
+	elseif v.Category == "Gamepass" then
+		entry.category = "Pack"
+		entry.pack = PACK_OF[v.Gamepass.Pack] or v.Gamepass.Pack
+	elseif v.Category == "ServerAdmin" or v.Category == "GameAdmin" then
+		entry.category = "Admin"
+		entry.adminLevel = if v.Category == "GameAdmin" then "Game" else "Server"
+	elseif v.Job then
+		entry.category = "Job"
+		entry.job = JOB_OF[v.Job] or v.Job
+		entry.xp = v.XPRequired
+	end
+	table.insert(list, entry)
+end
+Vehicles.PackOrder = { "Electric", "Hypercar", "Offroad", "Luxury", "Classic" }
 
 Vehicles.List = list
 Vehicles.ById = {} :: { [string]: Vehicle }
@@ -158,6 +200,15 @@ function Vehicles.ForJob(jobId: string): { Vehicle }
 			table.insert(out, v)
 		end
 	end
+	table.sort(out, function(a, b)
+		if (a.xp or 0) ~= (b.xp or 0) then
+			return (a.xp or 0) < (b.xp or 0)
+		end
+		if (a.car == nil) ~= (b.car == nil) then
+			return a.car == nil -- the bike first
+		end
+		return a.id < b.id
+	end)
 	return out
 end
 

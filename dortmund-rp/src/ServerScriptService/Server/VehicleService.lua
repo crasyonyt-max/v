@@ -21,6 +21,9 @@ local State = require(script.Parent.State)
 local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
+local CarGenerator = require(script.Parent.Cars.VehicleModelGenerator)
+local LiveryApplier = require(script.Parent.Cars.LiveryApplier)
+local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig")) :: any
 local XPService = require(script.Parent.XPService)
 local GameLog = require(script.Parent.GameLog)
 
@@ -28,6 +31,7 @@ local VehicleService = {}
 
 local PLATE_FEE = 250
 local PAINT_FEE = 500
+local SELL_BACK = 0.5 -- the dealer buys cars back at 50 %
 
 local folder = Instance.new("Folder")
 folder.Name = "Vehicles"
@@ -287,6 +291,92 @@ local function setupRefuel(model: Model)
 	end)
 end
 
+-- Cars (RealisticCars): the model comes from VehicleConfig + the generator, the
+-- livery from LiveryApplier; CarServer / CarClient (ReplicatedStorage.RealisticCars)
+-- do the driving. Our part: ownership, who may drive, getting out, plates, despawn.
+local function spawnCar(
+	player: Player,
+	def: any,
+	color: Color3?,
+	plateText: string?,
+	meta: { [string]: any }
+): (boolean, string?)
+	local vcfg = VehicleConfig.Get(def.car)
+	local template = vcfg and CarGenerator.Get(vcfg)
+	if not template then
+		return false, "error"
+	end
+	VehicleService.Despawn(player)
+	local model = template:Clone()
+	local boxCf, size = model:GetBoundingBox()
+	local cf = meta.SpawnAt or spawnCFrame(player, math.max(size.X, 6))
+	meta.SpawnAt = nil
+	if not cf then
+		model:Destroy()
+		return false, "no_space"
+	end
+	-- bottom of the car on the ground
+	local pivot = model:GetPivot()
+	local above = pivot.Position.Y - (boxCf.Position.Y - size.Y / 2)
+	model.Name = def.name
+	model:SetAttribute("OwnerId", player.UserId)
+	model:SetAttribute("VehicleId", def.id)
+	model:SetAttribute("Fuel", 100)
+	for k, v in meta do
+		model:SetAttribute(k, v)
+	end
+	local custom = if color and vcfg.Repaintable then { Body = color } else nil
+	pcall(LiveryApplier.ApplyVehicle, model, vcfg, custom)
+	model:SetAttribute("Plate", plateText or Plate.Random(Config.DefaultCityCode, rng))
+	model:PivotTo(CFrame.new(cf.Position + Vector3.new(0, above + 0.3, 0)) * (cf - cf.Position))
+	model.Parent = folder -- CarServer takes it over (tag "RealisticCar")
+
+	-- only the owner (or the job / admins) may drive; getting out puts you beside the car
+	local chassis = model.PrimaryPart :: BasePart
+	for _, seat in model:GetChildren() do
+		if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+			local seatPart = seat :: BasePart
+			local isDriver = seat.Name == "DriverSeat"
+			local last: Humanoid? = nil
+			seatPart:GetPropertyChangedSignal("Occupant"):Connect(function()
+				local hum = (seat :: any).Occupant :: Humanoid?
+				if hum then
+					last = hum
+					local driver = Players:GetPlayerFromCharacter(hum.Parent)
+					if isDriver and (not driver or not mayDrive(driver, player, meta)) then
+						task.defer(function()
+							hum.Sit = false
+							hum.Jump = true
+						end)
+						if driver then
+							Remotes.Push(driver, "Notify", { key = "not_your_car", error = true })
+						end
+					end
+					return
+				end
+				local character = last and last.Parent
+				last = nil
+				if character and character:IsA("Model") and character.Parent and chassis.Parent then
+					local side = if chassis.CFrame:PointToObjectSpace(seatPart.Position).X < 0 then -1 else 1
+					local out = chassis.CFrame * CFrame.new(side * (size.X / 2 + 2.5), 0, 0)
+					task.defer(function()
+						character:PivotTo(
+							CFrame.new(out.Position + Vector3.new(0, 2, 0)) * (chassis.CFrame - chassis.CFrame.Position)
+						)
+					end)
+				end
+			end)
+		end
+	end
+	spawned[player] = model
+	GameLog.Add(
+		"vehicle",
+		player,
+		"spawned " .. def.name .. (if meta.Job then " (" .. tostring(meta.Job) .. ")" else "")
+	)
+	return true, nil
+end
+
 local function spawnModel(
 	player: Player,
 	def: any,
@@ -294,6 +384,9 @@ local function spawnModel(
 	plateText: string?,
 	meta: { [string]: any }
 ): (boolean, string?)
+	if def.car then
+		return spawnCar(player, def, color, plateText, meta)
+	end
 	VehicleService.Despawn(player)
 	local model = VehicleBuilder.Build(def, color)
 	local built = model.PrimaryPart :: BasePart
@@ -460,9 +553,10 @@ local function migrate(player: Player, data: { [string]: any })
 	local oldCars: { string } = {}
 	for uid, entry in data.vehicles do
 		local def = Vehicles.ById[entry.id]
-		if def and def.category == "Starter" then
+		if entry.id == Vehicles.BikeId then
 			hasBike = true
-		else
+		elseif not def then
+			-- a car of the old system (removed): refunded once
 			refund += Vehicles.LegacyPrices[entry.id] or 0
 			table.insert(oldCars, uid)
 		end
@@ -521,6 +615,75 @@ function VehicleService.Start()
 			VehicleService.Despawn(player)
 		end
 	end)
+
+	-- one free car to pick (once)
+	Remotes.Handle("Vehicle.ChooseStarter", function(player, vehicleId: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		if data.carStarterChosen then
+			return Remotes.Fail("already_owned")
+		end
+		if typeof(vehicleId) ~= "string" or not table.find(Vehicles.CarStarterIds, vehicleId) then
+			return Remotes.Fail("bad_item")
+		end
+		data.carStarterChosen = true
+		addOwned(player, vehicleId)
+		return Remotes.Ok()
+	end, { rate = 3 })
+
+	Remotes.Handle("Vehicle.Buy", function(player, vehicleId: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		local def = typeof(vehicleId) == "string" and Vehicles.ById[vehicleId] or nil
+		if not def or (def.category ~= "Dealer" and def.category ~= "Pack") then
+			return Remotes.Fail("bad_item")
+		end
+		if not Interaction.IsNear(player, "Shop", 40, "UI", "Dealership") then
+			return Remotes.Fail("not_near")
+		end
+		if def.category == "Pack" and not State.OwnsPack(player, def.pack :: string) then
+			return Remotes.Fail("pack_locked")
+		end
+		for _, e in data.vehicles do
+			if e.id == def.id then
+				return Remotes.Fail("already_owned")
+			end
+		end
+		local count = 0
+		for _ in data.vehicles do
+			count += 1
+		end
+		if count >= 40 then
+			return Remotes.Fail("garage_full")
+		end
+		if not Economy.TrySpend(player, def.price, "Autohaus: " .. def.name) then
+			return Remotes.Fail("no_money")
+		end
+		addOwned(player, def.id)
+		return Remotes.Ok()
+	end, { rate = 5 })
+
+	Remotes.Handle("Vehicle.Sell", function(player, uid: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		local entry = typeof(uid) == "string" and data.vehicles[uid] or nil
+		if not entry or entry.id == Vehicles.BikeId then
+			return Remotes.Fail("not_owned")
+		end
+		if not Interaction.IsNear(player, "Shop", 40, "UI", "Dealership") then
+			return Remotes.Fail("not_near")
+		end
+		local def = Vehicles.ById[entry.id]
+		local spawnedModel = spawned[player]
+		if spawnedModel and spawnedModel:GetAttribute("Uid") == uid then
+			VehicleService.Despawn(player)
+		end
+		data.vehicles[uid] = nil
+		task.spawn(releasePlate, entry.plate, player.UserId)
+		local value = if def then math.floor(def.price * SELL_BACK) else 0
+		if value > 0 then
+			Economy.Add(player, value, "Autohaus Ankauf: " .. (def and def.name or "?"))
+		end
+		State.MarkDirty(player)
+		return Remotes.Ok({ value = value })
+	end, { rate = 3 })
 
 	Remotes.Handle("Vehicle.Spawn", function(player, uid: any)
 		local data = DataService.Get(player) :: { [string]: any }
@@ -631,13 +794,21 @@ function VehicleService.Start()
 		if not entry or not i then
 			return Remotes.Fail("bad_request")
 		end
+		local def = Vehicles.ById[entry.id]
+		if def and def.car and not def.repaintable then
+			return Remotes.Fail("livery_locked")
+		end
 		if not Economy.TrySpend(player, PAINT_FEE, "Lackierung") then
 			return Remotes.Fail("no_money")
 		end
 		entry.color = table.clone(PALETTE[i])
 		local model = spawned[player]
 		if model and model:GetAttribute("Uid") == uid then
-			VehicleBuilder.SetColor(model, toColor(entry.color))
+			if def and def.car then
+				pcall(LiveryApplier.ApplyVehicle, model, VehicleConfig.Get(def.car), { Body = toColor(entry.color) })
+			else
+				VehicleBuilder.SetColor(model, toColor(entry.color))
+			end
 		end
 		State.MarkDirty(player)
 		return Remotes.Ok()

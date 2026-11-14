@@ -6,6 +6,8 @@ Same layout rules as Rojo:
   folder                     -> Folder
   name.server.lua            -> Script
   name.client.lua            -> LocalScript
+  name.runserver.lua         -> Script, RunContext Server (runs in ReplicatedStorage too)
+  name.runclient.lua         -> Script, RunContext Client
   name.lua                   -> ModuleScript
 
 Usage: python3 build.py
@@ -42,7 +44,12 @@ def cdata(text: str) -> str:
 
 def script_item(path: Path) -> str:
     name = path.name
-    if name.endswith(".server.lua"):
+    run_context = None
+    if name.endswith(".runserver.lua"):  # Script with RunContext = Server (runs anywhere, e.g. ReplicatedStorage)
+        cls, inst, run_context = "Script", name[: -len(".runserver.lua")], 1
+    elif name.endswith(".runclient.lua"):  # Script with RunContext = Client
+        cls, inst, run_context = "Script", name[: -len(".runclient.lua")], 2
+    elif name.endswith(".server.lua"):
         cls, inst = "Script", name[: -len(".server.lua")]
     elif name.endswith(".client.lua"):
         cls, inst = "LocalScript", name[: -len(".client.lua")]
@@ -52,7 +59,8 @@ def script_item(path: Path) -> str:
     return (
         f'<Item class="{cls}" referent="{ref()}"><Properties>'
         f'<string name="Name">{escape(inst)}</string>'
-        f'<ProtectedString name="Source">{cdata(source)}</ProtectedString>'
+        + (f'<token name="RunContext">{run_context}</token>' if run_context else "")
+        + f'<ProtectedString name="Source">{cdata(source)}</ProtectedString>'
         f"</Properties></Item>"
     )
 

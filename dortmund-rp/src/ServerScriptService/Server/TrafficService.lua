@@ -275,7 +275,7 @@ function TrafficService.Start()
 				for _, player in Players:GetPlayers() do
 					local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 					local seat = hum and hum.SeatPart
-					local model = seat and seat.Name == "DriveSeat" and seat.Parent
+					local model = seat and (seat.Name == "DriveSeat" or seat.Name == "DriverSeat") and seat.Parent
 					if model and model:IsA("Model") and model.Parent == vehicles and model.PrimaryPart then
 						check(player, model.PrimaryPart)
 					else
