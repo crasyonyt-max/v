@@ -35,7 +35,7 @@ VehicleConfig.Settings = {
 	VehiclesFolder = "Vehicles", -- ServerStorage/<this>
 }
 
-VehicleConfig.Jobs = { "Police", "Fire", "EMS", "Notarzt", "ADMC", "DXL", "LKW" }
+VehicleConfig.Jobs = { "Police", "Fire", "EMS", "Notarzt", "ADMC", "DXL", "LKW", "Bus" }
 
 -------------------------------------------------------------------------------
 -- DEALERSHIP: { Name, Price EUR, Paint }  (Paint names are in LiveryConfig.Paints)
@@ -153,6 +153,15 @@ local JOB_FLEETS = {
 			{ "Mercator Aktros", 10000 },
 			{ "Skandia R", 15000 },
 			{ "Volvar FH16", 25000 },
+		},
+	},
+	{
+		Job = "Bus", Preset = "BUS",
+		Vehicles = {
+			{ "Mercator Sitaro", 0, IsStarter = true },
+			{ "MAR Lion's Stadt", 1000 },
+			{ "Solaria Urbano Elektro", 3000, Lettering = "E-BUS DORTMUND" },
+			{ "Mercator Sitaro G", 6000, Lettering = "GELENKBUS" },
 		},
 	},
 }

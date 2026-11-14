@@ -910,11 +910,15 @@ local Generator = {}
 local KOMBI = { roofRear = 4.25, rearBase = 4.65 } -- estate roof on the Sedan
 local LKW = { length = 9.0, cargoBox = { from = 2.45, height = 3.6, trailer = true } }
 
+local GELENKBUS = { length = 18.0, roofRear = 17.90, rearBase = 18.0 } -- rigid 18 m body
+
 local CATEGORY_RULES = {
 	LKW = { Type = "Truck", Body = LKW },
 }
 
 local BODY_RULES = {
+	{ Type = "Bus", Body = GELENKBUS, Match = { "Sitaro G" } },
+	{ Type = "Bus", Match = { "Sitaro", "Lion's", "Urbano" } },
 	{ Type = "Supercar", Match = { "Chiran", "Jesco", "Huayro", "AMX Uno", "Neverra", "Black Series", "750S", "SF90", "Venino", "One:1" } },
 	{ Type = "Sports", Match = { "Elfer", "Kayman", "Kontinental", "300 SL", "Taikan", "e-tran" } },
 	{ Type = "Pickup", Match = { "Raptur" } },

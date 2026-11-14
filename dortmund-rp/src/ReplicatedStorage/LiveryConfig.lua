@@ -70,6 +70,14 @@ LiveryConfig.Presets = {
 		Lettering = "NOTARZT",
 	},
 
+	-- Public transport ----------------------------------------------------
+	BUS = {
+		Colors = { Body = hex("#F4F4F4"), Accent = hex("#0B6E8A"), Stripe = hex("#F2B705") },
+		Lettering = "STADTBUS DORTMUND",
+		LetteringColor = hex("#0B6E8A"),
+		LightType = "none",
+	},
+
 	-- Services ------------------------------------------------------------
 	ADMC = {
 		Colors = { Body = hex("#F5C400"), Stripe = hex("#111111") },
