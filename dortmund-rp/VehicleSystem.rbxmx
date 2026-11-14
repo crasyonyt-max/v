@@ -1,0 +1,1217 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+<Item class="Folder" referent="RBX9"><Properties><string name="Name">VehicleSystem</string></Properties>
+<Item class="ModuleScript" referent="RBX3"><Properties><string name="Name">AdminConfig</string><ProtectedString name="Source"><![CDATA[--[[
+	AdminConfig (server only)
+
+	Game Admins: whitelisted by UserId, valid in every server.
+	Server Admins (private server owners and the admins they appoint) are
+	handled separately in ServerAdmins.
+]]
+
+local AdminConfig = {}
+
+AdminConfig.GameAdminUserIds = {
+	-- 123456789, -- name (for your own reference)
+}
+
+local lookup = {}
+for _, id in ipairs(AdminConfig.GameAdminUserIds) do
+	lookup[id] = true
+end
+
+function AdminConfig.IsGameAdmin(userId)
+	return lookup[userId] == true
+end
+
+return AdminConfig
+]]></ProtectedString></Properties></Item>
+<Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">LiveryApplier</string><ProtectedString name="Source"><![CDATA[--[[
+	LiveryApplier (server only)
+
+	Paints a vehicle model from its livery, using CollectionService tags on the
+	model's parts:
+	  "Body", "Stripe", "Accent"  get the livery's colors
+	  "Lettering"                 text from the livery. It uses TextLabels already in the part,
+	                              or creates SurfaceGuis on the faces listed in the part's
+	                              "LetteringFaces" attribute (default "Left,Right").
+	                              Attribute LetteringSlot = "Secondary" uses SecondaryLettering.
+	  "EmergencyLight"            colored by LightType. Hidden for "none" and "hidden_blue"
+	                              (the model attribute LightsHidden tells your light script).
+	  "Extra" + attribute ExtraName   kept only if the vehicle lists that extra.
+
+	A child Model named "Trailer" gets a random trailer preset if the livery has
+	TrailerPresets (LKW).
+]]
+
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LiveryConfig = require(ReplicatedStorage:WaitForChild("LiveryConfig"))
+
+local LiveryApplier = {}
+
+local DEFAULT_FACES = { Enum.NormalId.Left, Enum.NormalId.Right }
+
+local function letteringFaces(part)
+	local attr = part:GetAttribute("LetteringFaces")
+	if type(attr) ~= "string" then
+		return DEFAULT_FACES
+	end
+	local faces = {}
+	for name in attr:gmatch("[^,%s]+") do
+		for _, face in ipairs(Enum.NormalId:GetEnumItems()) do
+			if face.Name == name then
+				table.insert(faces, face)
+			end
+		end
+	end
+	return #faces > 0 and faces or DEFAULT_FACES
+end
+
+local function applyLettering(part, text, color)
+	local labels = {}
+	for _, d in ipairs(part:GetDescendants()) do
+		if d:IsA("TextLabel") then
+			table.insert(labels, d)
+		end
+	end
+	if not text or text == "" then
+		for _, label in ipairs(labels) do
+			label.Visible = false
+		end
+		return
+	end
+	if #labels == 0 then
+		for _, face in ipairs(letteringFaces(part)) do
+			local gui = Instance.new("SurfaceGui")
+			gui.Name = "Lettering" .. face.Name
+			gui.Face = face
+			gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+			gui.PixelsPerStud = 50
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.fromScale(1, 1)
+			label.BackgroundTransparency = 1
+			label.TextScaled = true
+			label.Font = Enum.Font.GothamBlack
+			label.Parent = gui
+			gui.Parent = part
+			table.insert(labels, label)
+		end
+	end
+	for _, label in ipairs(labels) do
+		label.Text = text
+		label.Visible = true
+		if color then
+			label.TextColor3 = color
+		end
+	end
+end
+
+-- Paints every tagged part under `container`, skipping anything inside `skip`.
+local function paint(container, livery, skip)
+	for _, d in ipairs(container:GetDescendants()) do
+		if d:IsA("BasePart") and not (skip and d:IsDescendantOf(skip)) then
+			for _, slot in ipairs(LiveryConfig.ColorSlots) do
+				local color = livery.Colors[slot]
+				if color and CollectionService:HasTag(d, slot) then
+					d.Color = color
+				end
+			end
+			if CollectionService:HasTag(d, "Lettering") then
+				local secondary = d:GetAttribute("LetteringSlot") == "Secondary"
+				applyLettering(d, secondary and livery.SecondaryLettering or livery.Lettering, livery.LetteringColor)
+			end
+		end
+	end
+end
+
+local function applyLights(model, lightType)
+	model:SetAttribute("LightType", lightType)
+	model:SetAttribute("LightsHidden", lightType == "none" or lightType == "hidden_blue")
+	local color = lightType == "orange" and LiveryConfig.LightColors.orange or LiveryConfig.LightColors.blue
+	for _, d in ipairs(model:GetDescendants()) do
+		if CollectionService:HasTag(d, "EmergencyLight") then
+			local parts = d:IsA("BasePart") and { d } or {}
+			for _, sub in ipairs(d:GetDescendants()) do
+				if sub:IsA("BasePart") then
+					table.insert(parts, sub)
+				end
+			end
+			for _, part in ipairs(parts) do
+				if part:GetAttribute("BaseTransparency") == nil then
+					part:SetAttribute("BaseTransparency", part.Transparency)
+				end
+				part.Color = color
+				part.Transparency = (lightType == "none" or lightType == "hidden_blue") and 1 or part:GetAttribute("BaseTransparency")
+				for _, light in ipairs(part:GetChildren()) do
+					if light:IsA("Light") then
+						light.Color = color
+						light.Enabled = false
+					end
+				end
+			end
+		end
+	end
+end
+
+local function applyExtras(model, extras)
+	local wanted = {}
+	for _, name in ipairs(extras or {}) do
+		wanted[name] = true
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d.Parent and CollectionService:HasTag(d, "Extra") and not wanted[d:GetAttribute("ExtraName")] then
+			d:Destroy()
+		end
+	end
+end
+
+-- Paints a model with any livery table ({ Colors, Lettering, ... }).
+function LiveryApplier.Apply(model, livery)
+	paint(model, livery)
+end
+
+--[[
+	Applies a VehicleConfig entry to a spawned model.
+	customColors ({ Body = Color3, ... }) are only used when the vehicle is
+	Repaintable. Job vehicles always keep their livery.
+]]
+function LiveryApplier.ApplyVehicle(model, vehicle, customColors)
+	local livery = vehicle.Livery
+	if customColors and vehicle.Repaintable then
+		livery = table.clone(livery)
+		livery.Colors = table.clone(vehicle.Livery.Colors)
+		for _, slot in ipairs(LiveryConfig.RepaintableSlots) do
+			if customColors[slot] then
+				livery.Colors[slot] = customColors[slot]
+			end
+		end
+	end
+
+	local trailer = model:FindFirstChild("Trailer")
+	paint(model, livery, trailer)
+
+	if trailer then
+		local presets = livery.TrailerPresets
+		local trailerLivery = livery
+		if presets and #presets > 0 then
+			local chosen = model:GetAttribute("TrailerLivery")
+			if not table.find(presets, chosen) then
+				chosen = presets[math.random(1, #presets)]
+			end
+			local resolved, err = LiveryConfig.Resolve(chosen)
+			if resolved then
+				trailerLivery = resolved
+				model:SetAttribute("TrailerLivery", chosen)
+			else
+				warn("[LiveryApplier] " .. tostring(err))
+			end
+		end
+		paint(trailer, trailerLivery)
+	end
+
+	applyLights(model, vehicle.LightType)
+	applyExtras(model, vehicle.Extras)
+	model:SetAttribute("LiveryLocked", not vehicle.Repaintable)
+end
+
+return LiveryApplier
+]]></ProtectedString></Properties></Item>
+<Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">PlayerDataAdapter</string><ProtectedString name="Source"><![CDATA[--[[
+	PlayerDataAdapter (server only)
+
+	Saves per player with DataStore: Money, JobXP, OwnedVehicles, CustomColors,
+	StarterClaimed.
+	  * Loads with retries. If loading fails in a live game, the player is
+	    kicked so an empty profile never overwrites their real save.
+	  * Autosaves every few minutes, saves on leave, and saves everyone on
+	    server shutdown (BindToClose).
+	  * The current job is session state (not saved). Your job system sets it with
+	    PlayerDataAdapter.SetCurrentJob(player, "Police") and clears it with nil.
+
+	Values are mirrored to player attributes (Money, XP_Police, CurrentJob, ...)
+	so client UI can read them. Clients can't change the server's copy.
+]]
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig"))
+local LiveryConfig = require(ReplicatedStorage:WaitForChild("LiveryConfig"))
+
+local STORE_NAME = "PlayerData_v1"
+local AUTOSAVE_INTERVAL = 180
+local MAX_RETRIES = 5
+local SHUTDOWN_TIMEOUT = 25
+
+local Adapter = {}
+local profiles = {} -- [player] = { data, saving, noSave }
+local loadedSignal = Instance.new("BindableEvent")
+Adapter.Loaded = loadedSignal.Event -- fires (player) when data is ready
+
+local storeOk, store = pcall(DataStoreService.GetDataStore, DataStoreService, STORE_NAME)
+if not storeOk then
+	warn("[PlayerData] DataStore unavailable: " .. tostring(store))
+	store = nil
+end
+
+local function template()
+	return {
+		Version = 1,
+		Money = VehicleConfig.Settings.StartingMoney,
+		JobXP = {}, -- [job] = number
+		OwnedVehicles = {}, -- [vehicleId] = true
+		CustomColors = {}, -- [vehicleId] = { Body = "RRGGBB", ... }
+		StarterClaimed = false, -- or the claimed vehicle Id
+	}
+end
+
+local function reconcile(data)
+	local fresh = template()
+	if type(data) ~= "table" then
+		return fresh
+	end
+	for k, v in pairs(fresh) do
+		if type(data[k]) ~= type(v) then
+			-- StarterClaimed may be a string (vehicle id)
+			if not (k == "StarterClaimed" and type(data[k]) == "string") then
+				data[k] = v
+			end
+		end
+	end
+	return data
+end
+
+local function withRetries(label, fn)
+	local lastErr
+	for attempt = 1, MAX_RETRIES do
+		local ok, result = pcall(fn)
+		if ok then
+			return true, result
+		end
+		lastErr = result
+		warn(("[PlayerData] %s failed (%d/%d): %s"):format(label, attempt, MAX_RETRIES, tostring(result)))
+		if attempt < MAX_RETRIES then
+			task.wait(math.min(2 ^ attempt, 16))
+		end
+	end
+	return false, lastErr
+end
+
+local function key(player)
+	return "u_" .. player.UserId
+end
+
+local function publish(player)
+	local p = profiles[player]
+	if not p then
+		return
+	end
+	player:SetAttribute("Money", p.data.Money)
+	for _, job in ipairs(VehicleConfig.Jobs) do
+		player:SetAttribute("XP_" .. job, p.data.JobXP[job] or 0)
+	end
+	player:SetAttribute("StarterClaimed", p.data.StarterClaimed ~= false)
+end
+
+local function load(player)
+	local ok, data
+	if store then
+		ok, data = withRetries("Load " .. player.UserId, function()
+			return store:GetAsync(key(player))
+		end)
+	end
+	if not player.Parent then
+		return
+	end
+	local noSave = false
+	if not ok then
+		if RunService:IsStudio() then
+			warn("[PlayerData] Using temporary data in Studio (enable Studio API access to test saving). Nothing will be saved.")
+			noSave = true
+			data = nil
+		else
+			player:Kick("Your save data could not be loaded. Please rejoin in a moment.")
+			return
+		end
+	end
+	profiles[player] = { data = reconcile(data), saving = false, noSave = noSave }
+	publish(player)
+	player:SetAttribute("DataLoaded", true)
+	loadedSignal:Fire(player)
+end
+
+local function save(player)
+	local p = profiles[player]
+	if not p or p.noSave or not store then
+		return true
+	end
+	while p.saving do
+		task.wait(0.1)
+	end
+	p.saving = true
+	local snapshot = p.data
+	local ok = withRetries("Save " .. player.UserId, function()
+		store:UpdateAsync(key(player), function()
+			return snapshot
+		end)
+	end)
+	p.saving = false
+	return ok
+end
+
+-------------------------------------------------------------------------------
+-- Public API
+-------------------------------------------------------------------------------
+
+function Adapter.IsLoaded(player)
+	return profiles[player] ~= nil
+end
+
+function Adapter.WaitForData(player, timeout)
+	local deadline = os.clock() + (timeout or 15)
+	while not profiles[player] and player.Parent and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	return profiles[player] ~= nil
+end
+
+local function data(player)
+	local p = profiles[player]
+	return p and p.data
+end
+
+-- Money ------------------------------------------------------------------
+function Adapter.GetMoney(player)
+	local d = data(player)
+	return d and d.Money or 0
+end
+
+function Adapter.AddMoney(player, amount)
+	local d = data(player)
+	if not d or type(amount) ~= "number" or amount ~= amount then
+		return false
+	end
+	d.Money = math.max(0, math.floor(d.Money + amount))
+	publish(player)
+	return true
+end
+
+-- Takes money only if the player has enough. Returns true on success.
+function Adapter.TrySpend(player, amount)
+	local d = data(player)
+	if not d or type(amount) ~= "number" or amount < 0 or d.Money < amount then
+		return false
+	end
+	d.Money -= amount
+	publish(player)
+	return true
+end
+
+-- Job XP -----------------------------------------------------------------
+function Adapter.GetJobXP(player, job)
+	local d = data(player)
+	return d and d.JobXP[job] or 0
+end
+
+function Adapter.AddJobXP(player, job, amount)
+	local d = data(player)
+	if not d or not VehicleConfig.IsJob(job) or type(amount) ~= "number" or amount ~= amount then
+		return false
+	end
+	d.JobXP[job] = math.max(0, math.floor((d.JobXP[job] or 0) + amount))
+	publish(player)
+	return true
+end
+
+-- Current job (session only) ---------------------------------------------
+function Adapter.GetCurrentJob(player)
+	return player:GetAttribute("CurrentJob")
+end
+
+function Adapter.SetCurrentJob(player, job)
+	if job ~= nil and not VehicleConfig.IsJob(job) then
+		warn("[PlayerData] Unknown job: " .. tostring(job))
+		return false
+	end
+	player:SetAttribute("CurrentJob", job)
+	return true
+end
+
+-- Vehicles ---------------------------------------------------------------
+function Adapter.OwnsVehicle(player, vehicleId)
+	local d = data(player)
+	return d ~= nil and d.OwnedVehicles[vehicleId] == true
+end
+
+function Adapter.GrantVehicle(player, vehicleId)
+	local d = data(player)
+	if not d or not VehicleConfig.Get(vehicleId) then
+		return false
+	end
+	d.OwnedVehicles[vehicleId] = true
+	return true
+end
+
+function Adapter.GetOwnedVehicles(player)
+	local d = data(player)
+	local list = {}
+	if d then
+		for id in pairs(d.OwnedVehicles) do
+			if VehicleConfig.Get(id) then
+				table.insert(list, id)
+			end
+		end
+	end
+	return list
+end
+
+function Adapter.HasClaimedStarter(player)
+	local d = data(player)
+	return d == nil or d.StarterClaimed ~= false
+end
+
+function Adapter.SetStarterClaimed(player, vehicleId)
+	local d = data(player)
+	if d then
+		d.StarterClaimed = vehicleId
+		publish(player)
+	end
+end
+
+-- Custom colors ----------------------------------------------------------
+-- Returns { Body = Color3, ... } or nil.
+function Adapter.GetCustomColors(player, vehicleId)
+	local d = data(player)
+	local saved = d and d.CustomColors[vehicleId]
+	if not saved then
+		return nil
+	end
+	local colors = {}
+	for _, slot in ipairs(LiveryConfig.RepaintableSlots) do
+		local hexValue = saved[slot]
+		if type(hexValue) == "string" then
+			local ok, color = pcall(Color3.fromHex, hexValue)
+			if ok then
+				colors[slot] = color
+			end
+		end
+	end
+	return next(colors) and colors or nil
+end
+
+-- colors: { Body = Color3, ... } merged into existing; nil resets to factory paint.
+function Adapter.SetCustomColors(player, vehicleId, colors)
+	local d = data(player)
+	if not d then
+		return false
+	end
+	if colors == nil then
+		d.CustomColors[vehicleId] = nil
+		return true
+	end
+	local saved = d.CustomColors[vehicleId] or {}
+	for _, slot in ipairs(LiveryConfig.RepaintableSlots) do
+		local c = colors[slot]
+		if typeof(c) == "Color3" then
+			saved[slot] = c:ToHex()
+		end
+	end
+	d.CustomColors[vehicleId] = saved
+	return true
+end
+
+-- Save on demand (e.g. after a big purchase). Yields.
+function Adapter.Save(player)
+	return save(player)
+end
+
+-------------------------------------------------------------------------------
+-- Lifecycle
+-------------------------------------------------------------------------------
+
+Players.PlayerAdded:Connect(load)
+for _, plr in ipairs(Players:GetPlayers()) do
+	task.spawn(load, plr)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	save(player)
+	profiles[player] = nil
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(AUTOSAVE_INTERVAL)
+		for player in pairs(profiles) do
+			task.spawn(save, player)
+		end
+	end
+end)
+
+game:BindToClose(function()
+	local pending = 0
+	for player in pairs(profiles) do
+		pending += 1
+		task.spawn(function()
+			save(player)
+			pending -= 1
+		end)
+	end
+	local deadline = os.clock() + SHUTDOWN_TIMEOUT
+	while pending > 0 and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end)
+
+return Adapter
+]]></ProtectedString></Properties></Item>
+<Item class="ModuleScript" referent="RBX6"><Properties><string name="Name">ServerAdmins</string><ProtectedString name="Source"><![CDATA[--[[
+	ServerAdmins (server only)
+
+	In a player-owned private server, the owner and the admins they appoint are
+	Server Admins in THAT server only. Appointed admins are saved per private
+	server, so they are still there next time the owner opens it.
+	Public and reserved servers have no Server Admins.
+
+	Separate from AdminConfig (Game Admins).
+]]
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+
+local MAX_APPOINTED = 25
+local MAX_RETRIES = 5
+
+local ServerAdmins = {}
+
+local isPrivateServer = game.PrivateServerId ~= "" and game.PrivateServerOwnerId ~= 0
+local ownerId = game.PrivateServerOwnerId
+local appointed = {} -- [userId] = true
+local store = nil
+if isPrivateServer then
+	local ok, result = pcall(DataStoreService.GetDataStore, DataStoreService, "ServerAdmins_v1")
+	store = ok and result or nil
+end
+
+local function withRetries(label, fn)
+	for attempt = 1, MAX_RETRIES do
+		local ok, result = pcall(fn)
+		if ok then
+			return true, result
+		end
+		warn(("[ServerAdmins] %s failed (%d/%d): %s"):format(label, attempt, MAX_RETRIES, tostring(result)))
+		if attempt < MAX_RETRIES then
+			task.wait(math.min(2 ^ attempt, 16))
+		end
+	end
+	return false
+end
+
+local function refreshAttribute(player)
+	player:SetAttribute("IsServerAdmin", ServerAdmins.IsServerAdmin(player))
+	player:SetAttribute("IsServerOwner", ServerAdmins.IsOwner(player))
+end
+
+local function save()
+	if not store then
+		return
+	end
+	local list = ServerAdmins.List()
+	task.spawn(withRetries, "Save", function()
+		store:UpdateAsync(game.PrivateServerId, function()
+			return list
+		end)
+	end)
+end
+
+function ServerAdmins.IsPrivateServer()
+	return isPrivateServer
+end
+
+function ServerAdmins.IsOwner(player)
+	return isPrivateServer and player.UserId == ownerId
+end
+
+function ServerAdmins.IsServerAdmin(player)
+	return isPrivateServer and (player.UserId == ownerId or appointed[player.UserId] == true)
+end
+
+function ServerAdmins.List()
+	local list = {}
+	for id in pairs(appointed) do
+		table.insert(list, id)
+	end
+	table.sort(list)
+	return list
+end
+
+-- Only the private server owner may appoint or remove admins.
+function ServerAdmins.Appoint(caller, userId)
+	if not ServerAdmins.IsOwner(caller) then
+		return false, "Only the private server owner can appoint admins."
+	end
+	if type(userId) ~= "number" or userId ~= userId or userId <= 0 or userId % 1 ~= 0 then
+		return false, "Invalid player."
+	end
+	if userId == ownerId then
+		return false, "You are already the owner."
+	end
+	if appointed[userId] then
+		return false, "Already a Server Admin."
+	end
+	if #ServerAdmins.List() >= MAX_APPOINTED then
+		return false, ("You can appoint up to %d admins."):format(MAX_APPOINTED)
+	end
+	appointed[userId] = true
+	save()
+	local target = Players:GetPlayerByUserId(userId)
+	if target then
+		refreshAttribute(target)
+	end
+	return true, "Server Admin appointed."
+end
+
+function ServerAdmins.Remove(caller, userId)
+	if not ServerAdmins.IsOwner(caller) then
+		return false, "Only the private server owner can remove admins."
+	end
+	if type(userId) ~= "number" or not appointed[userId] then
+		return false, "That player is not a Server Admin."
+	end
+	appointed[userId] = nil
+	save()
+	local target = Players:GetPlayerByUserId(userId)
+	if target then
+		refreshAttribute(target)
+	end
+	return true, "Server Admin removed."
+end
+
+-- Load appointed admins for this private server.
+if store then
+	task.spawn(function()
+		local ok, list = withRetries("Load", function()
+			return store:GetAsync(game.PrivateServerId)
+		end)
+		if ok and type(list) == "table" then
+			for _, id in ipairs(list) do
+				if type(id) == "number" then
+					appointed[id] = true
+				end
+			end
+		end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			refreshAttribute(plr)
+		end
+	end)
+end
+
+Players.PlayerAdded:Connect(refreshAttribute)
+for _, plr in ipairs(Players:GetPlayers()) do
+	refreshAttribute(plr)
+end
+
+return ServerAdmins
+]]></ProtectedString></Properties></Item>
+<Item class="ModuleScript" referent="RBX7"><Properties><string name="Name">VehicleAccess</string><ProtectedString name="Source"><![CDATA[--[[
+	VehicleAccess (server only)
+
+	All rules for who may buy, claim, spawn and repaint what. Every function
+	returns (ok: boolean, reason: string).
+]]
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local PlayerData = require(script.Parent.PlayerDataAdapter)
+local AdminConfig = require(script.Parent.AdminConfig)
+local ServerAdmins = require(script.Parent.ServerAdmins)
+
+local Access = {}
+
+-------------------------------------------------------------------------------
+-- Admins and gamepasses
+-------------------------------------------------------------------------------
+
+function Access.IsGameAdmin(player)
+	return AdminConfig.IsGameAdmin(player.UserId)
+end
+
+function Access.IsServerAdmin(player)
+	return ServerAdmins.IsServerAdmin(player)
+end
+
+local passCache = {} -- [player] = { [gamepassId] = true/false }
+
+function Access.OwnsGamepass(player, gamepass)
+	if not gamepass then
+		return true
+	end
+	if gamepass.Id == 0 then
+		-- Placeholder ID: usable in Studio for testing, locked in live games.
+		if RunService:IsStudio() then
+			return true
+		end
+		warn(("[VehicleAccess] Gamepass pack %s still has placeholder ID 0"):format(gamepass.Pack))
+		return false
+	end
+	local cache = passCache[player]
+	if not cache then
+		cache = {}
+		passCache[player] = cache
+	end
+	if cache[gamepass.Id] == nil then
+		local ok, owns = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, gamepass.Id)
+		if not ok then
+			warn("[VehicleAccess] Gamepass check failed: " .. tostring(owns))
+			return false -- don't cache failures
+		end
+		cache[gamepass.Id] = owns
+	end
+	return cache[gamepass.Id]
+end
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamepassId, purchased)
+	if purchased then
+		passCache[player] = passCache[player] or {}
+		passCache[player][gamepassId] = true
+	end
+end)
+Players.PlayerRemoving:Connect(function(player)
+	passCache[player] = nil
+end)
+
+-------------------------------------------------------------------------------
+-- Rules
+-------------------------------------------------------------------------------
+
+local BUYABLE = { Dealership = true, Gamepass = true }
+local OWNABLE = { Dealership = true, Gamepass = true, Starter = true }
+
+function Access.CanBuy(player, vehicle)
+	if not PlayerData.IsLoaded(player) then
+		return false, "Your data is still loading."
+	end
+	if not BUYABLE[vehicle.Category] then
+		return false, "This vehicle can't be bought."
+	end
+	if PlayerData.OwnsVehicle(player, vehicle.Id) then
+		return false, "You already own this vehicle."
+	end
+	if vehicle.Gamepass and not Access.OwnsGamepass(player, vehicle.Gamepass) then
+		return false, ("Requires the %s gamepass (%d R$)."):format(vehicle.Gamepass.Pack, vehicle.Gamepass.Robux)
+	end
+	if PlayerData.GetMoney(player) < vehicle.Price then
+		return false, "Not enough money."
+	end
+	return true, "OK"
+end
+
+function Access.CanClaimStarter(player, vehicle)
+	if not PlayerData.IsLoaded(player) then
+		return false, "Your data is still loading."
+	end
+	if vehicle.Category ~= "Starter" then
+		return false, "That is not a starter car."
+	end
+	if PlayerData.HasClaimedStarter(player) then
+		return false, "You already picked your starter car."
+	end
+	return true, "OK"
+end
+
+function Access.CanSpawn(player, vehicle)
+	if not PlayerData.IsLoaded(player) then
+		return false, "Your data is still loading."
+	end
+	local category = vehicle.Category
+
+	if OWNABLE[category] then
+		if not PlayerData.OwnsVehicle(player, vehicle.Id) then
+			return false, "You don't own this vehicle."
+		end
+		return true, "OK"
+	end
+
+	if vehicle.Job then
+		local current = PlayerData.GetCurrentJob(player)
+		if current ~= vehicle.Job then
+			return false, ("You must be on duty as %s to use this vehicle."):format(vehicle.Job)
+		end
+		local xp = PlayerData.GetJobXP(player, vehicle.Job)
+		if xp < vehicle.XPRequired then
+			return false, ("Requires %d %s XP (you have %d)."):format(vehicle.XPRequired, vehicle.Job, xp)
+		end
+		return true, "OK"
+	end
+
+	if category == "ServerAdmin" then
+		if not Access.IsServerAdmin(player) then
+			return false, "Only Server Admins of this private server can use this vehicle."
+		end
+		return true, "OK"
+	end
+
+	if category == "GameAdmin" then
+		if not Access.IsGameAdmin(player) then
+			return false, "Only Game Admins can use this vehicle."
+		end
+		return true, "OK"
+	end
+
+	return false, "This vehicle is not available."
+end
+
+function Access.CanRepaint(player, vehicle)
+	if not vehicle.Repaintable then
+		return false, "This vehicle's livery is locked."
+	end
+	if not PlayerData.OwnsVehicle(player, vehicle.Id) then
+		return false, "You don't own this vehicle."
+	end
+	return true, "OK"
+end
+
+return Access
+]]></ProtectedString></Properties></Item>
+<Item class="Script" referent="RBX8"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--[[
+	VehicleService (server Script)
+
+	Creates ReplicatedStorage/VehicleRemotes. Every request is checked here on
+	the server; the client only asks.
+
+	RemoteFunctions (all return { Success = bool, Message = string, ... }):
+	  GetPlayerVehicleData()                 -> money, XP, owned cars, job, admin flags
+	  PurchaseVehicle(vehicleId)
+	  ClaimStarter(vehicleId)
+	  SpawnVehicle(vehicleId)
+	  DespawnVehicle()
+	  RepaintVehicle(vehicleId, { Body = Color3, Stripe = Color3, Accent = Color3 } | "reset")
+	  AppointServerAdmin(userId) / RemoveServerAdmin(userId) / GetServerAdmins()
+]]
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig"))
+local LiveryConfig = require(ReplicatedStorage:WaitForChild("LiveryConfig"))
+local PlayerData = require(script.Parent.PlayerDataAdapter)
+local Access = require(script.Parent.VehicleAccess)
+local LiveryApplier = require(script.Parent.LiveryApplier)
+local ServerAdmins = require(script.Parent.ServerAdmins)
+
+local Settings = VehicleConfig.Settings
+local COOLDOWN = 0.5 -- seconds between requests per player
+
+-------------------------------------------------------------------------------
+-- Setup
+-------------------------------------------------------------------------------
+
+local remotes = Instance.new("Folder")
+remotes.Name = "VehicleRemotes"
+
+local spawnedFolder = workspace:FindFirstChild("SpawnedVehicles") or Instance.new("Folder")
+spawnedFolder.Name = "SpawnedVehicles"
+spawnedFolder.Parent = workspace
+
+local function vehiclesFolder()
+	return ServerStorage:FindFirstChild(Settings.VehiclesFolder)
+end
+
+-- One startup warning listing every vehicle whose model is missing.
+do
+	local folder = vehiclesFolder()
+	local missing = {}
+	for _, v in ipairs(VehicleConfig.List) do
+		local model = folder and folder:FindFirstChild(v.Model)
+		if not (model and model:IsA("Model")) and not table.find(missing, v.Model) then
+			table.insert(missing, v.Model)
+		end
+	end
+	if #missing > 0 then
+		warn(("[VehicleService] %d vehicle model(s) not found in ServerStorage/%s yet; they will be skipped until added:\n  %s")
+			:format(#missing, Settings.VehiclesFolder, table.concat(missing, "\n  ")))
+	end
+end
+
+local function reply(success, message, extra)
+	local out = { Success = success, Message = message }
+	for k, v in pairs(extra or {}) do
+		out[k] = v
+	end
+	return out
+end
+
+-- Rate limit + one request at a time per player.
+local lastRequest, busy = {}, {}
+local function guarded(handler)
+	return function(player, ...)
+		local now = os.clock()
+		if busy[player] or (lastRequest[player] and now - lastRequest[player] < COOLDOWN) then
+			return reply(false, "Please wait a moment.")
+		end
+		lastRequest[player] = now
+		busy[player] = true
+		local ok, result = pcall(handler, player, ...)
+		busy[player] = nil
+		if not ok then
+			warn("[VehicleService] " .. tostring(result))
+			return reply(false, "Something went wrong, please try again.")
+		end
+		return result
+	end
+end
+
+local function remote(name, handler)
+	local rf = Instance.new("RemoteFunction")
+	rf.Name = name
+	rf.OnServerInvoke = guarded(handler)
+	rf.Parent = remotes
+end
+
+local function getVehicle(id)
+	return type(id) == "string" and VehicleConfig.Get(id) or nil
+end
+
+-------------------------------------------------------------------------------
+-- Spawning
+-------------------------------------------------------------------------------
+
+local spawned = {} -- [player] = model
+
+local function despawn(player)
+	local model = spawned[player]
+	spawned[player] = nil
+	if model then
+		model:Destroy()
+	end
+end
+
+local function spawnCFrame(player, model)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return nil
+	end
+	local look = hrp.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
+	local target = hrp.Position + flat * Settings.SpawnDistance
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { char, spawnedFolder }
+	local hit = workspace:Raycast(target + Vector3.new(0, 50, 0), Vector3.new(0, -200, 0), params)
+	local groundY = hit and hit.Position.Y or hrp.Position.Y - 3
+
+	-- Put the bottom of the model on the ground, facing sideways to the player.
+	local boxCFrame, size = model:GetBoundingBox()
+	local pivot = model:GetPivot()
+	local pivotAboveBottom = pivot.Position.Y - (boxCFrame.Position.Y - size.Y / 2)
+	local pos = Vector3.new(target.X, groundY + pivotAboveBottom + 0.3, target.Z)
+	local side = flat:Cross(Vector3.yAxis)
+	return CFrame.lookAt(pos, pos + side)
+end
+
+local function spawnVehicle(player, vehicle)
+	local folder = vehiclesFolder()
+	local template = folder and folder:FindFirstChild(vehicle.Model)
+	if not (template and template:IsA("Model")) then
+		warn(("[VehicleService] Model %q for %s missing in ServerStorage/%s, skipped")
+			:format(vehicle.Model, vehicle.Id, Settings.VehiclesFolder))
+		return reply(false, "This vehicle isn't available yet.")
+	end
+
+	local model = template:Clone()
+	local cf = spawnCFrame(player, model)
+	if not cf then
+		model:Destroy()
+		return reply(false, "You need a character to spawn a vehicle.")
+	end
+	despawn(player)
+
+	model.Name = vehicle.Name
+	model:SetAttribute("VehicleId", vehicle.Id)
+	model:SetAttribute("OwnerUserId", player.UserId)
+	model:SetAttribute("Job", vehicle.Job)
+	CollectionService:AddTag(model, "SpawnedVehicle")
+	LiveryApplier.ApplyVehicle(model, vehicle, vehicle.Repaintable and PlayerData.GetCustomColors(player, vehicle.Id) or nil)
+	model:PivotTo(cf)
+	model.Parent = spawnedFolder
+	spawned[player] = model
+	model.Destroying:Connect(function()
+		if spawned[player] == model then
+			spawned[player] = nil
+		end
+	end)
+	return reply(true, vehicle.Name .. " spawned.")
+end
+
+-- Leaving the job removes that job's vehicle.
+local function watchJob(player)
+	player:GetAttributeChangedSignal("CurrentJob"):Connect(function()
+		local model = spawned[player]
+		local job = model and model:GetAttribute("Job")
+		if job and job ~= PlayerData.GetCurrentJob(player) then
+			despawn(player)
+		end
+	end)
+end
+Players.PlayerAdded:Connect(watchJob)
+for _, plr in ipairs(Players:GetPlayers()) do
+	watchJob(plr)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	despawn(player)
+	lastRequest[player] = nil
+	busy[player] = nil
+end)
+
+-------------------------------------------------------------------------------
+-- Remotes
+-------------------------------------------------------------------------------
+
+remote("GetPlayerVehicleData", function(player)
+	if not PlayerData.WaitForData(player, 10) then
+		return reply(false, "Your data is still loading.")
+	end
+	local xp = {}
+	for _, job in ipairs(VehicleConfig.Jobs) do
+		xp[job] = PlayerData.GetJobXP(player, job)
+	end
+	return reply(true, "OK", {
+		Money = PlayerData.GetMoney(player),
+		JobXP = xp,
+		CurrentJob = PlayerData.GetCurrentJob(player),
+		OwnedVehicles = PlayerData.GetOwnedVehicles(player),
+		StarterClaimed = PlayerData.HasClaimedStarter(player),
+		IsServerAdmin = Access.IsServerAdmin(player),
+		IsGameAdmin = Access.IsGameAdmin(player),
+		SpawnedVehicleId = spawned[player] and spawned[player]:GetAttribute("VehicleId") or nil,
+	})
+end)
+
+remote("PurchaseVehicle", function(player, vehicleId)
+	local vehicle = getVehicle(vehicleId)
+	if not vehicle then
+		return reply(false, "Unknown vehicle.")
+	end
+	local ok, reason = Access.CanBuy(player, vehicle)
+	if not ok then
+		return reply(false, reason)
+	end
+	if not PlayerData.TrySpend(player, vehicle.Price) then
+		return reply(false, "Not enough money.")
+	end
+	PlayerData.GrantVehicle(player, vehicle.Id)
+	task.spawn(PlayerData.Save, player)
+	return reply(true, ("You bought the %s for %d EUR."):format(vehicle.Name, vehicle.Price), {
+		Money = PlayerData.GetMoney(player),
+	})
+end)
+
+remote("ClaimStarter", function(player, vehicleId)
+	local vehicle = getVehicle(vehicleId)
+	if not vehicle then
+		return reply(false, "Unknown vehicle.")
+	end
+	local ok, reason = Access.CanClaimStarter(player, vehicle)
+	if not ok then
+		return reply(false, reason)
+	end
+	PlayerData.GrantVehicle(player, vehicle.Id)
+	PlayerData.SetStarterClaimed(player, vehicle.Id)
+	task.spawn(PlayerData.Save, player)
+	return reply(true, ("The %s is yours!"):format(vehicle.Name))
+end)
+
+remote("SpawnVehicle", function(player, vehicleId)
+	local vehicle = getVehicle(vehicleId)
+	if not vehicle then
+		return reply(false, "Unknown vehicle.")
+	end
+	local ok, reason = Access.CanSpawn(player, vehicle)
+	if not ok then
+		return reply(false, reason)
+	end
+	return spawnVehicle(player, vehicle)
+end)
+
+remote("DespawnVehicle", function(player)
+	if not spawned[player] then
+		return reply(false, "You have no vehicle out.")
+	end
+	despawn(player)
+	return reply(true, "Vehicle parked.")
+end)
+
+remote("RepaintVehicle", function(player, vehicleId, colors)
+	local vehicle = getVehicle(vehicleId)
+	if not vehicle then
+		return reply(false, "Unknown vehicle.")
+	end
+	local ok, reason = Access.CanRepaint(player, vehicle)
+	if not ok then
+		return reply(false, reason)
+	end
+
+	local clean = nil
+	if colors ~= "reset" then
+		if type(colors) ~= "table" then
+			return reply(false, "Invalid colors.")
+		end
+		clean = {}
+		for _, slot in ipairs(LiveryConfig.RepaintableSlots) do
+			local c = colors[slot]
+			if c ~= nil then
+				if typeof(c) ~= "Color3" then
+					return reply(false, "Invalid color for " .. slot .. ".")
+				end
+				clean[slot] = c
+			end
+		end
+		if next(clean) == nil then
+			return reply(false, "Pick at least one color.")
+		end
+	end
+
+	if Settings.RepaintCost > 0 and not PlayerData.TrySpend(player, Settings.RepaintCost) then
+		return reply(false, "Not enough money for a repaint.")
+	end
+	PlayerData.SetCustomColors(player, vehicle.Id, clean)
+
+	local model = spawned[player]
+	if model and model:GetAttribute("VehicleId") == vehicle.Id then
+		LiveryApplier.ApplyVehicle(model, vehicle, PlayerData.GetCustomColors(player, vehicle.Id))
+	end
+	return reply(true, clean and "Repainted." or "Factory paint restored.", { Money = PlayerData.GetMoney(player) })
+end)
+
+remote("AppointServerAdmin", function(player, userId)
+	local ok, message = ServerAdmins.Appoint(player, userId)
+	return reply(ok, message)
+end)
+
+remote("RemoveServerAdmin", function(player, userId)
+	local ok, message = ServerAdmins.Remove(player, userId)
+	return reply(ok, message)
+end)
+
+remote("GetServerAdmins", function(player)
+	if not ServerAdmins.IsServerAdmin(player) then
+		return reply(false, "Only Server Admins can see this.")
+	end
+	return reply(true, "OK", { Admins = ServerAdmins.List(), OwnerUserId = game.PrivateServerOwnerId })
+end)
+
+remotes.Parent = ReplicatedStorage
+]]></ProtectedString></Properties></Item>
+</Item>
+</roblox>

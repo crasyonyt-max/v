@@ -1,0 +1,19 @@
+{
+  "name": "DortmundRP-Vehicles",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage"
+    },
+    "ServerScriptService": {
+      "VehicleSystem": {
+        "$path": "src/ServerScriptService/VehicleSystem"
+      }
+    },
+    "ServerStorage": {
+      "Vehicles": {
+        "$className": "Folder"
+      }
+    }
+  }
+}
