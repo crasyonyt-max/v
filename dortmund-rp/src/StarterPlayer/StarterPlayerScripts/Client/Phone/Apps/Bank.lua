@@ -1,9 +1,11 @@
 --!strict
 -- Bank: balance, transfers to players on this server, transaction history.
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
 local Notify = require(script.Parent.Parent.Parent.UI.Notify)
@@ -45,6 +47,37 @@ Phone.Register({
 			task.wait(0.6)
 			busy = false
 		end, { Parent = driveCard })
+
+		-- buy money for Robux (Developer Products: can be bought again and again)
+		local products = {}
+		for _, p in Config.MoneyProducts do
+			if p.id ~= 0 then
+				table.insert(products, p)
+			end
+		end
+		if #products > 0 then
+			local buyCard = Make.Card({ LayoutOrder = 2, Parent = root })
+			Make.Label("💎 " .. Store.T("buy_money"), 14, T.text, T.bold, { Parent = buyCard })
+			for _, p in products do
+				local button = Make.Button(
+					("%s  ·  %d R$"):format(Locale.Euro(p.cash), p.robux),
+					Color3.fromRGB(0, 170, 90),
+					function()
+						MarketplaceService:PromptProductPurchase(Players.LocalPlayer, p.id)
+					end,
+					{ Parent = buyCard }
+				)
+				-- the real price from Roblox (in case it was changed on the website)
+				task.spawn(function()
+					local ok, info = pcall(function()
+						return MarketplaceService:GetProductInfo(p.id, Enum.InfoType.Product)
+					end)
+					if ok and info and info.PriceInRobux then
+						button.Text = ("%s  ·  %d R$"):format(Locale.Euro(p.cash), info.PriceInRobux)
+					end
+				end)
+			end
+		end
 
 		-- transfer
 		local transferCard = Make.Card({ LayoutOrder = 2, Parent = root })

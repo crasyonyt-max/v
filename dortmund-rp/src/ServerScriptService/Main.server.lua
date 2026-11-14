@@ -39,6 +39,7 @@ local services = {
 	require(Server.GameLog),
 	require(Server.WorldService),
 	require(Server.EconomyService),
+	require(Server.PurchaseService),
 	require(Server.JobService),
 	require(Server.PhoneService),
 	require(Server.ChatService),

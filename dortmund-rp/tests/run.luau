@@ -1314,6 +1314,71 @@ test("every car has its own speed", function()
 	assert(shown:find("km/h") and shown:find("PS"), "shown in the Autohaus: " .. shown)
 end)
 
+test("Robux money: rebuyable, every receipt paid once", function()
+	local Config = requirePath(RS.Shared.Config)
+	local player = { UserId = 77, Name = "Buyer" } :: any
+	local data = { bank = 0, receipts = {} }
+	local paid, saveOk = 0, true
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	local fakes = {
+		DataService = {
+			Get = function()
+				return data
+			end,
+			Save = function()
+				return saveOk
+			end,
+		},
+		EconomyService = {
+			Add = function(_, amount)
+				paid += amount
+				data.bank += amount
+				return true
+			end,
+		},
+		Remotes = any,
+		GameLog = any,
+	}
+	for name, fake in fakes do
+		overrides["ServerScriptService/Server/" .. name] = fake
+	end
+	local oldPlayers = fakeServices.Players
+	fakeServices.Players = {
+		GetPlayerByUserId = function(_, id)
+			return if id == 77 then player else nil
+		end,
+	}
+	cache["ServerScriptService/Server/PurchaseService"] = nil
+	local Purchase = requirePath(Server.PurchaseService)
+	for name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	fakeServices.Players = oldPlayers
+	cache["ServerScriptService/Server/PurchaseService"] = nil
+
+	local product = Config.MoneyProducts[2]
+	local oldId = product.id
+	product.id = 123456
+	local r1 = { PlayerId = 77, ProductId = 123456, PurchaseId = "A" }
+	eq(Purchase.Process(r1), "PurchaseGranted")
+	eq(Purchase.Process(r1), "PurchaseGranted", "same receipt again (Roblox retry)")
+	eq(paid, product.cash, "paid once")
+	eq(Purchase.Process({ PlayerId = 77, ProductId = 123456, PurchaseId = "B" }), "PurchaseGranted")
+	eq(paid, product.cash * 2, "bought again = paid again")
+	saveOk = false
+	eq(Purchase.Process({ PlayerId = 77, ProductId = 123456, PurchaseId = "C" }), "NotProcessedYet", "not saved yet")
+	saveOk = true
+	eq(Purchase.Process({ PlayerId = 77, ProductId = 123456, PurchaseId = "C" }), "PurchaseGranted")
+	eq(paid, product.cash * 3, "the retry after a failed save does not pay twice")
+	eq(Purchase.Process({ PlayerId = 5, ProductId = 123456, PurchaseId = "D" }), "NotProcessedYet", "player not here")
+	eq(Purchase.Process({ PlayerId = 77, ProductId = 999, PurchaseId = "E" }), "NotProcessedYet", "unknown product")
+	product.id = oldId
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")

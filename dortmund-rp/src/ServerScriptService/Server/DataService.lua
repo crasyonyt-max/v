@@ -50,6 +50,7 @@ local function template(): { [string]: any }
 		hunger = 100,
 		thirst = 100,
 		tx = {}, -- bank transactions { amount, reason, t }
+		receipts = {}, -- Robux purchases already paid out (PurchaseIds, newest last)
 		stats = { joins = 0, playtime = 0 },
 		_lock = nil,
 	}
@@ -165,11 +166,12 @@ function DataService.IsLoaded(player: Player): boolean
 	return profiles[player] ~= nil
 end
 
-function DataService.Save(player: Player, release: boolean)
+function DataService.Save(player: Player, release: boolean): boolean
 	local p = profiles[player]
 	if not p or not p.canSave or not store then
-		return
+		return false
 	end
+	local wrote = false
 	local data = p.data
 	local ok, err = pcall(function()
 		(store :: DataStore):UpdateAsync(key(player.UserId), function(old: any)
@@ -178,6 +180,7 @@ function DataService.Save(player: Player, release: boolean)
 				return nil
 			end
 			data._lock = if release then nil else { job = game.JobId, t = os.time() }
+			wrote = true
 			return data
 		end)
 	end)
@@ -185,6 +188,7 @@ function DataService.Save(player: Player, release: boolean)
 		warn("[Data] save failed for " .. player.Name .. ": " .. tostring(err))
 	end
 	p.lastSave = os.clock()
+	return ok and wrote
 end
 
 local function onLeave(player: Player)

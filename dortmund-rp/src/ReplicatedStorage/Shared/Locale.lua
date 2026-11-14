@@ -358,6 +358,8 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_no_drop_event = { de = "Kein Dropper-Event aktiv.", en = "No dropper event running." },
 	-- Unemployed XP from traffic
 	drive_xp = { de = "XP zum Umtauschen", en = "XP to exchange" },
+	buy_money = { de = "Geld kaufen", en = "Buy money" },
+	money_bought = { de = "💎 Danke! %s wurden gutgeschrieben.", en = "💎 Thank you! %s added to your bank." },
 	drive_xp_info = {
 		de = "Deine normalen XP (Level). Als Arbeitslos geben grüne Ampeln und Blitzer im Limit XP, rote Ampel / zu schnell kostet XP. Umtausch: letzte Ziffer weg = Euro, dein Level sinkt dabei.",
 		en = "Your normal XP (level). As unemployed, green lights and speed cameras within the limit give XP; red lights / speeding cost XP. Exchange: drop the last digit = euros, your level goes down.",

@@ -83,6 +83,18 @@ Config.Gamepasses = {
 	Luxury = 2089425357,
 	Classic = 2089389319,
 }
+-- Money for Robux, can be bought again and again: Developer Products
+-- (create.roblox.com -> your experience -> Monetization -> Developer Products).
+-- id = the product id (0 = not created yet, not shown), cash = € the player gets,
+-- robux = shown until Roblox reports the real price.
+Config.MoneyProducts = {
+	{ id = 0, cash = 10000, robux = 49 },
+	{ id = 0, cash = 50000, robux = 199 },
+	{ id = 0, cash = 150000, robux = 499 },
+	{ id = 0, cash = 500000, robux = 1299 },
+	{ id = 0, cash = 1500000, robux = 2999 },
+}
+
 Config.GamepassRobux = {
 	Electric = 299,
 	Hypercar = 799,
