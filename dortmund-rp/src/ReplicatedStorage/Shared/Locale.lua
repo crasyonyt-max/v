@@ -272,6 +272,11 @@ local S: { [string]: { de: string, en: string } } = {
 	full_log = { de = "Alles-Log (alle Server)", en = "Full log (all servers)" },
 	today = { de = "Heute", en = "Today" },
 	plate_choose = { de = "Wähle dein Kennzeichen (kostenlos)", en = "Choose your plate (free)" },
+	plate_for_car = { de = "Für dein Auto: %s", en = "For your car: %s" },
+	plate_personal = {
+		de = "Dein persönliches Kennzeichen für Dienst- und Admin-Autos.",
+		en = "Your personal plate for service and admin cars.",
+	},
 	plate_set_go = { de = "Festlegen & ausparken", en = "Set & take out" },
 	plate_required = { de = "Wähle zuerst ein Kennzeichen.", en = "Choose a plate first." },
 	livery_locked = { de = "Dienstfahrzeuge behalten ihre Lackierung.", en = "Service vehicles keep their livery." },

@@ -11,6 +11,7 @@ require(Client.UI.Shops)
 require(Client.UI.Inventory)
 require(Client.UI.Vote)
 require(Client.UI.Countdown)
+require(Client.UI.PlatePrompt)
 
 -- Phone apps register themselves.
 for _, app in Client.Phone.Apps:GetChildren() do

@@ -519,12 +519,32 @@ local function driverOf(player: Player): Model?
 end
 VehicleService.DriverOf = driverOf
 
+-- Job and admin cars aren't owned, so they carry the player's personal plate
+-- (chosen once, city DO). Without one the client is asked to choose it first and
+-- then repeats `retry`.
+local function personalPlateOrAsk(player: Player, def: any, retry: { any }): (boolean, string?)
+	if not def.car then
+		return true, nil
+	end
+	local data = DataService.Get(player)
+	local p = data and data.personalPlate
+	if typeof(p) == "string" then
+		return true, p
+	end
+	Remotes.Push(player, "PlateRequired", { personal = true, retry = retry })
+	return false, nil
+end
+
 function VehicleService.SpawnAny(player: Player, vehicleId: string): (boolean, string?)
 	local def = Vehicles.ById[vehicleId]
 	if not def then
 		return false, "bad_item"
 	end
-	return spawnModel(player, def, nil, nil, { Temporary = true, Job = def.job })
+	local ok, plate = personalPlateOrAsk(player, def, { "Admin.Do", "spawn_vehicle", { vehicleId = vehicleId } })
+	if not ok then
+		return false, "plate_required"
+	end
+	return spawnModel(player, def, nil, plate, { Temporary = true, Job = def.job })
 end
 
 function VehicleService.GiveVehicle(player: Player, vehicleId: string): boolean
@@ -744,6 +764,7 @@ function VehicleService.Start()
 		end
 		-- a car needs its own plate before it goes on the road
 		if def.car and not entry.plateChosen then
+			Remotes.Push(player, "PlateRequired", { uid = uid, name = def.name, retry = { "Vehicle.Spawn", uid } })
 			return Remotes.Fail("plate_required")
 		end
 		local ok, err = spawnModel(player, def, toColor(entry.color), entry.plate, { Uid = uid })
@@ -789,8 +810,17 @@ function VehicleService.Start()
 				break
 			end
 		end
-		local ok, err =
-			spawnModel(player, def, nil, Plate.Random(Config.DefaultCityCode, rng), { Job = job, SpawnAt = bay })
+		local hasPlate, personal = personalPlateOrAsk(player, def, { "Vehicle.SpawnJob", def.id })
+		if not hasPlate then
+			return Remotes.Fail("plate_required")
+		end
+		local ok, err = spawnModel(
+			player,
+			def,
+			nil,
+			personal or Plate.Random(Config.DefaultCityCode, rng),
+			{ Job = job, SpawnAt = bay }
+		)
 		return if ok then Remotes.Ok() else Remotes.Fail(err or "error")
 	end, { rate = 4 })
 
@@ -836,6 +866,39 @@ function VehicleService.Start()
 		local model = spawned[player]
 		if model and model:GetAttribute("Uid") == uid then
 			VehicleBuilder.SetPlate(model, plateText)
+		end
+		State.MarkDirty(player)
+		return Remotes.Ok()
+	end, { rate = 3 })
+
+	-- the personal plate (job + admin cars); first one free, changes cost the fee
+	Remotes.Handle("Vehicle.SetPersonalPlate", function(player, text: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		local plateText = typeof(text) == "string" and Plate.NormalizeDO(text) or nil
+		if not plateText then
+			return Remotes.Fail("bad_plate")
+		end
+		local okFilter, filtered = pcall(function()
+			local result = TextService:FilterStringAsync(plateText, player.UserId, Enum.TextFilterContext.PublicChat)
+			return result:GetNonChatStringForBroadcastAsync()
+		end)
+		if not okFilter or filtered ~= plateText then
+			return Remotes.Fail("bad_plate")
+		end
+		local fee = if data.personalPlate then PLATE_FEE else 0
+		if data.bank < fee then
+			return Remotes.Fail("no_money")
+		end
+		if data.personalPlate ~= plateText and not claimPlate(plateText, player.UserId) then
+			return Remotes.Fail("plate_taken")
+		end
+		if fee > 0 and not Economy.TrySpend(player, fee, "Kennzeichen " .. plateText) then
+			return Remotes.Fail("no_money")
+		end
+		local old = data.personalPlate
+		data.personalPlate = plateText
+		if old and old ~= plateText then
+			task.spawn(releasePlate, old, player.UserId)
 		end
 		State.MarkDirty(player)
 		return Remotes.Ok()

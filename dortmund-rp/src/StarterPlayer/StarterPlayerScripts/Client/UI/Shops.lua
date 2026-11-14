@@ -269,7 +269,7 @@ renderers.JobGarage = function(jobId: any)
 				T.good,
 				function()
 					local r = Net.Request("Vehicle.SpawnJob", v.id)
-					if r.ok then
+					if r.ok or r.err == "plate_required" then -- (plate pop-up is open)
 						Shops.Close()
 					else
 						Notify.Error(r.err)
