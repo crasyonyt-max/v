@@ -473,6 +473,34 @@ def main():
     else:
         print("no admin tower site found")
 
+    # shopping centre: a bigger free car park near the Hbf, away from both towers
+    mall = None
+    msize = 44 / M_PER_STUD
+    best_m = None
+    for wid, (nd, t) in ways.items():
+        if t.get("amenity") == "parking" and t.get("parking", "surface") == "surface" and len(nd) > 3:
+            c = centre_ll(wid)
+            if not c or not inside_area(*c):
+                continue
+            cx, cz, sx, sz, ang = min_rect(way_pts(wid)[:-1])
+            if min(sx, sz) < msize:
+                continue
+            site = (cx, cz, -math.degrees(ang), msize, msize)
+            if not site_clear(site):
+                continue
+            far = all(math.hypot(cx - o[0], cz - o[1]) > 80 / M_PER_STUD for o in sites.values())
+            dist = math.hypot(cx, cz)
+            if far and dist < 3000 and (best_m is None or dist < best_m[0]):
+                best_m = (dist, site)
+    if best_m:
+        mx_, mz_, _, mw, md = best_m[1]
+        dd, rx, rz, _ = nearest_on_roads(mx_, mz_)
+        nx, nz = mx_ - rx, mz_ - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["Mall"] = (mx_, mz_, yaw, mw, md)
+    else:
+        print("no mall site found")
+
     # ADMC / DXL / LKW: look inside real commercial / industrial areas for a free plot
     def overlaps(site):
         cx, cz, _, w, d = site

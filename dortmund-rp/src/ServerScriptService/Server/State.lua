@@ -99,6 +99,7 @@ function State.Snapshot(player: Player): { [string]: any }?
 		vehicles = data.vehicles,
 		starterChosen = data.starterChosen,
 		carStarterChosen = data.carStarterChosen == true,
+		personalPlate = data.personalPlate,
 		phones = data.phones,
 		phone = data.phone,
 		wallpaper = data.wallpaper,

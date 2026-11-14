@@ -99,19 +99,7 @@ Phone.Register({
 					card
 
 				if expanded == uid then
-					local plateRow =
-						New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Parent = card })
-					Make.Label("DO-", 18, T.text, T.black, { Size = UDim2.fromOffset(44, 36), Parent = plateRow })
-					local current = string.match(entry.plate or "", "^DO%-(.+)$") or ""
-					local plateBox = Make.TextBox("AB 1234", {
-						Text = current,
-						Position = UDim2.fromOffset(46, 0),
-						Size = UDim2.new(1, -46, 1, 0),
-						Parent = plateRow,
-					})
-					Make.Button(Store.T("change_plate"), T.accent, function()
-						req("Vehicle.SetPlate", uid, "DO-" .. plateBox.Text)
-					end, { Parent = card })
+					Make.Label("🔢 " .. Store.T("plate_change_where"), 12, T.sub, T.font, { Parent = card })
 					Make.Label(Store.T("color"), 12, T.sub, T.bold, { Parent = card })
 					local swatches =
 						New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), Parent = card })

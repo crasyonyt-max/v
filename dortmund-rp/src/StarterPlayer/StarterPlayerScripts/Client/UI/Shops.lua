@@ -291,6 +291,51 @@ renderers.JobGarage = function(jobId: any)
 	end
 end
 
+-- ADMC Kennzeichen-Service: change the plate of any of your vehicles (city DO) ------
+local function plateEditor(parent: Instance, order: number, label: string, current: string?, apply: (string) -> ())
+	local card = Make.Card({ LayoutOrder = order, Parent = parent })
+	Make.Label(label, 14, T.text, T.bold, { Parent = card })
+	Make.Label(current or "–", 12, T.sub, T.font, { Parent = card })
+	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Parent = card })
+	Make.Label("DO-", 18, T.text, T.black, { Size = UDim2.fromOffset(44, 36), Parent = row })
+	local input = Make.TextBox("AB 1234", {
+		Text = string.match(current or "", "^DO%-(.+)$") or "",
+		Position = UDim2.fromOffset(46, 0),
+		Size = UDim2.new(1, -46, 1, 0),
+		Parent = row,
+	})
+	Make.Button(Store.T("change_plate"), T.accent, function()
+		apply("DO-" .. input.Text)
+	end, { Parent = card })
+end
+
+renderers.Plates = function()
+	title.Text = "🔢 " .. Store.T("plate_service")
+	Make.Clear(tabBar)
+	local s = Store.Get()
+	plateEditor(body, 1, "👤 " .. Store.T("plate_personal_title"), s.personalPlate, function(text)
+		result(Net.Request("Vehicle.SetPersonalPlate", text))
+	end)
+	local uids = {}
+	for uid in s.vehicles or {} do
+		table.insert(uids, uid)
+	end
+	table.sort(uids)
+	for i, uid in uids do
+		local entry = s.vehicles[uid]
+		local v = Vehicles.ById[entry.id]
+		plateEditor(
+			body,
+			1 + i,
+			(if v and v.car then "🚗 " else "🏍️ ") .. (if v then v.name else entry.id),
+			entry.plate,
+			function(text)
+				result(Net.Request("Vehicle.SetPlate", uid, text))
+			end
+		)
+	end
+end
+
 renderers.Store = function(kind: any)
 	local store = Items.Stores[kind]
 	if not store then

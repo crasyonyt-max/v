@@ -271,6 +271,19 @@ local S: { [string]: { de: string, en: string } } = {
 	admin_fulllog = { de = "📜 Log", en = "📜 Log" },
 	full_log = { de = "Alles-Log (alle Server)", en = "Full log (all servers)" },
 	today = { de = "Heute", en = "Today" },
+	plate_service = { de = "ADMC Kennzeichen-Service", en = "ADMC plate service" },
+	plate_personal_title = {
+		de = "Persönliches Kennzeichen (Dienst- & Admin-Autos)",
+		en = "Personal plate (service & admin cars)",
+	},
+	plate_change_where = {
+		de = "Kennzeichen ändern: beim ADMC Kennzeichen-Service (Navi).",
+		en = "Change plates at the ADMC plate service (Navi).",
+	},
+	plate_service_only = {
+		de = "Kennzeichen ändern geht nur beim ADMC Kennzeichen-Service.",
+		en = "Plates can only be changed at the ADMC plate service.",
+	},
 	plate_choose = { de = "Wähle dein Kennzeichen (kostenlos)", en = "Choose your plate (free)" },
 	plate_for_car = { de = "Für dein Auto: %s", en = "For your car: %s" },
 	plate_personal = {

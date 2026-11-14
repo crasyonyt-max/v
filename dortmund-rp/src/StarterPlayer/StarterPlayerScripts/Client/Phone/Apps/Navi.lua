@@ -82,6 +82,25 @@ Phone.Register({
 			pos = Vector3.new(special.Handyland.marker[1], 0, special.Handyland.marker[2]),
 			color = Color3.fromRGB(0, 110, 220),
 		})
+		local siteList = (Locations :: any).Sites or {}
+		if siteList.Mall then
+			table.insert(shops, {
+				title = "🛍️ Dortmund Mall",
+				pos = Vector3.new(siteList.Mall.x, 0, siteList.Mall.z),
+				color = Color3.fromRGB(255, 190, 60),
+			})
+		end
+		if siteList.ADMC then
+			local a = siteList.ADMC
+			local spot = CFrame.new(a.x, 0, a.z)
+				* CFrame.Angles(0, math.rad(a.yaw), 0)
+				* CFrame.new(a.width / 2 + 10, 0, -a.depth / 2 + 8)
+			table.insert(shops, {
+				title = "🔢 Kennzeichen-Service (ADMC)",
+				pos = spot.Position,
+				color = Color3.fromRGB(250, 205, 0),
+			})
+		end
 		table.insert(shops, {
 			title = "🚗 Autohaus",
 			pos = Vector3.new(special.Dealership.marker[1], 0, special.Dealership.marker[2]),

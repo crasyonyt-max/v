@@ -411,6 +411,10 @@ local function salesperson(root: Instance, loc: any, title: string, shirt: Color
 	npc(root, title, CFrame.lookAt(pos, Vector3.new(x, y, z)), shirt)
 end
 
+StoreBuilder.ShopMarker = function(parent: Instance, kind: string, cf: CFrame, title: string)
+	shopMarker(parent, kind, cf, title)
+end
+
 StoreBuilder.Npc = function(parent: Instance, name: string, cf: CFrame, shirt: Color3): Model?
 	return npc(parent, name, cf, shirt)
 end

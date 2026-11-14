@@ -1197,6 +1197,53 @@ test("admin cars: orange livery with red sirens", function()
 	eq(n, 10, "10 admin cars")
 end)
 
+test("mall, underground garages and plate service", function()
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	for _, name in { "Remotes", "Roles", "DataService" } do
+		overrides["ServerScriptService/Server/" .. name] = stub
+	end
+	local Mall = requirePath(Server.MallBuilder)
+	local Garages = requirePath(Server.GarageService)
+	local Plates = requirePath(Server.PlateService)
+	for _, name in { "Remotes", "Roles", "DataService" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	Mall.Build()
+	Garages.Build()
+	Plates.Build()
+	local ws = env.workspace
+	local mall = ws:FindFirstChild("Dortmund Mall")
+	assert(mall, "mall built")
+	local stores, special = 0, {}
+	for _, d in mall:GetDescendants() do
+		if d.Name == "Marker_Store" then
+			stores += 1
+		elseif d.Name == "Marker_Shop" then
+			special[d:GetAttribute("UI")] = true
+		end
+	end
+	eq(stores, 14, "14 food shops in the mall")
+	assert(special.Dealership and special.Handyland, "Autohaus + Handyland branch")
+	eq(#Mall.Spots, 3, "lifts on floors 1-3 (+ ground floor 0)")
+	for _, name in { "Tiefgarage Dortmund Tower", "Tiefgarage Admin Tower" } do
+		local g = ws:FindFirstChild(name)
+		assert(g, name)
+		local bays = 0
+		for _, d in g:GetChildren() do
+			if d.Name == "BayLine" then
+				bays += 1
+			end
+		end
+		eq(bays, 16, name .. " bays")
+		assert(g:FindFirstChild("Marker_GarageIn") and g:FindFirstChild("Marker_GarageOut"), name .. " gates")
+	end
+	assert(ws:FindFirstChild("Kennzeichen-Service"), "ADMC plate service")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
 	error("tests failed")

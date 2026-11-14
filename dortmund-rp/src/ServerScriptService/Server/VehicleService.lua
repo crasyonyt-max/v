@@ -21,6 +21,7 @@ local State = require(script.Parent.State)
 local StationBuilder = require(script.Parent.StationBuilder)
 local TextService = game:GetService("TextService")
 local VehicleBuilder = require(script.Parent.VehicleBuilder)
+local GarageService = require(script.Parent.GarageService)
 local CarGenerator = require(script.Parent.Cars.VehicleModelGenerator)
 local LiveryApplier = require(script.Parent.Cars.LiveryApplier)
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig")) :: any
@@ -134,6 +135,11 @@ end
 local setupSeats: (Model, Player, { [string]: any }) -> ()
 
 local function spawnCFrame(player: Player, width: number): CFrame?
+	-- in an underground garage: a free parking bay
+	local bay = GarageService.SpawnSpot(player)
+	if bay then
+		return bay
+	end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
@@ -847,8 +853,12 @@ function VehicleService.Start()
 		if not okFilter or filtered ~= plateText then
 			return Remotes.Fail("bad_plate")
 		end
-		-- the first own plate of a vehicle is free, changing it later costs a fee
+		-- the first own plate of a vehicle is free; changing it later costs a fee and
+		-- only works at the ADMC Kennzeichen-Service
 		local fee = if entry.plateChosen then PLATE_FEE else 0
+		if entry.plateChosen and not Interaction.IsNear(player, "Shop", 25, "UI", "Plates") then
+			return Remotes.Fail("plate_service_only")
+		end
 		if data.bank < fee then
 			return Remotes.Fail("no_money")
 		end
@@ -886,6 +896,9 @@ function VehicleService.Start()
 			return Remotes.Fail("bad_plate")
 		end
 		local fee = if data.personalPlate then PLATE_FEE else 0
+		if data.personalPlate and not Interaction.IsNear(player, "Shop", 25, "UI", "Plates") then
+			return Remotes.Fail("plate_service_only")
+		end
 		if data.bank < fee then
 			return Remotes.Fail("no_money")
 		end

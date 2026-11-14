@@ -21,6 +21,9 @@ Players.CharacterAutoLoads = false
 MapBuilder.Build()
 require(Server.TrafficService).Build()
 require(Server.AdminTowerService).Build()
+require(Server.MallBuilder).Build()
+require(Server.GarageService).Build()
+require(Server.PlateService).Build()
 Interaction.Start()
 task.spawn(require(Server.StoreBuilder).Build) -- NPCs load from the web; don't block spawning
 Players.CharacterAutoLoads = true
@@ -47,6 +50,8 @@ local services = {
 	require(Server.HousingService),
 	require(Server.TrafficService),
 	require(Server.AdminTowerService),
+	require(Server.MallBuilder),
+	require(Server.GarageService),
 	require(Server.DropEventService),
 	require(Server.DropperService),
 }
