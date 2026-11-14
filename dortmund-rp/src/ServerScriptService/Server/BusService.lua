@@ -15,6 +15,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Economy = require(script.Parent.EconomyService)
 local GameLog = require(script.Parent.GameLog)
 local Remotes = require(script.Parent.Remotes)
+local Roles = require(script.Parent.Roles)
 local XPService = require(script.Parent.XPService)
 
 local BusService = {}
@@ -136,16 +137,30 @@ end
 BusService.BusOf = busOf
 
 -- passengers pay the driver when they sit down
+local function standUp(seat: Seat)
+	local hum = seat.Occupant
+	if hum then
+		task.defer(function()
+			hum.Sit = false
+			hum.Jump = true
+		end)
+	end
+end
+
+-- Admin bus: only admins (any admin rank) may ride, and they ride free.
+function BusService.MayBoard(model: Model, passenger: Player): boolean
+	return not model:GetAttribute("AdminBus") or Roles.IsServerAdmin(passenger)
+end
+
 local function onBoard(model: Model, seat: Seat, passenger: Player, owner: Player)
+	if not BusService.MayBoard(model, passenger) then
+		standUp(seat)
+		Remotes.Push(passenger, "Notify", { key = "bus_admin_only", error = true })
+		return
+	end
 	if not doorsOpen(model) then
 		-- (only possible through glitches: the prompts are off while the doors are shut)
-		local hum = seat.Occupant
-		if hum then
-			task.defer(function()
-				hum.Sit = false
-				hum.Jump = true
-			end)
-		end
+		standUp(seat)
 		Remotes.Push(passenger, "Notify", { key = "bus_doors_closed", error = true })
 		return
 	end
@@ -190,6 +205,7 @@ function BusService.Build(model: Model, freeRide: boolean): boolean
 	model:SetAttribute("TicketsSold", 0)
 	model:SetAttribute("TicketIncome", 0)
 	model:SetAttribute("FreeRide", freeRide)
+	model:SetAttribute("AdminBus", freeRide)
 	model:SetAttribute("BusLine", if freeRide then "A" else "")
 	model:SetAttribute("BusDest", if freeRide then "ADMIN SHUTTLE" else "Sonderfahrt")
 
@@ -277,7 +293,7 @@ function BusService.Build(model: Model, freeRide: boolean): boolean
 			weld(seat, chassis)
 			local prompt = Instance.new("ProximityPrompt")
 			prompt.Name = "EnterPrompt"
-			prompt.ActionText = "Einsteigen (" .. FARE .. " €)"
+			prompt.ActionText = if freeRide then "Einsteigen (nur Admins)" else "Einsteigen (" .. FARE .. " €)"
 			prompt.ObjectText = model.Name
 			prompt.HoldDuration = 0.15
 			prompt.MaxActivationDistance = 14

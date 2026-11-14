@@ -108,6 +108,10 @@ local S: { [string]: { de: string, en: string } } = {
 	no_character = { de = "Kein Charakter.", en = "No character." },
 	not_your_car = { de = "Das ist nicht dein Fahrzeug.", en = "This is not your vehicle." },
 	bus_doors_closed = { de = "Die Türen sind zu.", en = "The doors are closed." },
+	bus_admin_only = {
+		de = "🚫 Nur Admins dürfen in den Admin-Bus.",
+		en = "🚫 Only admins may ride the admin bus.",
+	},
 	bus_free_ride = { de = "🚌 Freie Fahrt!", en = "🚌 Free ride!" },
 	bus_no_money = { de = "Du hast keine %s € für das Busticket.", en = "You don't have %s € for the bus ticket." },
 	bus_ticket_bought = { de = "🎫 Busticket gekauft: %s €", en = "🎫 Bus ticket bought: %s €" },

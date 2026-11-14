@@ -1181,7 +1181,32 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	cache["ServerScriptService/Server/Cars/VehicleModelGenerator"] = nil
 	local Generator = requirePath(pathProxy({ "ServerScriptService", "Server", "Cars", "VehicleModelGenerator" }))
 	fakeServices.ServerStorage = oldStorage
+	-- ranks: 8912131297 is a Game Admin, everyone else a normal player
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	local fakes = {
+		Roles = {
+			IsServerAdmin = function(p)
+				return p.UserId == 8912131297
+			end,
+		},
+		EconomyService = any,
+		Remotes = any,
+		XPService = any,
+		GameLog = any,
+	}
+	for name, fake in fakes do
+		overrides["ServerScriptService/Server/" .. name] = fake
+	end
+	cache["ServerScriptService/Server/BusService"] = nil
 	local BusService = requirePath(Server.BusService)
+	for name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	cache["ServerScriptService/Server/BusService"] = nil
 	local buses, admin = 0, nil
 	for _, v in VehicleConfig.List do
 		if Generator.RuleFor(v).Type ~= "Bus" then
@@ -1210,6 +1235,12 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		if free then
 			admin = v
 			eq(model:GetAttribute("FreeRide"), true, "admin bus is free")
+			local normal = { UserId = 1234, Name = "Normal" } :: any
+			local gameAdmin = { UserId = 8912131297, Name = "deniney26548" } :: any
+			eq(BusService.MayBoard(model, normal), false, "normal player can't ride the admin bus")
+			eq(BusService.MayBoard(model, gameAdmin), true, "admins can")
+		else
+			eq(BusService.MayBoard(model, { UserId = 1234 } :: any), true, "normal bus: everyone")
 		end
 		model:Destroy()
 	end
