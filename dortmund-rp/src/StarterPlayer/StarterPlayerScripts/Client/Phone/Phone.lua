@@ -45,6 +45,7 @@ local OPEN = UDim2.new(1, -16, 1, -16)
 -- PC mode (office PCs in the Admin Tower): a wide monitor in the middle of the screen
 local PC_OPEN = UDim2.new(0.5, 0, 0.5, 0)
 local pcMode = false
+local unfolded = false -- foldable phones: open (wide) or closed (slim cover screen)
 
 local body = New("Frame", {
 	Name = "Body",
@@ -212,6 +213,33 @@ local brandLabel = Make.Label("", 12, Color3.new(1, 1, 1), T.bold, {
 })
 local _ = clock
 
+-- Foldables: the fold button in the status bar and the crease of the open screen
+local foldButton = New("TextButton", {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.fromScale(0.5, 0),
+	Size = UDim2.fromOffset(64, 16),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	BackgroundTransparency = 0.8,
+	Text = "",
+	TextSize = 11,
+	Font = T.bold,
+	TextColor3 = Color3.new(1, 1, 1),
+	Visible = false,
+	ZIndex = 11,
+	Parent = status,
+}, { Make.Corner(8) })
+local crease = New("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.fromScale(0.5, 0),
+	Size = UDim2.new(0, 2, 1, 0),
+	BackgroundColor3 = Color3.new(1, 1, 1),
+	BackgroundTransparency = 0.88,
+	BorderSizePixel = 0,
+	Visible = false,
+	ZIndex = 20,
+	Parent = screen,
+})
+
 -- Home screen
 local home = New("Frame", {
 	Name = "Home",
@@ -303,7 +331,20 @@ local function styleBody()
 	local small = camera ~= nil and camera.ViewportSize.Y < 520
 	local height = if small then 0.94 else math.min(0.9, 0.74 * p.screen)
 	-- on a PC monitor the screen fills the whole monitor instead
-	body.Size = if pcMode then UDim2.fromScale(1, 1) else UDim2.fromScale(height * 0.48, height)
+	local open = p.foldable == true and unfolded
+	-- foldables: slim cover screen when folded, nearly square inner screen when open
+	local ratio = if open then 0.9 elseif p.foldable then 0.42 else 0.48
+	body.Size = if pcMode then UDim2.fromScale(1, 1) else UDim2.fromScale(height * ratio, height)
+	if not pcMode then
+		local aspect = body:FindFirstChild("Aspect") :: UIAspectRatioConstraint
+		local max = body:FindFirstChild("MaxSize") :: UISizeConstraint
+		aspect.AspectRatio = ratio
+		max.MaxSize = Vector2.new(if open then 680 else 360, 750)
+	end
+	grid.CellSize = UDim2.new(if open then 1 / 6 else 0.25, -8, 0, 78)
+	crease.Visible = open and not pcMode
+	foldButton.Visible = p.foldable == true and not pcMode
+	foldButton.Text = if open then "▯ Zu" else "▭ Auf"
 	brandLabel.Text = p.brand
 	if p.id == "nvdr_p1" then
 		-- black glass body with the neon green edge from the product shot
@@ -335,6 +376,12 @@ local function styleBody()
 	local wp = Phones.Wallpapers[Store.Get().wallpaper or 1] or Phones.Wallpapers[1]
 	wallpaper.Color = ColorSequence.new(wp[1], wp[2])
 end
+
+-- fold / unfold (Z Fold): the phone grows to the left, apps get more room
+foldButton.Activated:Connect(function()
+	unfolded = not unfolded
+	styleBody()
+end)
 
 local function renderHome()
 	Make.Clear(home)

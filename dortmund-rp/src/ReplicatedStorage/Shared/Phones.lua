@@ -12,6 +12,7 @@ export type Phone = {
 	frame: Color3, -- bezel / body colour
 	accent: Color3,
 	corner: number, -- screen corner radius (px)
+	foldable: boolean?, -- can be folded open (wide inner screen)
 	shop: boolean, -- sold in Handyland
 	adminOnly: boolean?,
 	boot: string?, -- special boot animation
@@ -153,6 +154,7 @@ Phones.List = {
 		accent = Color3.fromRGB(80, 140, 255),
 		corner = 14,
 		shop = true,
+		foldable = true,
 	}),
 
 	-- Special Game Admin phone. Never sold; granted automatically to Game Admins.
