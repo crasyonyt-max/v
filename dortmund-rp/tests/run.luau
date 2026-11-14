@@ -1253,6 +1253,39 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	eq(#Vehicles.ForJob("Bus"), 4, "4 buses in the bus job garage")
 end)
 
+test("train timetable: smooth, both ways, all stations", function()
+	local TrainLine = requirePath(RS.Shared.TrainLine)
+	local line = TrainLine.Lines[1]
+	assert(line and #line.stations >= 5, "U43 with stations")
+	assert(line.cycle > 300 and line.cycle < 1500, "cycle " .. line.cycle)
+	-- trip maths: full distance at the end, continuous
+	local d = 1800
+	eq(math.floor(TrainLine.TripDistance(d, TrainLine.TripTime(d)) + 0.5), d)
+	-- simulate one train for a whole cycle: never jumps (except turning at the ends), stops everywhere
+	local seen = {}
+	local last = TrainLine.State(line, 1, 0)
+	for t = 0.5, line.cycle, 0.5 do
+		local st = TrainLine.State(line, 1, t)
+		if st.dir == last.dir then
+			assert(math.abs(st.s - last.s) <= TrainLine.VMAX * 0.5 + 0.01, "no jump at t=" .. t)
+		end
+		assert(
+			st.s >= line.stations[1].s - 0.01 and st.s <= line.stations[#line.stations].s + 0.01,
+			"stays between the ends"
+		)
+		if st.dwelling and st.station then
+			seen[st.station .. ":" .. st.dir] = true
+		end
+		last = st
+	end
+	for i = 2, #line.stations - 1 do
+		assert(seen[i .. ":1"] and seen[i .. ":-1"], line.stations[i].name .. " served both ways")
+	end
+	local deps = TrainLine.Departures(line, 2, 1, 100)
+	eq(#deps, TrainLine.TRAINS, "one departure per train")
+	assert(deps[1] >= 0 and deps[1] < line.cycle / TrainLine.TRAINS + 1, "next train within the interval")
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")
@@ -1291,6 +1324,7 @@ test("mall, underground garages and plate service", function()
 	local Mall = requirePath(Server.MallBuilder)
 	local Garages = requirePath(Server.GarageService)
 	local Plates = requirePath(Server.PlateService)
+	local Trains = requirePath(Server.TrainService)
 	for _, name in { "Remotes", "Roles", "DataService" } do
 		overrides["ServerScriptService/Server/" .. name] = nil
 	end
@@ -1302,6 +1336,37 @@ test("mall, underground garages and plate service", function()
 	local Stops = requirePath(Server.BusStopService)
 	local BusStopData = requirePath(RS.Shared.BusStopData)
 	Stops.Build()
+	-- Stadtbahn: viaduct, stations, trains
+	local TrainLine = requirePath(RS.Shared.TrainLine)
+	Trains.Build()
+	local sb = ws:FindFirstChild("Stadtbahn")
+	assert(sb, "stadtbahn built")
+	local line = TrainLine.Lines[1]
+	local stations, cars = 0, 0
+	for _, c in sb:GetChildren() do
+		if c.Name:match("^U%-Bahnhof") then
+			stations += 1
+		elseif c:GetAttribute("Train") then
+			cars += 1
+		end
+	end
+	eq(stations, #line.stations, "one station per stop")
+	eq(cars, TrainLine.TRAINS * 2, "two cars per train")
+	-- a train at a station stands next to the platform of its direction
+	for _, dir in { 1, -1 } do
+		local st = line.stations[3]
+		local frames = Trains.CarFrames(line, { s = st.s, dir = dir, dwelling = true, station = 3, terminus = false })
+		local plat = Trains.PlatformSpot(line, 3, dir)
+		local mid = (frames[1].Position + frames[2].Position) / 2
+		local d = ((plat.Position - mid) * roblox.Vector3.new(1, 0, 1)).Magnitude
+		assert(d > 8 and d < 14, "platform beside the train: " .. d)
+	end
+	Trains.Step()
+	assert(
+		string.find(Trains.BoardText(line, 2, 1, 0), "min") or string.find(Trains.BoardText(line, 2, 1, 0), "sofort"),
+		"board"
+	)
+	assert(string.find(Trains.BoardText(line, #line.stations, 1, 0), "Endstation"), "end of the line board")
 	local stopFolder = ws:FindFirstChild("BusStops")
 	assert(stopFolder, "bus stops built")
 	assert(#BusStopData >= 50, "bus stops around the city: " .. #BusStopData)

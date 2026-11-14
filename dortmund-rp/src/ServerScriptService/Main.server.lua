@@ -23,6 +23,7 @@ require(Server.TrafficService).Build()
 require(Server.AdminTowerService).Build()
 require(Server.MallBuilder).Build()
 require(Server.BusStopService).Build()
+require(Server.TrainService).Build()
 require(Server.GarageService).Build()
 require(Server.PlateService).Build()
 Interaction.Start()
@@ -44,6 +45,7 @@ local services = {
 	require(Server.EmergencyService),
 	require(Server.VehicleService),
 	require(Server.BusService),
+	require(Server.TrainService),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),
