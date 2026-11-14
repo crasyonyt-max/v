@@ -365,8 +365,11 @@ local function apply()
 	DropEventService.Set(if de then de.id else nil, if de then de.ends else nil)
 	DropperService.SetEnabled(saved.droppersOff ~= true)
 	local snap = snapshot()
-	lastSnapshot = HttpService:JSONEncode(snap)
-	Remotes.PushAll("Events", snap)
+	local json = HttpService:JSONEncode(snap)
+	if json ~= lastSnapshot then
+		lastSnapshot = json
+		Remotes.PushAll("Events", snap)
+	end
 end
 
 local function reload()
@@ -374,7 +377,13 @@ local function reload()
 		return
 	end
 	local ok, v = pcall(function()
-		return (store :: DataStore):GetAsync(KEY)
+		-- never the cached copy: another server may just have changed it
+		local okOpt, options = pcall(function()
+			local o = Instance.new("DataStoreGetOptions")
+			o.UseCache = false
+			return o
+		end)
+		return (store :: DataStore):GetAsync(KEY, if okOpt then options else nil)
 	end)
 	if ok then
 		saved = clean(v)
@@ -605,6 +614,16 @@ function EventService.Start()
 				Remotes.PushAll("Notify", { key = "drop_new", args = { data.newDrop } })
 			end
 		end)
+	end)
+
+	-- safety net: even if a message from another server got lost, every server
+	-- picks up the shared state (countdown, boosts, music, …) within 30 seconds
+	task.spawn(function()
+		while true do
+			task.wait(30)
+			reload()
+			apply()
+		end
 	end)
 
 	-- expire boosts / drops, start and end the weekly event

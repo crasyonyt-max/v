@@ -268,6 +268,7 @@ local S: { [string]: { de: string, en: string } } = {
 	admin_fulllog = { de = "📜 Log", en = "📜 Log" },
 	full_log = { de = "Alles-Log (alle Server)", en = "Full log (all servers)" },
 	today = { de = "Heute", en = "Today" },
+	all_servers = { de = "alle Server", en = "all servers" },
 	log_filter = { de = "Filter: Name, ID, money, chat …", en = "Filter: name, ID, money, chat …" },
 	log_search = { de = "Suchen", en = "Search" },
 	log_count = { de = "%d Einträge · Seite %d / %d", en = "%d entries · page %d / %d" },

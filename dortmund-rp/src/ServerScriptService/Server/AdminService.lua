@@ -76,8 +76,8 @@ local ACTIONS: { [string]: number } = {
 	reply = GA,
 	news_post = GA,
 	news_delete = GA,
-	vote_start = SA,
-	vote_end = SA,
+	vote_start = GA, -- votes run on every server
+	vote_end = GA,
 	-- AA: Owner + both Co-Owner ranks
 	aa_boost = Roles.SECOND_CO_OWNER,
 	aa_boost_stop = Roles.SECOND_CO_OWNER,

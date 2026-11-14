@@ -227,7 +227,7 @@ end
 
 -- Votes on this server: question, 2-4 answers, time limit
 local function voteSection(root: ScrollingFrame, order: number)
-	local card = section(root, order, "🗳️ " .. Store.T("vote"))
+	local card = section(root, order, "🗳️ " .. Store.T("vote") .. " (" .. Store.T("all_servers") .. ")")
 	local question = Make.TextBox(Store.T("vote_question"), { Parent = card })
 	local answers = {}
 	for i = 1, 4 do
@@ -254,7 +254,9 @@ local function voteSection(root: ScrollingFrame, order: number)
 end
 
 local function serverTab(root: ScrollingFrame)
-	voteSection(root, 20)
+	if Store.Rank() >= GAME_ADMIN then
+		voteSection(root, 20) -- votes run on every server
+	end
 	local isGA = Store.Rank() >= GAME_ADMIN
 	local ann = section(root, 1, "📢")
 	local text = Make.TextBox(Store.T("announce_text"), { Parent = ann })

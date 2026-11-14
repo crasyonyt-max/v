@@ -1063,6 +1063,62 @@ test("full game log: add, filter, pages", function()
 	eq(#page2, 50, "second page")
 end)
 
+test("votes are shared by all servers", function()
+	local mem = {}
+	fakeServices.DataStoreService = {
+		GetDataStore = function()
+			return {
+				UpdateAsync = function(_, key, fn)
+					local new = fn(mem[key])
+					if new ~= nil then
+						mem[key] = new
+					end
+				end,
+				GetAsync = function(_, key)
+					return mem[key]
+				end,
+			}
+		end,
+	}
+	fakeServices.MessagingService = { PublishAsync = function() end, SubscribeAsync = function() end }
+	fakeServices.Players = {
+		GetPlayers = function()
+			return {}
+		end,
+	}
+	fakeServices.HttpService = {
+		GenerateGUID = function()
+			return "abcdef12-0000"
+		end,
+		JSONEncode = function(_, v)
+			return tostring(v)
+		end,
+	}
+	local stub = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	overrides["ServerScriptService/Server/Remotes"] = stub
+	overrides["ServerScriptService/Server/State"] = stub
+	overrides["ServerScriptService/Server/DataService"] = stub
+	cache["ServerScriptService/Server/VoteService"] = nil
+	local Votes = requirePath(Server.VoteService)
+	for _, name in { "Remotes", "State", "DataService" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	fakeServices.DataStoreService, fakeServices.MessagingService = nil, nil
+	fakeServices.HttpService, fakeServices.Players = nil, nil
+
+	assert(Votes.Begin("Pizza?", { "Ja", "Nein" }, 5, "Tester"), "vote started")
+	assert(Votes.IsRunning(), "running")
+	eq(Votes.Begin("Noch eine?", { "A", "B" }, 5, "Tester"), false, "only one vote at a time")
+	assert(mem.current and mem.current.question == "Pizza?", "saved for all servers")
+	assert(Votes.End(), "ended")
+	eq(Votes.IsRunning(), false)
+	assert(mem.current.ends <= os.time(), "end saved too")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
 	error("tests failed")
