@@ -27,6 +27,7 @@ local LiveryApplier = require(script.Parent.Cars.LiveryApplier)
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig")) :: any
 local XPService = require(script.Parent.XPService)
 local GameLog = require(script.Parent.GameLog)
+local BusService = require(script.Parent.BusService)
 
 local VehicleService = {}
 
@@ -396,6 +397,10 @@ local function spawnCar(
 	local custom = if color and vcfg.Repaintable then { Body = color } else nil
 	pcall(LiveryApplier.ApplyVehicle, model, vcfg, custom)
 	addCarDetails(model)
+	if CarGenerator.RuleFor(vcfg).Type == "Bus" then
+		-- seats, doors, line display, tickets (admin bus: free rides)
+		BusService.Equip(model, player, vcfg.Category == "GameAdmin" or vcfg.Category == "ServerAdmin")
+	end
 	VehicleBuilder.SetPlate(model, plateText or Plate.Random(Config.DefaultCityCode, rng))
 	model:PivotTo(CFrame.new(cf.Position + Vector3.new(0, above + 0.3, 0)) * (cf - cf.Position))
 	model.Parent = folder -- CarServer takes it over (tag "RealisticCar")

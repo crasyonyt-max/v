@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local BusController = require(script.Parent.BusController)
 local Make = require(script.Parent.Parent.UI.Make)
 local Notify = require(script.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Net)
@@ -211,12 +212,35 @@ local function buildButtons()
 				end,
 			})
 		end
+		if car and car:GetAttribute("Bus") then
+			-- bus: front door, middle door, line + destination
+			for _, b in
+				{
+					{
+						"🚪1",
+						function()
+							BusController.Door(1)
+						end,
+					},
+					{
+						"🚪2",
+						function()
+							BusController.Door(2)
+						end,
+					},
+					{ "🚏", BusController.OpenLine },
+				}
+			do
+				table.insert(list, b)
+			end
+		end
+		local width = math.min(40, math.floor((324 - 4 * (#list - 1)) / #list))
 		for i, b in list do
 			Make.Button(
 				b[1],
 				T.card,
 				b[2],
-				{ Size = UDim2.fromOffset(40, 26), TextSize = 14, LayoutOrder = i, Parent = buttons }
+				{ Size = UDim2.fromOffset(width, 26), TextSize = 13, LayoutOrder = i, Parent = buttons }
 			)
 		end
 		return

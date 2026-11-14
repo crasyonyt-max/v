@@ -12,6 +12,7 @@ Locations.Jobs = {
 	ADMC = { title = "ADMC Stützpunkt", marker = { 2421.4, 6930.2 }, garage = { 2421.4, 6930.2 }, angle = 80.9 },
 	DXL = { title = "DXL Paketzentrum", marker = { 4543.7, 5794.6 }, garage = { 4543.7, 5794.6 }, angle = -102.7 },
 	LKW = { title = "Spedition Dortmund", marker = { 5678.5, -15.8 }, garage = { 5678.5, -15.8 }, angle = -82.3 },
+	Bus = { title = "Busbahnhof Hauptbahnhof", marker = { -108.6, -811.4 }, garage = { -110.4, -830.1 }, angle = -5.6 },
 }
 
 Locations.Shops = {

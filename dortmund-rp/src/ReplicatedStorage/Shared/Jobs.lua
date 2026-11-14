@@ -77,6 +77,14 @@ Jobs.List = {
 		color = Color3.fromRGB(90, 140, 90),
 		emergency = false,
 	},
+	{
+		id = "Bus",
+		de = "Busfahrer",
+		en = "Bus Driver",
+		paycheck = 500,
+		color = Color3.fromRGB(11, 110, 138),
+		emergency = false,
+	},
 } :: { Job }
 
 Jobs.ById = {} :: { [string]: Job }

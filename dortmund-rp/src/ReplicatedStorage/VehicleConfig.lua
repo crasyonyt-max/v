@@ -35,7 +35,7 @@ VehicleConfig.Settings = {
 	VehiclesFolder = "Vehicles", -- ServerStorage/<this>
 }
 
-VehicleConfig.Jobs = { "Police", "Fire", "EMS", "Notarzt", "ADMC", "DXL", "LKW" }
+VehicleConfig.Jobs = { "Police", "Fire", "EMS", "Notarzt", "ADMC", "DXL", "LKW", "Bus" }
 
 -------------------------------------------------------------------------------
 -- DEALERSHIP: { Name, Price EUR, Paint }  (Paint names are in LiveryConfig.Paints)
@@ -153,6 +153,15 @@ local JOB_FLEETS = {
 			{ "Mercator Aktros", 10000 },
 			{ "Skandia R", 15000 },
 			{ "Volvar FH16", 25000 },
+		},
+	},
+	{
+		Job = "Bus", Preset = "BUS",
+		Vehicles = {
+			{ "Mercator Sitaro", 0, IsStarter = true },
+			{ "MAR Lion's Stadt", 1000 },
+			{ "Solaria Urbano Elektro", 3000, Lettering = "E-BUS DORTMUND" },
+			{ "Mercator Sitaro G", 6000, Lettering = "GELENKBUS" },
 		},
 	},
 }
@@ -337,6 +346,18 @@ for _, list in ipairs({ { "ServerAdmin", SERVER_ADMIN_CARS }, { "GameAdmin", GAM
 		local livery, err = LiveryConfig.Resolve("ADMIN")
 		add({ Name = row[1], Category = list[1], Price = 0, Livery = livery, LiveryError = err })
 	end
+end
+-- the admin bus: the Solaria of the bus job in the ADMIN livery, without siren
+do
+	local livery, err = LiveryConfig.Resolve("ADMIN", { LightType = "none", Lettering = "ADMIN BUS" })
+	add({
+		Name = "Solaria Urbano Elektro (Admin)",
+		Model = "Solaria Urbano Elektro",
+		Category = "GameAdmin",
+		Price = 0,
+		Livery = livery,
+		LiveryError = err,
+	})
 end
 
 function VehicleConfig.Get(id)

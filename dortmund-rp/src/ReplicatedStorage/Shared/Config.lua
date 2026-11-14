@@ -72,6 +72,7 @@ Config.DropInterval = 1
 Config.MaxSpawnedVehicles = 1 -- personal + job vehicles per player at once
 Config.StudsPerMeter = 1 / 0.28 -- Roblox convention used for speedometers
 Config.DefaultCityCode = "DO"
+Config.BusFare = 5 -- € per bus ride (passenger -> bus driver)
 
 -- Gamepass IDs. Create them on create.roblox.com -> your experience -> Monetization -> Passes,
 -- then paste the IDs here. 0 = not created yet (pack is locked for everyone except Game Admins).

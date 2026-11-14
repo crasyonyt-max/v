@@ -245,7 +245,7 @@ local VehicleBuilder = requirePath(Server.VehicleBuilder)
 test("vehicle catalog: one motorbike", function()
 	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
-	eq(#Vehicles.ByCategory("Admin"), 11, "admin bike + 10 admin cars")
+	eq(#Vehicles.ByCategory("Admin"), 12, "admin bike + 10 admin cars + admin bus")
 	eq(#Vehicles.ByCategory("Dealer"), 20, "dealership cars")
 	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
 	eq(#Vehicles.ByCategory("Pack"), 25, "gamepass pack cars")
@@ -831,7 +831,7 @@ test("real city + map", function()
 		local k = m:GetAttribute("Interaction")
 		kinds[k] = (kinds[k] or 0) + 1
 	end
-	eq(kinds.JobStart, 7, "job start markers (one per job)")
+	eq(kinds.JobStart, 8, "job start markers (one per job)")
 	eq(kinds.AptDoor, 32, "32 apartment doors in the tower")
 	eq(kinds.Elevator, 17, "elevator on every floor + lobby")
 	local TowerBuilder = requirePath(Server.TowerBuilder)
@@ -843,7 +843,7 @@ test("real city + map", function()
 	eq(#(StationBuilder.Bays.ADMC or {}), 4, "ADMC bays")
 	eq(#(StationBuilder.Bays.DXL or {}), 5, "DXL bays")
 	eq(#(StationBuilder.Bays.LKW or {}), 4, "LKW bays")
-	eq(kinds.JobGarage, 7, "job garages")
+	eq(kinds.JobGarage, 8, "job garages")
 	assert((kinds.Refuel or 0) >= 3, "petrol stations")
 	local uis = {}
 	for _, m in tagged.Interaction do
@@ -1173,6 +1173,55 @@ test("every car builds and gets its livery", function()
 	print(string.format("  cars: %d built", built))
 end)
 
+test("buses: seats, doors, displays; admin bus free + no siren", function()
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local storage = roblox.Instance.new("Folder")
+	local oldStorage = fakeServices.ServerStorage
+	fakeServices.ServerStorage = storage
+	cache["ServerScriptService/Server/Cars/VehicleModelGenerator"] = nil
+	local Generator = requirePath(pathProxy({ "ServerScriptService", "Server", "Cars", "VehicleModelGenerator" }))
+	fakeServices.ServerStorage = oldStorage
+	local BusService = requirePath(Server.BusService)
+	local buses, admin = 0, nil
+	for _, v in VehicleConfig.List do
+		if Generator.RuleFor(v).Type ~= "Bus" then
+			continue
+		end
+		buses += 1
+		local model = Generator.Get(v):Clone()
+		local free = v.Category == "GameAdmin"
+		assert(BusService.Build(model, free), v.Name .. " equipped")
+		eq(model:GetAttribute("Bus"), true)
+		local seats, doors, displays = 0, 0, 0
+		for _, c in model:GetChildren() do
+			if c.ClassName == "Seat" then
+				seats += 1
+				local prompt = c:FindFirstChild("EnterPrompt")
+				assert(prompt and prompt.Enabled == false, "boarding only with open doors")
+			elseif c.Name:match("^Door%d_") then
+				doors += 1
+			elseif c.Name:match("^Line") then
+				displays += 1
+			end
+		end
+		assert(seats >= 12, v.Name .. ": passenger seats " .. seats)
+		eq(doors, 4, v.Name .. ": two double doors")
+		eq(displays, 3, v.Name .. ": front, side, rear display")
+		if free then
+			admin = v
+			eq(model:GetAttribute("FreeRide"), true, "admin bus is free")
+		end
+		model:Destroy()
+	end
+	eq(buses, 5, "4 job buses + admin bus")
+	assert(admin, "admin bus exists")
+	eq(admin.LightType, "none", "admin bus: no siren")
+	eq(admin.Livery.Colors.Body:ToHex():upper(), "FF7300", "admin bus: orange ADMIN livery")
+	local Jobs = requirePath(RS.Shared.Jobs)
+	assert(Jobs.ById.Bus, "bus driver job")
+	eq(#Vehicles.ForJob("Bus"), 4, "4 buses in the bus job garage")
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")
@@ -1190,12 +1239,13 @@ test("admin cars: orange livery with red sirens", function()
 	for _, v in VehicleConfig.List do
 		if v.Category == "ServerAdmin" or v.Category == "GameAdmin" then
 			n += 1
-			eq(v.LightType, "red", v.Name .. " red lights")
-			eq(v.Livery.Lettering, "ADMIN", v.Name .. " lettering")
+			local bus = v.Model == "Solaria Urbano Elektro"
+			eq(v.LightType, if bus then "none" else "red", v.Name .. " lights (bus: no siren)")
+			eq(v.Livery.Lettering, if bus then "ADMIN BUS" else "ADMIN", v.Name .. " lettering")
 			eq(v.Livery.Colors.Body:ToHex():upper(), "FF7300", v.Name .. " orange")
 		end
 	end
-	eq(n, 10, "10 admin cars")
+	eq(n, 11, "10 admin cars + admin bus")
 end)
 
 test("mall, underground garages and plate service", function()

@@ -771,6 +771,7 @@ def main():
         "ADMC": ("ADMC Stützpunkt Markgrafenstraße", by_name("Orlen", "amenity")),
         "DXL": ("DXL Zustellbasis Nord", by_name("Polizeiwache Nord")),
         "LKW": ("Spedition am Hafen", by_name("Brügmannplatz")),
+        "Bus": ("Busbahnhof Hauptbahnhof", by_name("Busbahnhof Dortmund Hauptbahnhof")),
     }
     lines = []
     SITE_OF = {"Police": "Police", "Fire": "FireRescue", "Rettungsdienst": "FireRescue", "Notarzt": "FireRescue", "ADMC": "ADMC", "DXL": "DXL", "LKW": "LKW"}
