@@ -162,8 +162,12 @@ local function buildViaduct(line: TrainLine.Line, parent: Instance)
 	local m = Instance.new("Model")
 	m.Name = "Viadukt " .. line.id
 	local pts = line.points
-	local nextPillar = 0
+	-- a line that shares the start of another line's track only builds its own part
+	local nextPillar = line.branchFrom
 	for i = 1, #pts - 1 do
+		if line.cum[i + 1] <= line.branchFrom then
+			continue
+		end
 		local a = Vector3.new(pts[i].X, ys[i], pts[i].Z)
 		local b = Vector3.new(pts[i + 1].X, ys[i + 1], pts[i + 1].Z)
 		local len = (b - a).Magnitude
@@ -271,10 +275,40 @@ end
 -- Stations ---------------------------------------------------------------------------
 
 local stairs: { { prompt: ProximityPrompt, to: CFrame } } = {} -- wired in Start
-local boards: { { line: TrainLine.Line, station: number, dir: number, text: TextLabel } } = {}
+type Serve = { line: TrainLine.Line, station: number }
+type Board = { serves: { Serve }, dir: number, text: TextLabel, prompt: ProximityPrompt }
+local boards: { Board } = {}
+-- built stations by name: lines that share a station use the same platforms
+local stationsBuilt: { [string]: { pos: Vector3, byDir: { [number]: Board } } } = {}
+
+local function promptText(b: Board): string
+	local lines, dests = {}, {}
+	for _, sv in b.serves do
+		if #TrainLine.Departures(sv.line, sv.station, b.dir, 0) > 0 then
+			table.insert(lines, "U" .. sv.line.id:sub(2))
+			table.insert(dests, TrainLine.Destination(sv.line, b.dir))
+		end
+	end
+	if #lines == 0 then
+		return "Endstation"
+	end
+	return table.concat(lines, "/") .. " Richtung " .. table.concat(dests, " / ")
+end
 
 local function buildStation(line: TrainLine.Line, i: number, parent: Instance)
 	local st = line.stations[i]
+	-- already there (shared track): just add this line to its boards
+	local existing = stationsBuilt[st.name]
+	local here = TrainLine.At(line, st.s)
+	if existing and (existing.pos - here).Magnitude < 40 then
+		for dir, b in existing.byDir do
+			table.insert(b.serves, { line = line, station = i })
+			b.prompt.ObjectText = promptText(b)
+		end
+		return
+	end
+	local record = { pos = here, byDir = {} }
+	stationsBuilt[st.name] = record
 	local m = Instance.new("Model")
 	m.Name = "U-Bahnhof " .. st.name
 	for _, dir in { 1, -1 } do
@@ -361,7 +395,6 @@ local function buildStation(line: TrainLine.Line, i: number, parent: Instance)
 		local text =
 			label(boardPart, Enum.NormalId.Left, "", Color3.fromRGB(255, 190, 40), Color3.fromRGB(10, 10, 14), 40)
 		text.Font = Enum.Font.Code
-		table.insert(boards, { line = line, station = i, dir = dir, text = text })
 
 		-- access from the street: a "U" pole and a prompt that takes you up; "Ausgang" back down
 		local ground = CityBuilder.GroundY(f.Position.X, f.Position.Z)
@@ -381,11 +414,14 @@ local function buildStation(line: TrainLine.Line, i: number, parent: Instance)
 			})
 		local upPrompt = Instance.new("ProximityPrompt")
 		upPrompt.ActionText = "Zum Bahnsteig"
-		upPrompt.ObjectText = ("U%s Richtung %s"):format(line.id:sub(2), TrainLine.Destination(line, dir))
 		upPrompt.HoldDuration = 0.3
 		upPrompt.MaxActivationDistance = 10
 		upPrompt.RequiresLineOfSight = false
 		upPrompt.Parent = up
+		local board: Board = { serves = { { line = line, station = i } }, dir = dir, text = text, prompt = upPrompt }
+		upPrompt.ObjectText = promptText(board)
+		table.insert(boards, board)
+		record.byDir[dir] = board
 		local topSpot = at(PLAT_OFF + 1, 5.5, -PLAT_L / 2 + 10)
 		table.insert(stairs, { prompt = upPrompt, to = topSpot })
 		local down = box(
@@ -638,21 +674,35 @@ local function step()
 end
 TrainService.Step = step
 
-local function boardText(line: TrainLine.Line, station: number, dir: number, t: number): string
-	local deps = TrainLine.Departures(line, station, dir, t)
-	if #deps == 0 then
+-- departure board: the next trains of every line that stops here in this direction
+local function boardTextFor(serves: { Serve }, dir: number, t: number): string
+	local all = {}
+	for _, sv in serves do
+		local dest = TrainLine.Destination(sv.line, dir)
+		for _, secs in TrainLine.Departures(sv.line, sv.station, dir, t) do
+			table.insert(all, { secs = secs, line = sv.line.id, dest = dest })
+		end
+	end
+	if #all == 0 then
 		return "  Endstation\n  Bitte nicht einsteigen"
 	end
-	local dest = TrainLine.Destination(line, dir)
+	table.sort(all, function(a, b)
+		return a.secs < b.secs
+	end)
 	local rows = {}
-	for i = 1, math.min(2, #deps) do
-		local secs = deps[i]
-		local when = if secs < 30 then "sofort" else math.ceil(secs / 60) .. " min"
-		table.insert(rows, ("  U%s %-16s %s"):format(line.id:sub(2), dest, when))
+	for i = 1, math.min(3, #all) do
+		local d = all[i]
+		local when = if d.secs < 30 then "sofort" else math.ceil(d.secs / 60) .. " min"
+		table.insert(rows, ("  U%s %-18s %s"):format(d.line:sub(2), d.dest, when))
 	end
 	return table.concat(rows, "\n")
 end
+local function boardText(line: TrainLine.Line, station: number, dir: number, t: number): string
+	return boardTextFor({ { line = line, station = station } }, dir, t)
+end
 TrainService.BoardText = boardText
+TrainService.BoardTextFor = boardTextFor
+TrainService.Boards = boards
 
 function TrainService.Build()
 	for _, line in TrainLine.Lines do
@@ -746,7 +796,7 @@ function TrainService.Start()
 		while true do
 			local t = now()
 			for _, b in boards do
-				b.text.Text = boardText(b.line, b.station, b.dir, t)
+				b.text.Text = boardTextFor(b.serves, b.dir, t)
 			end
 			task.wait(1)
 		end

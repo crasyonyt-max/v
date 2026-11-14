@@ -1282,6 +1282,38 @@ test("train timetable: smooth, both ways, all stations", function()
 	for i = 2, #line.stations - 1 do
 		assert(seen[i .. ":1"] and seen[i .. ":-1"], line.stations[i].name .. " served both ways")
 	end
+	-- U43 + U44: same cycle, same shared stations, and never two trains close on one track
+	local u43, u44 = TrainLine.Lines[1], TrainLine.Lines[2]
+	assert(u44 and u44.id == "U44", "U44 line")
+	eq(u43.cycle, u44.cycle, "one timetable")
+	for i = 1, 4 do
+		eq(u44.stations[i].s, u43.stations[i].s, "shared station " .. u43.stations[i].name)
+	end
+	eq(u44.stations[#u44.stations].name, "Borsigplatz", "U44 ends at Borsigplatz")
+	local closest = math.huge
+	for t = 0, u43.cycle, 1 do
+		local pos = {}
+		for _, l in TrainLine.Lines do
+			for k = 1, TrainLine.TRAINS do
+				local st = TrainLine.State(l, k, t)
+				local p = TrainLine.At(l, st.s)
+				table.insert(pos, { p = p, dir = st.dir, l = l, s = st.s })
+			end
+		end
+		for a = 1, #pos do
+			for b = a + 1, #pos do
+				local A, B = pos[a], pos[b]
+				-- same track: same direction, and both on the shared part or on the same line
+				local shared = A.s < math.max(A.l.branchFrom, B.l.branchFrom)
+					and B.s < math.max(A.l.branchFrom, B.l.branchFrom)
+				if A.dir == B.dir and (A.l == B.l or shared) then
+					closest = math.min(closest, (A.p - B.p).Magnitude)
+				end
+			end
+		end
+	end
+	assert(closest > 150, "trains on one track keep their distance, closest " .. closest)
+	print(string.format("  trains: cycle %.0f s, closest on one track %.0f studs", u43.cycle, closest))
 	local deps = TrainLine.Departures(line, 2, 1, 100)
 	eq(#deps, TrainLine.TRAINS, "one departure per train")
 	assert(deps[1] >= 0 and deps[1] < line.cycle / TrainLine.TRAINS + 1, "next train within the interval")
@@ -1443,8 +1475,29 @@ test("mall, underground garages and plate service", function()
 			cars += 1
 		end
 	end
-	eq(stations, #line.stations, "one station per stop")
-	eq(cars, TrainLine.TRAINS * 2, "two cars per train")
+	local names = {}
+	for _, l in TrainLine.Lines do
+		for _, st in l.stations do
+			names[st.name] = true
+		end
+	end
+	local unique = 0
+	for _ in names do
+		unique += 1
+	end
+	eq(stations, unique, "one station per stop (shared stations once)")
+	eq(cars, TrainLine.TRAINS * 2 * #TrainLine.Lines, "two cars per train")
+	-- Reinoldikirche (shared): its board lists both lines eastbound
+	for _, b in Trains.Boards do
+		if
+			#b.serves == 2
+			and b.dir == 1
+			and b.serves[1].line.stations[b.serves[1].station].name == "Reinoldikirche"
+		then
+			local text = Trains.BoardTextFor(b.serves, 1, 0)
+			assert(text:find("U43") and text:find("U44"), "both lines on the board: " .. text)
+		end
+	end
 	-- a train at a station stands next to the platform of its direction
 	for _, dir in { 1, -1 } do
 		local st = line.stations[3]

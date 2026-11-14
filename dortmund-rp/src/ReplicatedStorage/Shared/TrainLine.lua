@@ -37,6 +37,8 @@ export type Line = {
 	length: number,
 	events: { Event },
 	cycle: number,
+	phase: number, -- this line's trains run this many seconds behind the first line's
+	branchFrom: number, -- where its own track starts (shared before that)
 }
 
 export type State = {
@@ -81,7 +83,7 @@ end
 TrainLine.TripTime = tripTime
 TrainLine.TripDistance = tripDistance
 
-local function build(data: any): Line
+local function build(data: any, endPad: number): Line
 	local points, cum = {}, {}
 	local path = data.path
 	for i = 1, #path, 2 do
@@ -114,10 +116,11 @@ local function build(data: any): Line
 				table.insert(order, i)
 			end
 		end
-		-- the start of this direction: waiting at the terminus
+		-- the start of this direction: waiting at the terminus (the far end waits
+		-- longer on the shorter line, so all lines share one timetable)
 		add({
 			kind = "dwell",
-			dur = TrainLine.TERMINUS,
+			dur = TrainLine.TERMINUS + (if dir == -1 then endPad else 0),
 			dir = dir,
 			from = stations[order[1]].s,
 			to = stations[order[1]].s,
@@ -141,17 +144,32 @@ local function build(data: any): Line
 		length = cum[#cum],
 		events = events,
 		cycle = t,
+		phase = 0,
+		branchFrom = data.branchFrom or 0,
 	}
 end
 
+-- All lines start at the same western terminus and share the track up to where
+-- each one turns off. Same cycle for every line (padding at the far end) and the
+-- trains of all lines interleaved: on the shared track a train comes every
+-- cycle / (TRAINS * lines) seconds, never two at once.
 TrainLine.Lines = {} :: { Line }
-for _, data in TrainData do
-	table.insert(TrainLine.Lines, build(data))
+do
+	local longest = 0
+	for _, data in TrainData do
+		longest = math.max(longest, build(data, 0).cycle)
+	end
+	for i, data in TrainData do
+		local plain = build(data, 0)
+		local line = build(data, longest - plain.cycle)
+		line.phase = (i - 1) * line.cycle / (TrainLine.TRAINS * #TrainData)
+		table.insert(TrainLine.Lines, line)
+	end
 end
 
 -- where the train with index k (1..TRAINS) of a line is at server time t
 function TrainLine.State(line: Line, k: number, t: number): State
-	local tc = (t + (k - 1) * line.cycle / TrainLine.TRAINS) % line.cycle
+	local tc = (t - line.phase + (k - 1) * line.cycle / TrainLine.TRAINS) % line.cycle
 	for _, e in line.events do
 		if tc < e.t0 + e.dur then
 			local into = tc - e.t0
@@ -188,7 +206,7 @@ function TrainLine.Departures(line: Line, station: number, dir: number, t: numbe
 	end
 	local out = {}
 	for k = 1, TrainLine.TRAINS do
-		local tc = (t + (k - 1) * line.cycle / TrainLine.TRAINS) % line.cycle
+		local tc = (t - line.phase + (k - 1) * line.cycle / TrainLine.TRAINS) % line.cycle
 		for _, off in offsets do
 			table.insert(out, (off - tc) % line.cycle)
 		end
