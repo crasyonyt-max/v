@@ -88,16 +88,16 @@ Config.Gamepasses = {
 -- id = the product id (0 = not created yet, not shown), cash = € the player gets,
 -- robux = shown until Roblox reports the real price.
 Config.MoneyProducts = {
-	{ id = 3731408497, cash = 18000, robux = 199 },
-	{ id = 3731407695, cash = 50000, robux = 299 },
-	{ id = 3731407305, cash = 67911, robux = 399 },
-	{ id = 3731404504, cash = 72000, robux = 432 },
-	{ id = 3731404147, cash = 100000, robux = 572 },
-	{ id = 3731402761, cash = 200000, robux = 1000 },
-	{ id = 3731402264, cash = 500000, robux = 2000 },
-	{ id = 3731401194, cash = 1000000, robux = 3723 },
-	{ id = 3731400781, cash = 3000000, robux = 5723 },
-	{ id = 3731400455, cash = 5000000, robux = 7273 },
+	{ id = 3731400455, cash = 18000, robux = 199 },
+	{ id = 3731400781, cash = 50000, robux = 299 },
+	{ id = 3731401194, cash = 67911, robux = 399 },
+	{ id = 3731402264, cash = 72000, robux = 432 },
+	{ id = 3731402761, cash = 100000, robux = 572 },
+	{ id = 3731404147, cash = 200000, robux = 1000 },
+	{ id = 3731404504, cash = 500000, robux = 2000 },
+	{ id = 3731407305, cash = 1000000, robux = 3723 },
+	{ id = 3731407695, cash = 3000000, robux = 5723 },
+	{ id = 3731408497, cash = 5000000, robux = 7273 },
 }
 
 Config.GamepassRobux = {
