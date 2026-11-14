@@ -330,11 +330,13 @@ for _, pack in ipairs(GAMEPASS_PACKS) do
 	end
 end
 
-for _, row in ipairs(SERVER_ADMIN_CARS) do
-	painted("ServerAdmin", row[1], 0, row[2])
-end
-for _, row in ipairs(GAME_ADMIN_CARS) do
-	painted("GameAdmin", row[1], 0, row[2])
+-- Dortmund RP: admin cars wear the orange ADMIN livery with red sirens
+-- (the paint column above is no longer used for them).
+for _, list in ipairs({ { "ServerAdmin", SERVER_ADMIN_CARS }, { "GameAdmin", GAME_ADMIN_CARS } }) do
+	for _, row in ipairs(list[2]) do
+		local livery, err = LiveryConfig.Resolve("ADMIN")
+		add({ Name = row[1], Category = list[1], Price = 0, Livery = livery, LiveryError = err })
+	end
 end
 
 function VehicleConfig.Get(id)

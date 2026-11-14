@@ -27,10 +27,11 @@ LiveryConfig.ColorSlots = { "Body", "Stripe", "Accent" }
 -- Slots players may change when repainting their own cars.
 LiveryConfig.RepaintableSlots = { "Body", "Stripe", "Accent" }
 
-LiveryConfig.LightTypes = { none = true, blue = true, orange = true, hidden_blue = true }
+LiveryConfig.LightTypes = { none = true, blue = true, orange = true, red = true, hidden_blue = true }
 LiveryConfig.LightColors = {
 	blue = hex("#1E6BFF"),
 	orange = hex("#FF8C00"),
+	red = hex("#FF1E1E"), -- admin cars
 }
 
 LiveryConfig.Presets = {
@@ -88,6 +89,14 @@ LiveryConfig.Presets = {
 		Lettering = false,
 		LightType = "none",
 		TrailerPresets = { "LINDL", "ALDA", "REWO", "IKORA" },
+	},
+
+	-- Admin cars (Dortmund RP): orange with black, red sirens ------------------
+	ADMIN = {
+		Colors = { Body = hex("#FF7300"), Stripe = hex("#141414"), Accent = hex("#141414") },
+		Lettering = "ADMIN",
+		LetteringColor = hex("#141414"),
+		LightType = "red",
 	},
 
 	-- Supermarket trailer liveries (own colors, not the real brands') ------

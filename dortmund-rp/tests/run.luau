@@ -1173,6 +1173,30 @@ test("every car builds and gets its livery", function()
 	print(string.format("  cars: %d built", built))
 end)
 
+test("custom plates: city is always DO", function()
+	local Plate = requirePath(RS.Shared.Plate)
+	eq(Plate.NormalizeDO("AB 1234"), "DO-AB 1234")
+	eq(Plate.NormalizeDO("do-ab 1234"), "DO-AB 1234")
+	eq(Plate.NormalizeDO("DO-DO-AB 12"), "DO-AB 12", "DO typed twice")
+	eq(Plate.NormalizeDO("B-AB 1234"), nil, "other city refused")
+	eq(Plate.NormalizeDO("DO-AB 0123"), nil, "no leading zero")
+	eq(Plate.NormalizeDO("ABC 1234"), nil, "max two letters")
+end)
+
+test("admin cars: orange livery with red sirens", function()
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local n = 0
+	for _, v in VehicleConfig.List do
+		if v.Category == "ServerAdmin" or v.Category == "GameAdmin" then
+			n += 1
+			eq(v.LightType, "red", v.Name .. " red lights")
+			eq(v.Livery.Lettering, "ADMIN", v.Name .. " lettering")
+			eq(v.Livery.Colors.Body:ToHex():upper(), "FF7300", v.Name .. " orange")
+		end
+	end
+	eq(n, 10, "10 admin cars")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
 	error("tests failed")

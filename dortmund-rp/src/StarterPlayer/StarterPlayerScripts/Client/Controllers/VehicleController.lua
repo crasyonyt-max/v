@@ -161,12 +161,30 @@ end
 local function buildButtons()
 	Make.Clear(buttons)
 	if isCar then
-		-- cars: lights, camera, flip back on the wheels, blue lights + siren
+		-- cars: lights, indicators, camera, flip back on the wheels, blue lights + siren
 		local list = {
 			{
 				"💡",
 				function()
 					carCommand("Headlights")
+				end,
+			},
+			{
+				"◀",
+				function()
+					control("Indicator", "L")
+				end,
+			},
+			{
+				"⚠",
+				function()
+					control("Indicator", "H")
+				end,
+			},
+			{
+				"▶",
+				function()
+					control("Indicator", "R")
 				end,
 			},
 			{
@@ -651,8 +669,14 @@ local function driveCar(dt: number)
 	local maxRpm = math.max(1, tonumber(tel.maxRPM) or 1)
 	rpmBar.Size = UDim2.fromScale(math.clamp((tonumber(tel.rpm) or 0) / maxRpm, 0, 1), 1)
 	fuelBar.Size = UDim2.fromScale(1, 1) -- cars don't use fuel
-	leftArrow.TextColor3 = Color3.fromRGB(60, 60, 60)
-	rightArrow.TextColor3 = Color3.fromRGB(60, 60, 60)
+	local ind = model:GetAttribute("Indicator")
+	local blink = (os.clock() % 0.8) < 0.4
+	leftArrow.TextColor3 = if (ind == "L" or ind == "H") and blink
+		then Color3.fromRGB(60, 230, 90)
+		else Color3.fromRGB(60, 60, 60)
+	rightArrow.TextColor3 = if (ind == "R" or ind == "H") and blink
+		then Color3.fromRGB(60, 230, 90)
+		else Color3.fromRGB(60, 60, 60)
 	lightIcon.TextTransparency = if model:GetAttribute("Headlights") then 0 else 0.7
 end
 
@@ -726,9 +750,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 	local k = input.KeyCode
 	if isCar then
-		-- cars: the car script has its own keys (L lights, G siren, E/Q gears …)
+		-- cars: the car script has its own keys (L lights, G siren, E/Q gears …);
+		-- indicators are Z / C, hazards X
 		if k == Enum.KeyCode.V then
 			setCamera(not firstPerson)
+		elseif k == Enum.KeyCode.Z then
+			control("Indicator", "L")
+		elseif k == Enum.KeyCode.C then
+			control("Indicator", "R")
+		elseif k == Enum.KeyCode.X then
+			control("Indicator", "H")
 		end
 		return
 	end

@@ -21,6 +21,25 @@ function Plate.Normalize(text: string): string?
 	return string.format("%s-%s %s%s", city :: string, letters :: string, digits :: string, suffix :: string)
 end
 
+-- Custom plates in Dortmund RP: the city is always DO. "AB 1234", "do-ab 1234" and
+-- "DO-AB 1234" all become "DO-AB 1234"; any other city is refused.
+function Plate.NormalizeDO(text: string): string?
+	if typeof(text) ~= "string" or #text > 16 then
+		return nil
+	end
+	local s = string.upper(text)
+	s = string.gsub(s, "^%s+", "")
+	s = string.gsub(s, "^DO%-%s*DO%-", "DO-") -- typed "DO-" although it is already shown
+	if not string.find(s, "-", 1, true) then
+		s = "DO-" .. s
+	end
+	local p = Plate.Normalize(s)
+	if not p or string.sub(p, 1, 3) ~= "DO-" then
+		return nil
+	end
+	return p
+end
+
 function Plate.Random(city: string, rng: Random): string
 	local alphabet = "ABCDEFGHJKLMNPRSTUVWXYZ"
 	local function letter()

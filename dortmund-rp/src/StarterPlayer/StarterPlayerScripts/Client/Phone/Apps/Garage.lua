@@ -28,6 +28,7 @@ Phone.Register({
 	build = function(container)
 		local root = Make.Scroll({ Parent = container })
 		local expanded: string? = nil
+		local needPlate: string? = nil -- a car that needs its own plate before it can go out
 
 		local function render(state: { [string]: any })
 			Make.Clear(root)
@@ -80,10 +81,37 @@ Phone.Register({
 					T.font,
 					{ Parent = card }
 				)
+				if needPlate == uid then
+					-- first time out: choose the plate (city is always DO)
+					Make.Label("🔢 " .. Store.T("plate_choose"), 13, T.warn, T.bold, { Parent = card })
+					local plateRow =
+						New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Parent = card })
+					Make.Label("DO-", 18, T.text, T.black, { Size = UDim2.fromOffset(44, 36), Parent = plateRow })
+					local plateBox = Make.TextBox("AB 1234", {
+						Position = UDim2.fromOffset(46, 0),
+						Size = UDim2.new(1, -46, 1, 0),
+						Parent = plateRow,
+					})
+					Make.Button("✅ " .. Store.T("plate_set_go"), T.good, function()
+						local text = plateBox.Text
+						if req("Vehicle.SetPlate", uid, "DO-" .. text) then
+							needPlate = nil
+							if req("Vehicle.Spawn", uid) then
+								Phone.Close()
+							end
+						end
+					end, { Parent = card })
+				end
 				Make.Row({
 					Make.Button(Store.T("spawn"), T.good, function()
-						if req("Vehicle.Spawn", uid) then
+						local r = Net.Request("Vehicle.Spawn", uid)
+						if r.ok then
 							Phone.Close()
+						elseif r.err == "plate_required" then
+							needPlate = uid
+							render(Store.Get())
+						else
+							Notify.Error(r.err)
 						end
 					end, { Size = UDim2.new(0.5, -3, 1, 0) }),
 					Make.Button("⚙️", T.panel, function()
@@ -94,9 +122,18 @@ Phone.Register({
 					card
 
 				if expanded == uid then
-					local plateBox = Make.TextBox("DO-AB 1234", { Text = entry.plate or "", Parent = card })
+					local plateRow =
+						New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), Parent = card })
+					Make.Label("DO-", 18, T.text, T.black, { Size = UDim2.fromOffset(44, 36), Parent = plateRow })
+					local current = string.match(entry.plate or "", "^DO%-(.+)$") or ""
+					local plateBox = Make.TextBox("AB 1234", {
+						Text = current,
+						Position = UDim2.fromOffset(46, 0),
+						Size = UDim2.new(1, -46, 1, 0),
+						Parent = plateRow,
+					})
 					Make.Button(Store.T("change_plate"), T.accent, function()
-						req("Vehicle.SetPlate", uid, plateBox.Text)
+						req("Vehicle.SetPlate", uid, "DO-" .. plateBox.Text)
 					end, { Parent = card })
 					Make.Label(Store.T("color"), 12, T.sub, T.bold, { Parent = card })
 					local swatches =

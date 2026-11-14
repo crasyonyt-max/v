@@ -46,6 +46,7 @@ local spawned: { [Player]: Model } = {}
 local rng = Random.new()
 
 local PALETTE = Vehicles.Palette
+local addCarDetails: (Model) -> ()
 
 local function toColor(c: any): Color3
 	if typeof(c) == "table" then
@@ -291,6 +292,51 @@ local function setupRefuel(model: Model)
 	end)
 end
 
+-- Car plates (with text, on the model's plate spots) and indicators (next to the
+-- head- and taillights; WorldController makes them blink like on the bike).
+local AMBER_OFF = Color3.fromRGB(120, 70, 0)
+addCarDetails = function(model: Model)
+	local chassis = model.PrimaryPart :: BasePart
+	local function weldTo(p: BasePart)
+		p.Anchored = false
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Massless = true
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = chassis
+		w.Part1 = p
+		w.Parent = p
+	end
+	for _, spot in
+		{ { "FrontPlate", "PlateFront", Enum.NormalId.Front }, { "RearPlate", "PlateRear", Enum.NormalId.Back } }
+	do
+		local base = model:FindFirstChild(spot[1], true) :: BasePart?
+		if base and base:IsA("BasePart") then
+			local p = VehicleBuilder.MakePlate(model, spot[2], base.CFrame, spot[3])
+			p.Size = Vector3.new(math.max(base.Size.X, 1.6), math.max(base.Size.Y, 0.4), 0.06)
+			p.CFrame = base.CFrame
+			weldTo(p)
+			base.Transparency = 1
+		end
+	end
+	local lights = model:FindFirstChild("Lights")
+	for _, lamp in (if lights then lights:GetChildren() else {}) do
+		if lamp:IsA("BasePart") and (lamp.Name == "Headlight" or lamp.Name == "Taillight") then
+			local localPos = chassis.CFrame:PointToObjectSpace(lamp.Position)
+			local side = if localPos.X < 0 then -1 else 1
+			local ind = Instance.new("Part")
+			ind.Name = if side < 0 then "IndicatorL" else "IndicatorR"
+			ind.Size = Vector3.new(math.max(lamp.Size.X * 0.35, 0.3), lamp.Size.Y, lamp.Size.Z)
+			ind.CFrame = lamp.CFrame * CFrame.new(side * (lamp.Size.X / 2 + ind.Size.X / 2 + 0.02), 0, 0)
+			ind.Color = AMBER_OFF
+			ind.Material = Enum.Material.Glass
+			ind.Parent = model -- direct child: WorldController finds it
+			weldTo(ind)
+		end
+	end
+end
+
 -- Cars (RealisticCars): the model comes from VehicleConfig + the generator, the
 -- livery from LiveryApplier; CarServer / CarClient (ReplicatedStorage.RealisticCars)
 -- do the driving. Our part: ownership, who may drive, getting out, plates, despawn.
@@ -327,7 +373,8 @@ local function spawnCar(
 	end
 	local custom = if color and vcfg.Repaintable then { Body = color } else nil
 	pcall(LiveryApplier.ApplyVehicle, model, vcfg, custom)
-	model:SetAttribute("Plate", plateText or Plate.Random(Config.DefaultCityCode, rng))
+	addCarDetails(model)
+	VehicleBuilder.SetPlate(model, plateText or Plate.Random(Config.DefaultCityCode, rng))
 	model:PivotTo(CFrame.new(cf.Position + Vector3.new(0, above + 0.3, 0)) * (cf - cf.Position))
 	model.Parent = folder -- CarServer takes it over (tag "RealisticCar")
 
@@ -462,7 +509,7 @@ local function driverOf(player: Player): Model?
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local seat = humanoid and humanoid.SeatPart
-	if seat and seat:IsA("VehicleSeat") and seat.Name == "DriveSeat" then
+	if seat and seat:IsA("VehicleSeat") and (seat.Name == "DriveSeat" or seat.Name == "DriverSeat") then
 		local model = seat.Parent
 		if model and model:IsA("Model") and model.Parent == folder then
 			return model
@@ -695,6 +742,10 @@ function VehicleService.Start()
 		if not def then
 			return Remotes.Fail("bad_item")
 		end
+		-- a car needs its own plate before it goes on the road
+		if def.car and not entry.plateChosen then
+			return Remotes.Fail("plate_required")
+		end
 		local ok, err = spawnModel(player, def, toColor(entry.color), entry.plate, { Uid = uid })
 		if not ok then
 			return Remotes.Fail(err or "error")
@@ -754,7 +805,7 @@ function VehicleService.Start()
 		if not entry then
 			return Remotes.Fail("not_owned")
 		end
-		local plateText = typeof(text) == "string" and Plate.Normalize(text) or nil
+		local plateText = typeof(text) == "string" and Plate.NormalizeDO(text) or nil
 		if not plateText then
 			return Remotes.Fail("bad_plate")
 		end
@@ -766,18 +817,21 @@ function VehicleService.Start()
 		if not okFilter or filtered ~= plateText then
 			return Remotes.Fail("bad_plate")
 		end
-		if data.bank < PLATE_FEE then
+		-- the first own plate of a vehicle is free, changing it later costs a fee
+		local fee = if entry.plateChosen then PLATE_FEE else 0
+		if data.bank < fee then
 			return Remotes.Fail("no_money")
 		end
 		if not claimPlate(plateText, player.UserId) then
 			return Remotes.Fail("plate_taken")
 		end
-		if not Economy.TrySpend(player, PLATE_FEE, "Kennzeichen " .. plateText) then
+		if fee > 0 and not Economy.TrySpend(player, fee, "Kennzeichen " .. plateText) then
 			task.spawn(releasePlate, plateText, player.UserId)
 			return Remotes.Fail("no_money")
 		end
 		local old = entry.plate
 		entry.plate = plateText
+		entry.plateChosen = true
 		task.spawn(releasePlate, old, player.UserId)
 		local model = spawned[player]
 		if model and model:GetAttribute("Uid") == uid then

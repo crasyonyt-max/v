@@ -105,7 +105,9 @@ end
 local function applyLights(model, lightType)
 	model:SetAttribute("LightType", lightType)
 	model:SetAttribute("LightsHidden", lightType == "none" or lightType == "hidden_blue")
-	local color = lightType == "orange" and LiveryConfig.LightColors.orange or LiveryConfig.LightColors.blue
+	local color = lightType == "orange" and LiveryConfig.LightColors.orange
+		or lightType == "red" and LiveryConfig.LightColors.red
+		or LiveryConfig.LightColors.blue
 	for _, d in ipairs(model:GetDescendants()) do
 		if CollectionService:HasTag(d, "EmergencyLight") then
 			local parts = d:IsA("BasePart") and { d } or {}
@@ -132,7 +134,7 @@ local function applyLights(model, lightType)
 end
 
 local function applyExtras(model, extras, lightType)
-	local wanted = { Lightbar = lightType == "blue" or lightType == "orange" }
+	local wanted = { Lightbar = lightType == "blue" or lightType == "orange" or lightType == "red" }
 	for _, name in ipairs(extras or {}) do
 		wanted[name] = true
 	end
