@@ -15,6 +15,7 @@ export type Vehicle = {
 	body: string,
 	speed: number,
 	accel: number,
+	power: number?, -- PS (cars: Shared/CarPerformance)
 	color: Color3,
 	job: string?,
 	xp: number?,
@@ -85,6 +86,7 @@ table.insert(list, {
 -- CARS (RealisticCars + VehicleConfig/LiveryConfig in ReplicatedStorage) -------------
 -- Every car of VehicleConfig becomes an entry here; `car` is its VehicleConfig id.
 local VehicleConfig = require(script.Parent.Parent:WaitForChild("VehicleConfig")) :: any
+local CarPerformance = require(script.Parent.CarPerformance)
 local JOB_OF = { EMS = "Rettungsdienst" } -- their job names -> ours
 local PACK_OF =
 	{ ELECTRIC = "Electric", HYPERCAR = "Hypercar", OFFROAD = "Offroad", LUXURY = "Luxury", CLASSIC = "Classic" }
@@ -96,8 +98,9 @@ for _, v in VehicleConfig.List do
 		category = "Dealer",
 		price = v.Price,
 		body = "car",
-		speed = 0,
+		speed = (CarPerformance.Get(v.Model)) or 0,
 		accel = 1,
+		power = select(2, CarPerformance.Get(v.Model)),
 		color = v.Livery.Colors.Body or Color3.fromRGB(200, 200, 200),
 		car = v.Id,
 		emergency = v.LightType ~= "none",
@@ -220,6 +223,14 @@ function Vehicles.ByCategory(category: string): { Vehicle }
 		end
 	end
 	return out
+end
+
+-- "322 km/h · 1020 PS" (empty when unknown)
+function Vehicles.Stats(v: Vehicle): string
+	if not v.speed or v.speed <= 0 then
+		return ""
+	end
+	return v.speed .. " km/h" .. (if v.power then " · " .. v.power .. " PS" else "")
 end
 
 return Vehicles

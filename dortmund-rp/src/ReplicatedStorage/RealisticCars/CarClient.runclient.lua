@@ -15,6 +15,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local root = script.Parent
 local Configs = require(root.Configs)
+local CarTuning = require(script.Parent.CarTuning)
 local Sim = require(root.Sim)
 -- Dortmund RP: the game's own dashboard + touch pedals drive cars (see CarInput)
 local CarInput = require(root.CarInput)
@@ -277,7 +278,7 @@ end
 
 local function startDriving(seat)
 	local model = seat.Parent
-	local cfg = Configs.Cars[model:GetAttribute("CarType")]
+	local cfg = CarTuning.For(model) -- Dortmund RP: per-car power + top speed
 	if not cfg then
 		return
 	end
@@ -334,7 +335,7 @@ local function getCache(model)
 	if cache then
 		return cache
 	end
-	local cfg = Configs.Cars[model:GetAttribute("CarType")]
+	local cfg = CarTuning.For(model) -- Dortmund RP: per-car power + top speed
 	local chassis = model:FindFirstChild("Chassis")
 	if not cfg or not chassis then
 		return nil

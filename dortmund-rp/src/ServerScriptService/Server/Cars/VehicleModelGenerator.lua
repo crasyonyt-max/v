@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("VehicleConfig"))
+local CarPerformance = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CarPerformance"))
 
 local Generator = {}
 
@@ -104,6 +105,10 @@ function Generator.Get(vehicle)
 	end
 	model.Name = vehicle.Model
 	model:SetAttribute("Placeholder", true)
+	-- Dortmund RP: every car its own top speed + power (Shared/CarPerformance)
+	local topSpeed, power = CarPerformance.Get(vehicle.Model)
+	model:SetAttribute("TopSpeed", topSpeed)
+	model:SetAttribute("Power", power)
 	model.Parent = folder
 	return model
 end

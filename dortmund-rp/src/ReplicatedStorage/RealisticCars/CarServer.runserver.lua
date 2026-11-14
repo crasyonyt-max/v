@@ -13,6 +13,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local root = script.Parent
 local Configs = require(root.Configs)
+local CarTuning = require(script.Parent.CarTuning)
 local Builder = require(root.Builder)
 local Sim = require(root.Sim)
 
@@ -154,7 +155,7 @@ local function register(model)
 		return
 	end
 	local key = model:GetAttribute("CarType")
-	local cfg = Configs.Cars[key]
+	local cfg = CarTuning.For(model) -- Dortmund RP: per-car power + top speed
 	if cfg and model:FindFirstChild("Chassis") and model:FindFirstChild("DriverSeat") then
 		setupCar(model, cfg, key, model:GetPivot())
 	end

@@ -237,6 +237,10 @@ function Sim:step(dt)
 	self.sinceShift += dt
 
 	local thr = throttle * (1 - self.tcsCut)
+	-- Dortmund RP: per-car top speed limiter (km/h), eases off over the last 4 km/h
+	if cfg.topSpeed and vForward > 0 then
+		thr *= math.clamp((cfg.topSpeed - vForward * 3.6) / 4, 0, 1)
+	end
 	local engineTorque = 0
 	self.coupled = false
 	if ratio == 0 or self.shiftTimer > 0 then

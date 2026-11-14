@@ -1160,6 +1160,7 @@ test("every car builds and gets its livery", function()
 			assert(template, "no model")
 			local model = template:Clone()
 			assert(model.PrimaryPart and model:FindFirstChild("DriverSeat"), "chassis + driver seat")
+			assert(model:GetAttribute("TopSpeed") and model:GetAttribute("Power"), "own top speed + power")
 			Applier.ApplyVehicle(model, v, nil)
 			model:Destroy()
 		end)
@@ -1284,6 +1285,33 @@ test("train timetable: smooth, both ways, all stations", function()
 	local deps = TrainLine.Departures(line, 2, 1, 100)
 	eq(#deps, TrainLine.TRAINS, "one departure per train")
 	assert(deps[1] >= 0 and deps[1] < line.cycle / TrainLine.TRAINS + 1, "next train within the interval")
+end)
+
+test("every car has its own speed", function()
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local Perf = requirePath(RS.Shared.CarPerformance)
+	local Tuning = requirePath(RS.RealisticCars.CarTuning)
+	local Configs = requirePath(RS.RealisticCars.Configs)
+	local missing = {}
+	for _, v in VehicleConfig.List do
+		if not Perf.Get(v.Model) then
+			table.insert(missing, v.Model)
+		end
+	end
+	eq(#missing, 0, "no speed for: " .. table.concat(missing, ", "))
+	-- same body type, different cars: different engines
+	local chiran = Tuning.Get("Supercar", 1500, 420)
+	local neverra = Tuning.Get("Supercar", 1914, 412)
+	assert(chiran.engine.torque[3][2] < neverra.engine.torque[3][2], "more PS = more torque")
+	eq(chiran.topSpeed, 420)
+	eq(Configs.Cars.Supercar.topSpeed, nil, "the base type stays untouched")
+	local korsa = Tuning.Get("Hatchback", 75, 170)
+	local golfR = Tuning.Get("Hatchback", 320, 250)
+	assert(korsa.engine.torque[3][2] < golfR.engine.torque[3][2], "Korsa C weaker than Golfo R")
+	eq(Tuning.Get("Hatchback", 75, 170), korsa, "cached")
+	local Vehicles = requirePath(RS.Shared.Vehicles)
+	local shown = Vehicles.Stats(Vehicles.ByCategory("Dealer")[1])
+	assert(shown:find("km/h") and shown:find("PS"), "shown in the Autohaus: " .. shown)
 end)
 
 test("custom plates: city is always DO", function()

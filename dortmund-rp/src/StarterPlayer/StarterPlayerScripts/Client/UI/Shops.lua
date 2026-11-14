@@ -177,7 +177,10 @@ renderers.Dealership = function()
 	if currentTab == 1 then
 		local g = grid()
 		for i, v in Vehicles.ByCategory("Dealer") do
-			local line = Locale.Euro(v.price) .. (if ownsAny(s, v.id) then "\n" .. Store.T("owned") else "")
+			local line = Locale.Euro(v.price)
+				.. "\n"
+				.. Vehicles.Stats(v)
+				.. (if ownsAny(s, v.id) then "\n" .. Store.T("owned") else "")
 			itemCard(g, i, v.color, v.name, line, Store.T("buy"), T.good, function()
 				result(Net.Request("Vehicle.Buy", v.id))
 			end)
@@ -211,7 +214,7 @@ renderers.Dealership = function()
 			local g = grid()
 			g.LayoutOrder = p * 2 + 1
 			for i, v in Vehicles.ByCategory("Pack", packId) do
-				local line = Locale.Euro(v.price)
+				local line = Locale.Euro(v.price) .. "\n" .. Vehicles.Stats(v)
 				if unlocked then
 					itemCard(g, i, v.color, v.name, line, Store.T("buy"), T.good, function()
 						result(Net.Request("Vehicle.Buy", v.id))
