@@ -77,11 +77,11 @@ Config.BusFare = 5 -- € per bus ride (passenger -> bus driver)
 -- Gamepass IDs. Create them on create.roblox.com -> your experience -> Monetization -> Passes,
 -- then paste the IDs here. 0 = not created yet (pack is locked for everyone except Game Admins).
 Config.Gamepasses = {
-	Electric = 0,
-	Hypercar = 0,
-	Offroad = 0,
-	Luxury = 0,
-	Classic = 0,
+	Electric = 2089197396,
+	Hypercar = 2089095344,
+	Offroad = 2088795357,
+	Luxury = 2089425357,
+	Classic = 2089389319,
 }
 Config.GamepassRobux = {
 	Electric = 299,

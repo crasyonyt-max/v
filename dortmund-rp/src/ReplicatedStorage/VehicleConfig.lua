@@ -172,7 +172,7 @@ local JOB_FLEETS = {
 -------------------------------------------------------------------------------
 local GAMEPASS_PACKS = {
 	{
-		Pack = "ELECTRIC", GamepassId = 0, Robux = 299,
+		Pack = "ELECTRIC", GamepassId = 2089197396, Robux = 299,
 		Vehicles = {
 			{ "Tesra Model Es Plaid", 110000, "White" },
 			{ "Porsha Taikan Turbo S", 200000, "FrozenBlue" },
@@ -182,7 +182,7 @@ local GAMEPASS_PACKS = {
 		},
 	},
 	{
-		Pack = "HYPERCAR", GamepassId = 0, Robux = 799,
+		Pack = "HYPERCAR", GamepassId = 2089095344, Robux = 799,
 		Vehicles = {
 			{ "Bugarti Chiran", 3000000, "BlueBlack" },
 			{ "Koenigshaus Jesco", 3000000, "White" },
@@ -192,7 +192,7 @@ local GAMEPASS_PACKS = {
 		},
 	},
 	{
-		Pack = "OFFROAD", GamepassId = 0, Robux = 249,
+		Pack = "OFFROAD", GamepassId = 2088795357, Robux = 249,
 		Vehicles = {
 			{ "Mercator-AMX G 63", 200000, "MatteBlack" },
 			{ "Fort F-150 Raptur", 90000, "Orange" },
@@ -202,7 +202,7 @@ local GAMEPASS_PACKS = {
 		},
 	},
 	{
-		Pack = "LUXURY", GamepassId = 0, Robux = 399,
+		Pack = "LUXURY", GamepassId = 2089425357, Robux = 399,
 		Vehicles = {
 			{ "Royce-Rolland Fantom", 500000, "BlackSilver" },
 			{ "Brentley Kontinental GT", 250000, "DarkGreen" },
@@ -212,7 +212,7 @@ local GAMEPASS_PACKS = {
 		},
 	},
 	{
-		Pack = "CLASSIC", GamepassId = 0, Robux = 199,
+		Pack = "CLASSIC", GamepassId = 2089389319, Robux = 199,
 		Vehicles = {
 			{ "Volkswerk Käfa", 15000, "LightBlue" },
 			{ "Mercator 300 SL Flügeltürer", 1500000, "Silver" },
