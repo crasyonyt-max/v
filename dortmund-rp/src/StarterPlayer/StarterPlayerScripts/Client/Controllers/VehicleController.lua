@@ -126,6 +126,16 @@ local lastBrake = false
 local lastBrakeSent = 0
 local warnedFuel = false
 local isBike = false
+-- Cars (RealisticCars): their physics, our dashboard + pedals (bridge: CarInput)
+local isCar = false
+local carsFolder = ReplicatedStorage:WaitForChild("RealisticCars", 30)
+local CarInput: any = if carsFolder then require(carsFolder:WaitForChild("CarInput")) :: any else nil
+local function carCommand(command: string)
+	local remote = carsFolder and carsFolder:FindFirstChild("CarCommand") :: RemoteEvent?
+	if remote and car then
+		remote:FireServer(car, command)
+	end
+end
 local hands = "" -- "" | "OneHand" | "NoHands" (shown to everyone via the server)
 local wheelieAngle = 0 -- degrees, eased
 local WHEELIE_MAX = 30
@@ -150,6 +160,49 @@ end
 
 local function buildButtons()
 	Make.Clear(buttons)
+	if isCar then
+		-- cars: lights, camera, flip back on the wheels, blue lights + siren
+		local list = {
+			{
+				"💡",
+				function()
+					carCommand("Headlights")
+				end,
+			},
+			{
+				"🎥",
+				function()
+					setCamera(not firstPerson)
+				end,
+			},
+			{
+				"🔄",
+				function()
+					if CarInput and CarInput.flip then
+						CarInput.flip()
+					end
+				end,
+			},
+		}
+		local lightType = car and car:GetAttribute("LightType")
+		if lightType and lightType ~= "none" then
+			table.insert(list, {
+				"🚨",
+				function()
+					carCommand("Siren")
+				end,
+			})
+		end
+		for i, b in list do
+			Make.Button(
+				b[1],
+				T.card,
+				b[2],
+				{ Size = UDim2.fromOffset(40, 26), TextSize = 14, LayoutOrder = i, Parent = buttons }
+			)
+		end
+		return
+	end
 	local isEmergency = car ~= nil and car:GetAttribute("Emergency") == true
 	local list = {
 		{
@@ -406,6 +459,11 @@ local function setPitch(model: Model, degrees: number)
 end
 
 local function stop()
+	if CarInput then
+		CarInput.external = false
+		CarInput.throttle, CarInput.brake, CarInput.steer = 0, 0, 0
+	end
+	isCar = false
 	for _, pr in hiddenPrompts do
 		if pr.Parent then
 			pr.Enabled = true
@@ -571,6 +629,33 @@ local function drive(dt: number)
 	lightIcon.TextTransparency = if model:GetAttribute("Headlights") then 0 else 0.7
 end
 
+local function driveCar(dt: number)
+	local model, vseat = car, seat
+	if not model or not vseat or not CarInput then
+		return
+	end
+	local tel = CarInput.telemetry or {}
+	local kmh = tonumber(tel.kmh) or 0
+	local throttle, steer = readInput(vseat, dt, math.clamp(kmh / 200, 0, 1))
+	CarInput.external = true
+	CarInput.throttle = math.max(throttle, 0)
+	CarInput.brake = math.max(-throttle, 0)
+	CarInput.steer = steer
+	speedLabel.Text = tostring(math.floor(kmh + 0.5))
+	local g = tonumber(tel.gear) or 0
+	gearLabel.Text = if g == -1 then "R" elseif g == 0 then "N" else tostring(g)
+	gearLabel.TextColor3 = if g > 0
+		then Color3.fromRGB(120, 230, 140)
+		elseif g == -1 then Color3.fromRGB(250, 120, 120)
+		else T.sub
+	local maxRpm = math.max(1, tonumber(tel.maxRPM) or 1)
+	rpmBar.Size = UDim2.fromScale(math.clamp((tonumber(tel.rpm) or 0) / maxRpm, 0, 1), 1)
+	fuelBar.Size = UDim2.fromScale(1, 1) -- cars don't use fuel
+	leftArrow.TextColor3 = Color3.fromRGB(60, 60, 60)
+	rightArrow.TextColor3 = Color3.fromRGB(60, 60, 60)
+	lightIcon.TextTransparency = if model:GetAttribute("Headlights") then 0 else 0.7
+end
+
 local function start(vseat: VehicleSeat)
 	local model = vseat.Parent
 	if not model or not model:IsA("Model") then
@@ -578,6 +663,7 @@ local function start(vseat: VehicleSeat)
 	end
 	car, seat = model, vseat
 	isBike = model:GetAttribute("Bike") == true
+	isCar = model:GetAttribute("CarType") ~= nil
 	hands, wheelieAngle = "", 0
 	motors, steers = {}, {}
 	for _, d in model:GetDescendants() do
@@ -603,7 +689,7 @@ local function start(vseat: VehicleSeat)
 	wheelieButton.Visible = isBike
 	player:SetAttribute("DrivingTouch", isTouch)
 	setDefaultControls(false)
-	conn = RunService.Heartbeat:Connect(drive)
+	conn = RunService.Heartbeat:Connect(if isCar then driveCar else drive)
 end
 
 local function onCharacter(character: Model)
@@ -612,7 +698,13 @@ local function onCharacter(character: Model)
 		return
 	end
 	hum.Seated:Connect(function(active, seatPart)
-		if active and seatPart and seatPart:IsA("VehicleSeat") and seatPart.Name == "DriveSeat" then
+		local isDriverSeat = seatPart
+			and seatPart:IsA("VehicleSeat")
+			and (
+				seatPart.Name == "DriveSeat"
+				or (seatPart.Parent ~= nil and (seatPart.Parent :: Instance):GetAttribute("CarType") ~= nil)
+			)
+		if active and isDriverSeat then
 			start(seatPart)
 		else
 			stop()
@@ -633,6 +725,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	local k = input.KeyCode
+	if isCar then
+		-- cars: the car script has its own keys (L lights, G siren, E/Q gears …)
+		if k == Enum.KeyCode.V then
+			setCamera(not firstPerson)
+		end
+		return
+	end
 	if k == Enum.KeyCode.L then
 		control("Headlights")
 	elseif k == Enum.KeyCode.Q then

@@ -16,6 +16,8 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local root = script.Parent
 local Configs = require(root.Configs)
 local Sim = require(root.Sim)
+-- Dortmund RP: the game's own dashboard + touch pedals drive cars (see CarInput)
+local CarInput = require(root.CarInput)
 local stateRemote = root:WaitForChild("CarState")
 local commandRemote = root:WaitForChild("CarCommand")
 
@@ -108,6 +110,14 @@ end
 local function updateHud(sim, tel)
 	local cfg = sim.cfg
 	local speed = math.abs(tel.forward or tel.speed)
+	CarInput.telemetry = {
+		kmh = speed * 3.6,
+		forward = (tel.forward or tel.speed) * 3.6,
+		gear = tel.gear,
+		rpm = tel.rpm,
+		maxRPM = cfg.engine.maxRPM,
+		redline = cfg.engine.redline,
+	}
 	speedLabel.Text = tostring(math.floor(speed * (useMph and 2.23694 or 3.6) + 0.5))
 	unitLabel.Text = useMph and "mph" or "km/h"
 	gearLabel.Text = tel.gear == -1 and "R" or tel.gear == 0 and "N" or tostring(tel.gear)
@@ -162,6 +172,13 @@ local function readInput(seat)
 	if steer == 0 then
 		steer = seat.SteerFloat
 	end
+	if CarInput.external then
+		throttle = math.max(throttle, CarInput.throttle)
+		brake = math.max(brake, CarInput.brake)
+		if steer == 0 then
+			steer = CarInput.steer
+		end
+	end
 	return throttle, brake, steer, analog
 end
 
@@ -183,6 +200,10 @@ local function flipCar()
 	for _, w in ipairs(driving.sim.wheels) do
 		w.omega = 0
 	end
+end
+
+CarInput.flip = function()
+	flipCar()
 end
 
 local function getOut()
@@ -269,10 +290,10 @@ local function startDriving(seat)
 		w.omega = vF / w.radius
 	end
 	driving = { model = model, seat = seat, sim = sim, cfg = cfg, lastSend = 0, sent = {} }
-	gui.Enabled = true
-	ContextActionService:BindActionAtPriority("CarHandbrake", handbrakeAction, true, Enum.ContextActionPriority.High.Value + 50, Enum.KeyCode.Space, Enum.KeyCode.ButtonX)
+	gui.Enabled = false -- Dortmund RP: the game's own dashboard is shown instead
+	ContextActionService:BindActionAtPriority("CarHandbrake", handbrakeAction, false, Enum.ContextActionPriority.High.Value + 50, Enum.KeyCode.Space, Enum.KeyCode.ButtonX)
 	ContextActionService:SetTitle("CarHandbrake", "Brake")
-	if touchOnly then
+	if false then -- Dortmund RP: the flip button is on the game's dashboard (CarInput.flip)
 		ContextActionService:BindAction("CarFlip", function(_, state)
 			if state == Enum.UserInputState.Begin then
 				flipCar()
