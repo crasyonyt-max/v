@@ -32,7 +32,9 @@ Config.DefaultMusic = {
 Config.DefaultMusicVolume = 0.2 -- 0..1 (20 %)
 
 -- AA tab for these Game Admins too (the Owner and the Co-Owners always have it)
-Config.AAExtra = {}
+Config.AAExtra = {
+	8912131297, -- deniney26548
+}
 
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
