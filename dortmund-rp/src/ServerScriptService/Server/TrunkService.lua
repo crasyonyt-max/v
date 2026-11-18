@@ -19,17 +19,16 @@ local function myCar(player: Player): Model?
 	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local seat = hum and hum.SeatPart
 	local model = seat and seat.Parent
-	if
-		not seat
-		or seat.Name ~= "DriverSeat"
-		or not model
-		or not model:IsA("Model")
-		or not model:GetAttribute("CarType")
-		or model:GetAttribute("OwnerId") ~= player.UserId
-	then
+	if not seat or not model or not model:IsA("Model") or model:GetAttribute("OwnerId") ~= player.UserId then
 		return nil
 	end
-	return model
+	local isCar = seat.Name == "DriverSeat" and model:GetAttribute("CarType") ~= nil
+	local isBike = seat.Name == "DriveSeat" and model:GetAttribute("Bike") == true
+	return if isCar or isBike then model else nil
+end
+
+local function bodyOf(model: Model): string?
+	return if model:GetAttribute("Bike") then "Motorbike" else model:GetAttribute("CarType")
 end
 
 function TrunkService.KeyFor(model: Model): string
@@ -53,7 +52,7 @@ end
 local function snapshot(data: { [string]: any }, model: Model): { [string]: any }
 	return {
 		items = table.clone(contents(data, TrunkService.KeyFor(model))),
-		limit = Trunk.LimitFor(model:GetAttribute("CarType")),
+		limit = Trunk.LimitFor(bodyOf(model)),
 		carried = table.clone(data.inventory),
 		maxCarried = Items.MaxCarried,
 		car = model.Name,
@@ -105,8 +104,7 @@ function TrunkService.Start()
 		if not model or not data or typeof(itemId) ~= "string" then
 			return Remotes.Fail("trunk_driver_only")
 		end
-		local ok, err =
-			TrunkService.Put(data, TrunkService.KeyFor(model), Trunk.LimitFor(model:GetAttribute("CarType")), itemId)
+		local ok, err = TrunkService.Put(data, TrunkService.KeyFor(model), Trunk.LimitFor(bodyOf(model)), itemId)
 		if not ok then
 			return Remotes.Fail(err or "error")
 		end

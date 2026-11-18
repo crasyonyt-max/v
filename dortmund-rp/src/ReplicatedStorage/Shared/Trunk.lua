@@ -10,6 +10,7 @@ Trunk.Limits = {
 	Sedan = 45, -- BMV M4 & co.
 	Van = 500, -- Mercator Sprintor & co.
 	Bus = 5, -- driver only
+	Motorbike = 10,
 	-- not set by the owner yet
 	Sports = 20,
 	Muscle = 40,

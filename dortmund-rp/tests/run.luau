@@ -1521,6 +1521,7 @@ test("Kofferraum: limits by body, ID can't go in", function()
 	eq(limit("Mercator Sprintor"), 500)
 	eq(limit("RTW Mercator Sprintor"), 500, "job cars too")
 	eq(limit("Mercator Sitaro"), 5)
+	eq(Trunk.LimitFor("Motorbike"), 10, "motorbike")
 	local any = setmetatable({}, {
 		__index = function()
 			return function() end

@@ -283,6 +283,9 @@ local function buildButtons()
 			end,
 		},
 	}
+	if isBike and car and car:GetAttribute("OwnerId") == player.UserId then
+		table.insert(list, { "📦", TrunkUI.Open })
+	end
 	if isBike then
 		table.insert(list, {
 			"✋",
