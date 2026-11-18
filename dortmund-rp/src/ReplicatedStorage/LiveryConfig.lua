@@ -106,6 +106,13 @@ LiveryConfig.Presets = {
 		LetteringColor = hex("#141414"),
 		LightType = "red",
 	},
+	-- same as ADMIN, in blue: Owner + Co-Owner cars
+	OWNER = {
+		Colors = { Body = hex("#0A5CFF"), Stripe = hex("#141414"), Accent = hex("#141414") },
+		Lettering = "OWNER",
+		LetteringColor = hex("#141414"),
+		LightType = "red",
+	},
 
 	-- Supermarket trailer liveries (own colors, not the real brands') ------
 	LINDL = {

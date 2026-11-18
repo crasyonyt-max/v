@@ -399,7 +399,11 @@ local function spawnCar(
 	addCarDetails(model)
 	if CarGenerator.RuleFor(vcfg).Type == "Bus" then
 		-- seats, doors, line display, tickets (admin bus: free rides)
-		BusService.Equip(model, player, vcfg.Category == "GameAdmin" or vcfg.Category == "ServerAdmin")
+		BusService.Equip(
+			model,
+			player,
+			vcfg.Category == "GameAdmin" or vcfg.Category == "ServerAdmin" or vcfg.Category == "Owner"
+		)
 	end
 	VehicleBuilder.SetPlate(model, plateText or Plate.Random(Config.DefaultCityCode, rng))
 	model:PivotTo(CFrame.new(cf.Position + Vector3.new(0, above + 0.3, 0)) * (cf - cf.Position))

@@ -346,8 +346,13 @@ local function vehiclesTab(root: ScrollingFrame)
 		order += 1
 		local card = section(root, order, category)
 		for _, v in Vehicles.ByCategory(category) do
-			if not (v.adminLevel == "Game" and not isGA) then
-				Make.Button(v.name, if v.category == "Admin" then T.accent else T.panel, function()
+			local hidden = (v.adminLevel == "Game" and not isGA) or (v.adminLevel == "Owner" and Store.Rank() < 5)
+			if not hidden then
+				local color = if v.adminLevel == "Owner"
+					then Color3.fromRGB(10, 92, 255)
+					elseif v.category == "Admin" then Color3.fromRGB(230, 110, 0)
+					else T.panel
+				Make.Button(v.name, color, function()
 					local r = act("spawn_vehicle", { vehicleId = v.id })
 					if r.ok then
 						Phone.Close()

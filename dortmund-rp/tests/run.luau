@@ -245,7 +245,7 @@ local VehicleBuilder = requirePath(Server.VehicleBuilder)
 test("vehicle catalog: one motorbike", function()
 	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
-	eq(#Vehicles.ByCategory("Admin"), 12, "admin bike + 10 admin cars + admin bus")
+	eq(#Vehicles.ByCategory("Admin"), 23, "admin bike + 10 admin cars + admin bus + 11 owner ones")
 	eq(#Vehicles.ByCategory("Dealer"), 20, "dealership cars")
 	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
 	eq(#Vehicles.ByCategory("Pack"), 25, "gamepass pack cars")
@@ -1215,7 +1215,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		end
 		buses += 1
 		local model = Generator.Get(v):Clone()
-		local free = v.Category == "GameAdmin"
+		local free = v.Category == "GameAdmin" or v.Category == "Owner"
 		assert(BusService.Build(model, free), v.Name .. " equipped")
 		eq(model:GetAttribute("Bus"), true)
 		local seats, doors, displays = 0, 0, 0
@@ -1234,7 +1234,9 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		eq(doors, 4, v.Name .. ": two double doors")
 		eq(displays, 3, v.Name .. ": front, side, rear display")
 		if free then
-			admin = v
+			if v.Category == "GameAdmin" then
+				admin = v
+			end
 			eq(model:GetAttribute("FreeRide"), true, "admin bus is free")
 			local normal = { UserId = 1234, Name = "Normal" } :: any
 			local gameAdmin = { UserId = 8912131297, Name = "deniney26548" } :: any
@@ -1245,7 +1247,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		end
 		model:Destroy()
 	end
-	eq(buses, 5, "4 job buses + admin bus")
+	eq(buses, 6, "4 job buses + admin bus + owner bus")
 	assert(admin, "admin bus exists")
 	eq(admin.LightType, "none", "admin bus: no siren")
 	eq(admin.Livery.Colors.Body:ToHex():upper(), "FF7300", "admin bus: orange ADMIN livery")
@@ -1544,6 +1546,24 @@ test("Kofferraum: limits by body, ID can't go in", function()
 	eq(select(2, TS.Put(data, "v1", 1, item)), "trunk_full", "limit")
 	assert(TS.Take(data, "v1", item), "take out")
 	eq(#data.trunks.v1, 0)
+end)
+
+test("owner cars: blue OWNER livery, Owner + Co-Owner only", function()
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local n = 0
+	for _, v in VehicleConfig.List do
+		if v.Category == "Owner" then
+			n += 1
+			eq(v.Livery.Colors.Body:ToHex():upper(), "0A5CFF", v.Name .. " blue")
+			eq(v.Livery.Lettering, if v.Model == "Solaria Urbano Elektro" then "OWNER BUS" else "OWNER")
+		end
+	end
+	eq(n, 11, "every admin car + the bus as owner version")
+	for _, v in Vehicles.ByCategory("Admin") do
+		if v.name:find("%(Owner%)") then
+			eq(v.adminLevel, "Owner", v.name)
+		end
+	end
 end)
 
 test("custom plates: city is always DO", function()

@@ -20,7 +20,7 @@ export type Vehicle = {
 	job: string?,
 	xp: number?,
 	pack: string?,
-	adminLevel: string?, -- "Server" | "Game"
+	adminLevel: string?, -- "Server" | "Game" | "Owner"
 	emergency: boolean?,
 	livery: string?, -- "Police" | "Fire" | "Rescue" | "ADMC" | "DXL" | "LKW" | "Admin"
 	note: string?,
@@ -112,9 +112,12 @@ for _, v in VehicleConfig.List do
 	elseif v.Category == "Gamepass" then
 		entry.category = "Pack"
 		entry.pack = PACK_OF[v.Gamepass.Pack] or v.Gamepass.Pack
-	elseif v.Category == "ServerAdmin" or v.Category == "GameAdmin" then
+	elseif v.Category == "ServerAdmin" or v.Category == "GameAdmin" or v.Category == "Owner" then
 		entry.category = "Admin"
-		entry.adminLevel = if v.Category == "GameAdmin" then "Game" else "Server"
+		entry.adminLevel = if v.Category == "Owner"
+			then "Owner"
+			elseif v.Category == "GameAdmin" then "Game"
+			else "Server"
 	elseif v.Job then
 		entry.category = "Job"
 		entry.job = JOB_OF[v.Job] or v.Job

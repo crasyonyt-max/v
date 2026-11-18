@@ -347,6 +347,31 @@ for _, list in ipairs({ { "ServerAdmin", SERVER_ADMIN_CARS }, { "GameAdmin", GAM
 		add({ Name = row[1], Category = list[1], Price = 0, Livery = livery, LiveryError = err })
 	end
 end
+-- Owner cars: every admin car again in the blue OWNER livery (Owner + Co-Owner only)
+for _, list in ipairs({ SERVER_ADMIN_CARS, GAME_ADMIN_CARS }) do
+	for _, row in ipairs(list) do
+		local livery, err = LiveryConfig.Resolve("OWNER")
+		add({
+			Name = row[1] .. " (Owner)",
+			Model = row[1],
+			Category = "Owner",
+			Price = 0,
+			Livery = livery,
+			LiveryError = err,
+		})
+	end
+end
+do
+	local livery, err = LiveryConfig.Resolve("OWNER", { LightType = "none", Lettering = "OWNER BUS" })
+	add({
+		Name = "Solaria Urbano Elektro (Owner)",
+		Model = "Solaria Urbano Elektro",
+		Category = "Owner",
+		Price = 0,
+		Livery = livery,
+		LiveryError = err,
+	})
+end
 -- the admin bus: the Solaria of the bus job in the ADMIN livery, without siren
 do
 	local livery, err = LiveryConfig.Resolve("ADMIN", { LightType = "none", Lettering = "ADMIN BUS" })

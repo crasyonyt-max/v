@@ -440,6 +440,9 @@ handlers.spawn_vehicle = function(actor, args, isGA)
 	if def.adminLevel == "Game" and not isGA then
 		return false, "no_permission"
 	end
+	if def.adminLevel == "Owner" and Roles.Rank(actor) < Roles.CO_OWNER then
+		return false, "no_permission" -- blue OWNER cars: Owner + Co-Owner only
+	end
 	local ok, err = VehicleService.SpawnAny(actor, def.id)
 	if ok then
 		log(actor, "spawn_vehicle", def.name, false)
