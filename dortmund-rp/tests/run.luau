@@ -1411,6 +1411,140 @@ test("Robux money: rebuyable, every receipt paid once", function()
 	product.id = oldId
 end)
 
+test("ID: certificates, owner-only ones, W4, numbers", function()
+	local Certificates = requirePath(RS.Shared.Certificates)
+	eq(#Certificates.List, 14, "14 certificates")
+	for _, code in { "VOTR289DO9F", "VIPRE77OOC2", "F78W72L8D9LE" } do
+		eq(Certificates.ByCode[code].owner, true, code .. " is an owner certificate")
+	end
+	eq(Certificates.ByCode.VAT8388NDO.owner, false)
+	local a, b = Certificates.IdNumber(3482982410), Certificates.IdNumber(8912131297)
+	eq(#a, 9, "9 characters like a Personalausweis")
+	eq(a, Certificates.IdNumber(3482982410), "always the same for one player")
+	assert(a ~= b, "different players, different numbers")
+
+	-- permissions (fake ranks: 1 = Owner, 2 = Game Admin, 3 = normal player)
+	local ranks = { [1] = 6, [2] = 3, [3] = 0 }
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	local fakes = {
+		Roles = {
+			OWNER = 6,
+			IsGameAdmin = function(p)
+				return (ranks[p.UserId] or 0) >= 3
+			end,
+			Rank = function(p)
+				return ranks[p.UserId] or 0
+			end,
+			CanTargetUserId = function(p, id)
+				return (ranks[p.UserId] or 0) > (ranks[id] or 0)
+			end,
+		},
+		DataService = any,
+		GameLog = any,
+		JobService = {
+			Get = function(p)
+				return p.job or "Unemployed"
+			end,
+		},
+		Remotes = any,
+	}
+	for name, fake in fakes do
+		overrides["ServerScriptService/Server/" .. name] = fake
+	end
+	local oldDS = fakeServices.DataStoreService
+	fakeServices.DataStoreService = {
+		GetDataStore = function()
+			error("no datastores in tests")
+		end,
+	}
+	local oldPlayers = fakeServices.Players
+	fakeServices.Players = {
+		GetPlayerByUserId = function()
+			return nil
+		end,
+	}
+	cache["ServerScriptService/Server/IDService"] = nil
+	local ID = requirePath(Server.IDService)
+	fakeServices.Players = oldPlayers
+	for name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	fakeServices.DataStoreService = oldDS
+	cache["ServerScriptService/Server/IDService"] = nil
+	local owner, admin, normal =
+		{ UserId = 1, Name = "Owner" }, { UserId = 2, Name = "Admin" }, { UserId = 3, Name = "N" }
+	eq((ID.MayChange(admin, 3, "VAT8388NDO")), true, "admin gives a normal certificate")
+	eq(select(2, ID.MayChange(admin, 3, "VIPRE77OOC2")), "id_owner_only", "admin can't give owner certificates")
+	eq((ID.MayChange(owner, 3, "VIPRE77OOC2")), true, "the owner can")
+	eq((ID.MayChange(normal, 3, "W1")), false, "players can't give certificates")
+	eq((ID.MayChange(admin, 1, "W1")), false, "no warnings for the owner from an admin")
+	eq((ID.MayChange(admin, 3, "NOPE")), false, "unknown code")
+	-- give + view (memory store): listed in certificate order
+	assert(ID.Give(owner, 3, "W1"))
+	assert(ID.Give(owner, 3, "VAT8388NDO"))
+	local v = ID.View(ID.Load(3))
+	eq(v.certs[1].code, "VAT8388NDO", "shown in list order")
+	eq(v.certs[2].code, "W1")
+	eq(v.residence, "Dortmund")
+	assert(ID.Remove(owner, 3, "W1"))
+	eq(#ID.View(ID.Load(3)).certs, 1, "removed")
+	-- police: only on duty
+	eq(ID.MayInspect({ UserId = 3 } :: any, { UserId = 4 } :: any), false, "normal players can't see other IDs")
+	eq(ID.MayInspect(admin :: any, { UserId = 4 } :: any), true, "admins can")
+end)
+
+test("Kofferraum: limits by body, ID can't go in", function()
+	local Trunk = requirePath(RS.Shared.Trunk)
+	local VehicleConfig = requirePath(RS.VehicleConfig)
+	local storage = roblox.Instance.new("Folder")
+	local oldStorage = fakeServices.ServerStorage
+	fakeServices.ServerStorage = storage
+	cache["ServerScriptService/Server/Cars/VehicleModelGenerator"] = nil
+	local Generator = requirePath(pathProxy({ "ServerScriptService", "Server", "Cars", "VehicleModelGenerator" }))
+	fakeServices.ServerStorage = oldStorage
+	local function limit(model)
+		for _, v in VehicleConfig.List do
+			if v.Model == model then
+				return Trunk.LimitFor(Generator.RuleFor(v).Type)
+			end
+		end
+		error("no car " .. model)
+	end
+	eq(limit("Koenigshaus Jesco"), 14)
+	eq(limit("Koenigshaus One:1"), 14)
+	eq(limit("Kupra Formentor VZ5"), 50)
+	eq(limit("BMV M4 Kompetition"), 45)
+	eq(limit("Mercator Sprintor"), 500)
+	eq(limit("RTW Mercator Sprintor"), 500, "job cars too")
+	eq(limit("Mercator Sitaro"), 5)
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	for _, name in { "DataService", "Remotes", "State", "StoreService" } do
+		overrides["ServerScriptService/Server/" .. name] = any
+	end
+	cache["ServerScriptService/Server/TrunkService"] = nil
+	local TS = requirePath(Server.TrunkService)
+	for _, name in { "DataService", "Remotes", "State", "StoreService" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	cache["ServerScriptService/Server/TrunkService"] = nil
+	local Items = requirePath(RS.Shared.Items)
+	local item = Items.List[1].id
+	local data = { inventory = { item, item }, trunks = {} }
+	eq(select(2, TS.Put(data, "v1", 1, "id_card")), "trunk_not_item", "the ID can't go in")
+	assert(TS.Put(data, "v1", 1, item), "first item in")
+	eq(select(2, TS.Put(data, "v1", 1, item)), "trunk_full", "limit")
+	assert(TS.Take(data, "v1", item), "take out")
+	eq(#data.trunks.v1, 0)
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")

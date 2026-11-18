@@ -33,6 +33,8 @@ local Boosts = require(script.Parent.Boosts)
 local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local VoteService = require(script.Parent.VoteService)
 local Locations = require(ReplicatedStorage.Shared.Locations)
+local Certificates = require(ReplicatedStorage.Shared.Certificates)
+local IDService = require(script.Parent.IDService)
 
 local AdminService = {}
 
@@ -242,6 +244,7 @@ handlers.kick = function(actor, args)
 	end
 	local reason = (typeof(args.reason) == "string" and string.sub(args.reason, 1, 120)) or "Gekickt von einem Admin"
 	log(actor, "kick", target.Name .. " – " .. reason, false)
+	task.spawn(IDService.AddCert, target.UserId, Certificates.KICKED, actor.Name)
 	target:Kick("Du wurdest gekickt / You were kicked: " .. reason)
 	return true
 end
@@ -271,6 +274,7 @@ handlers.ban = function(actor, args, isGA)
 			warn("[Admin] BanAsync failed: " .. tostring(err))
 			return false, "ban_failed"
 		end
+		task.spawn(IDService.AddCert, userId, Certificates.BANNED, actor.Name)
 		log(
 			actor,
 			"ban (global)",
@@ -285,6 +289,7 @@ handlers.ban = function(actor, args, isGA)
 			target:Kick("Du wurdest von diesem Server gebannt / Banned from this server: " .. reason)
 		end
 		log(actor, "ban (server)", string.format("%d, %s", userId, reason), false)
+		task.spawn(IDService.AddCert, userId, Certificates.BANNED, actor.Name)
 	end
 	return true
 end

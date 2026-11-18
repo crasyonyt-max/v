@@ -358,6 +358,40 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_no_drop_event = { de = "Kein Dropper-Event aktiv.", en = "No dropper event running." },
 	-- Unemployed XP from traffic
 	drive_xp = { de = "XP zum Umtauschen", en = "XP to exchange" },
+	trunk = { de = "Kofferraum", en = "Trunk" },
+	trunk_take = { de = "Nehmen", en = "Take" },
+	trunk_put = { de = "Einlagern", en = "Store" },
+	trunk_empty = { de = "Leer", en = "Empty" },
+	trunk_no_id = {
+		de = "Der Personalausweis bleibt bei dir (nicht einlagerbar).",
+		en = "Your ID card stays with you (can't be stored).",
+	},
+	trunk_full = { de = "Der Kofferraum ist voll.", en = "The trunk is full." },
+	trunk_not_item = { de = "Das kann nicht in den Kofferraum.", en = "That can't go in the trunk." },
+	trunk_driver_only = {
+		de = "Nur der Fahrer seines eigenen Autos kann den Kofferraum öffnen.",
+		en = "Only the driver of their own car can open the trunk.",
+	},
+	id_card = { de = "Personalausweis", en = "ID card" },
+	id_show = { de = "Anzeigen", en = "Show" },
+	id_all = { de = "Alle Ausweise", en = "All IDs" },
+	id_more = { de = "Mehr laden", en = "Load more" },
+	id_player_name = { de = "Spielername", en = "Player name" },
+	id_owner_hint = {
+		de = "👑 Owner-Zertifikate kann nur der Owner vergeben.",
+		en = "👑 Only the Owner can give owner certificates.",
+	},
+	id_owner_only = {
+		de = "Dieses Zertifikat kann nur der Owner vergeben.",
+		en = "Only the Owner can give this certificate.",
+	},
+	id_not_allowed = {
+		de = "Nur die Polizei direkt bei der Person darf den Ausweis sehen.",
+		en = "Only Police next to the person may see the ID.",
+	},
+	id_unknown = { de = "Diesen Spieler gibt es hier nicht.", en = "No ID for this player." },
+	id_checked = { de = "🪪 %s hat deinen Ausweis kontrolliert.", en = "🪪 %s checked your ID." },
+	admin_id = { de = "ID", en = "ID" },
 	buy_money = { de = "Geld kaufen", en = "Buy money" },
 	money_bought = { de = "💎 Danke! %s wurden gutgeschrieben.", en = "💎 Thank you! %s added to your bank." },
 	drive_xp_info = {

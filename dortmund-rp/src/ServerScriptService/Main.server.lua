@@ -48,6 +48,8 @@ local services = {
 	require(Server.BusService),
 	require(Server.TrainService),
 	require(Server.QuakeService),
+	require(Server.IDService),
+	require(Server.TrunkService),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),

@@ -11,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local BusController = require(script.Parent.BusController)
+local TrunkUI = require(script.Parent.Parent.UI.Trunk)
 local Make = require(script.Parent.Parent.UI.Make)
 local Notify = require(script.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Net)
@@ -203,6 +204,10 @@ local function buildButtons()
 				end,
 			},
 		}
+		-- Kofferraum (own car, driver only)
+		if car and car:GetAttribute("OwnerId") == player.UserId then
+			table.insert(list, { "📦", TrunkUI.Open })
+		end
 		local lightType = car and car:GetAttribute("LightType")
 		if lightType and lightType ~= "none" then
 			table.insert(list, {

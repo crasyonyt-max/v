@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 local Items = require(ReplicatedStorage.Shared.Items)
+local IDCard = require(script.Parent.IDCard)
 local Make = require(script.Parent.Make)
 local Notify = require(script.Parent.Notify)
 local Net = require(script.Parent.Parent.Net)
@@ -116,6 +117,18 @@ local function render()
 		return
 	end
 	Make.Clear(list)
+	-- the ID is always in the bag and does not count towards the item limit
+	local idCard = Make.Card({ LayoutOrder = 0, Parent = list })
+	Make.Label("🪪 " .. Store.T("id_card"), 14, T.text, T.bold, { Parent = idCard })
+	Make.Button(Store.T("id_show"), T.accent, function()
+		local r = Net.Request("ID.Mine")
+		if r.ok then
+			panel.Visible = false
+			IDCard.Show(r.card)
+		else
+			Notify.Error(r.err)
+		end
+	end, { Parent = idCard })
 	-- group by item
 	local groups: { [string]: { Tool } } = {}
 	local order: { string } = {}

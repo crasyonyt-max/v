@@ -51,6 +51,7 @@ local function template(): { [string]: any }
 		thirst = 100,
 		tx = {}, -- bank transactions { amount, reason, t }
 		receipts = {}, -- Robux purchases already paid out (PurchaseIds, newest last)
+		trunks = {}, -- [car key] = { item ids } (Kofferraum)
 		stats = { joins = 0, playtime = 0 },
 		_lock = nil,
 	}
@@ -78,8 +79,13 @@ local function tryLoad(userId: number, force: boolean): ({ [string]: any }?, str
 	local result: { [string]: any }? = nil
 	local blocked = false
 	local ok, err = pcall(function()
-		(store :: DataStore):UpdateAsync(key(userId), function(old: any)
+		(store :: DataStore):UpdateAsync(key(userId), function(old: any, keyInfo: any)
 			local data = if typeof(old) == "table" then old else template()
+			-- first join ("Joinday" on the ID): when the save was created
+			if data.firstJoin == nil then
+				local created = keyInfo and tonumber(keyInfo.CreatedTime)
+				data.firstJoin = if created then math.floor(created / 1000) else os.time()
+			end
 			local lock = data._lock
 			if
 				not force

@@ -29,6 +29,7 @@ require(Client.Controllers.TrafficLights)
 require(Client.Controllers.DropEventFX)
 require(Client.Controllers.TrainController)
 require(Client.Controllers.QuakeFX)
+require(Client.Controllers.IDCheck)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 Net.On("OpenPC", function(payload)

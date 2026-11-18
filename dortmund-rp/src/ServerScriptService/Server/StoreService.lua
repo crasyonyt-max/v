@@ -125,6 +125,29 @@ function StoreService.Give(player: Player, itemId: string): boolean
 	return true
 end
 
+-- Takes one carried item out of the bag (e.g. into a car trunk). False if not carried.
+function StoreService.Take(player: Player, itemId: string): boolean
+	local data = DataService.Get(player)
+	local index = data and table.find(data.inventory, itemId)
+	if not data or not index then
+		return false
+	end
+	table.remove(data.inventory, index)
+	for _, container in { player:FindFirstChildOfClass("Backpack"), player.Character } do
+		if container then
+			for _, t in container:GetChildren() do
+				if t:IsA("Tool") and t:GetAttribute("ItemId") == itemId then
+					t:Destroy()
+					State.MarkDirty(player)
+					return true
+				end
+			end
+		end
+	end
+	State.MarkDirty(player)
+	return true
+end
+
 function StoreService.Start()
 	DataService.Loaded:Connect(function(player, data)
 		data.hunger = clamp(tonumber(data.hunger) or 100)

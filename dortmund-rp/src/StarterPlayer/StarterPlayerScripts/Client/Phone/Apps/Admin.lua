@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Certificates = require(ReplicatedStorage.Shared.Certificates)
 local Config = require(ReplicatedStorage.Shared.Config)
 local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -12,6 +13,7 @@ local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Phones = require(ReplicatedStorage.Shared.Phones)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
+local IDCard = require(script.Parent.Parent.Parent.UI.IDCard)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
 local MapPicker = require(script.Parent.Parent.Parent.UI.MapPicker)
 local Notify = require(script.Parent.Parent.Parent.UI.Notify)
@@ -23,7 +25,6 @@ local News = require(script.Parent.News) :: any
 local New, T = Make.New, Make.Theme
 
 local OWNER = 6
-local AA_RANK = 4 -- AA tab: Owner (6) + both Co-Owner ranks (5, 4)
 local GAME_ADMIN = 3
 local SERVER_OWNER = 2
 
@@ -68,6 +69,7 @@ local function half(text: string, color: Color3, fn: () -> ()): TextButton
 end
 
 -- Tabs -------------------------------------------------------------------------
+local idTab: (ScrollingFrame) -> ()
 local function playerDetail(root: ScrollingFrame, info: { [string]: any }, back: () -> ())
 	Make.Clear(root)
 	local isGA = Store.Rank() >= GAME_ADMIN
@@ -860,6 +862,118 @@ local function fullLogTab(root: ScrollingFrame)
 	end)
 end
 
+-- ID: every player who ever joined; give / take certificates ---------------------------
+local function showId(who: any)
+	local r = Net.Request("ID.Get", who)
+	if not r.ok then
+		Notify.Error(r.err)
+		return
+	end
+	local card = r.card
+	IDCard.Show(card, {
+		onRemove = function(code)
+			local rr = Net.Request("ID.Remove", card.userId, code)
+			if rr.ok then
+				Notify.Show(Store.T("done"))
+				showId(card.userId)
+			else
+				Notify.Error(rr.err)
+			end
+		end,
+	})
+end
+
+function idTab(root: ScrollingFrame)
+	local isOwner = Store.Rank() >= OWNER
+	local certs = {}
+	for _, c in Certificates.List do
+		if isOwner or not c.owner then
+			table.insert(certs, c)
+		end
+	end
+
+	-- "Give Certificate" (over all IDs)
+	local give = section(root, 1, "🏅 Give Certificate")
+	local who = Make.TextBox(Store.T("id_player_name"), { Parent = give })
+	local index = 1
+	local pick: TextButton
+	local function pickText(): string
+		local c = certs[index]
+		return (if c.owner then "👑 " else "") .. c.name .. "  (" .. c.code .. ")"
+	end
+	pick = Make.Button(pickText(), certs[1].color, function()
+		index = index % #certs + 1
+		pick.Text = pickText()
+		pick.BackgroundColor3 = certs[index].color
+	end, { Parent = give })
+	Make.Row({
+		half("🏅 Give Certificate", T.good, function()
+			local r = Net.Request("ID.Give", who.Text, certs[index].code)
+			if r.ok then
+				Notify.Show(Store.T("done"))
+			else
+				Notify.Error(r.err)
+			end
+		end),
+		half("🪪 " .. Store.T("id_show"), T.accent, function()
+			showId(who.Text)
+		end),
+	}).Parent =
+		give
+	if not isOwner then
+		Make.Label(Store.T("id_owner_hint"), 11, T.sub, T.font, { Parent = give })
+	end
+
+	-- everyone who ever joined
+	local listCard = section(root, 2, "🪪 " .. Store.T("id_all"))
+	local rows = New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = listCard,
+	}, { Make.List(4) })
+	local more: TextButton
+	local cursor: string? = nil
+	local n = 0
+	local function loadPage()
+		more.Text = "…"
+		task.spawn(function()
+			local r = Net.Request("ID.List", cursor or "")
+			if not r.ok then
+				Notify.Error(r.err)
+				more.Text = Store.T("id_more")
+				return
+			end
+			for _, card in r.rows or {} do
+				n += 1
+				local row = Make.Card({ LayoutOrder = n, Parent = rows })
+				Make.Label(
+					("%s (@%s)\n%s · %d 🏅"):format(card.display, card.name, card.number, #(card.certs or {})),
+					12,
+					T.text,
+					T.bold,
+					{ Parent = row }
+				)
+				Make.Row({
+					half("🪪 " .. Store.T("id_show"), T.accent, function()
+						showId(card.userId)
+					end),
+					half("🏅", T.good, function()
+						who.Text = card.name
+						root.CanvasPosition = Vector2.zero
+					end),
+				}).Parent =
+					row
+			end
+			cursor = r.cursor
+			more.Visible = cursor ~= nil
+			more.Text = Store.T("id_more")
+		end)
+	end
+	more = Make.Button(Store.T("id_more"), T.panel, loadPage, { Parent = listCard })
+	loadPage()
+end
+
 local function logsTab(root: ScrollingFrame)
 	local r = Net.Request("Admin.Logs")
 	if not r.ok then
@@ -893,10 +1007,11 @@ Phone.Register({
 		local isGA = Store.Rank() >= GAME_ADMIN
 		local tabs = { "admin_players", "admin_self", "admin_server", "admin_vehicles", "admin_logs" }
 		if isGA then
-			table.insert(tabs, 5, "admin_inbox")
+			table.insert(tabs, 2, "admin_id")
+			table.insert(tabs, 6, "admin_inbox")
 			table.insert(tabs, 5, "admin_news")
 		end
-		if Store.Rank() >= AA_RANK or Store.Get().aa == true then
+		if Store.Get().aa == true then -- the server decides (Owner, Co-Owners, Config.AAExtra)
 			table.insert(tabs, 1, "admin_aa")
 		end
 		if Store.Rank() >= OWNER then
@@ -948,6 +1063,8 @@ Phone.Register({
 			fullLogTab(root)
 		elseif current == "admin_logs" then
 			logsTab(root)
+		elseif current == "admin_id" then
+			idTab(root)
 		end
 		return nil
 	end,
