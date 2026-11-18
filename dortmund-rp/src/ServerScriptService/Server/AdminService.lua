@@ -756,6 +756,9 @@ handlers.news_delete = function(actor, args)
 end
 
 handlers.shutdown = function(actor, args, isGA)
+	if table.find(Config.NoShutdown, actor.UserId) then
+		return false, "no_permission"
+	end
 	local global = isGA and typeof(args) == "table" and args.global == true
 	local reason = "Server wird neu gestartet / Server restarting"
 	log(actor, if global then "shutdown (all servers)" else "shutdown", "", global)

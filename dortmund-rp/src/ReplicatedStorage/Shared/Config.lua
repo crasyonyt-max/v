@@ -36,6 +36,11 @@ Config.AAExtra = {
 	8912131297, -- deniney26548
 }
 
+-- Admins who may NOT restart servers (this server or all servers)
+Config.NoShutdown = {
+	8912131297, -- deniney26548
+}
+
 -- GAME ADMINS (whole game). Put Roblox UserIds here.
 -- The experience owner (or group owner) is ALWAYS a Game Admin automatically.
 Config.GameAdmins = {

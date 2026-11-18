@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local DropEvents = require(ReplicatedStorage.Shared.DropEvents)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
@@ -322,6 +323,9 @@ local function serverTab(root: ScrollingFrame)
 	}).Parent =
 		bans
 
+	if table.find(Config.NoShutdown, Players.LocalPlayer.UserId) then
+		return -- not allowed to restart servers
+	end
 	local power = section(root, 4, "⏻ " .. Store.T("shutdown"))
 	Make.Button(Store.T("this_server"), T.bad, function()
 		act("shutdown")
