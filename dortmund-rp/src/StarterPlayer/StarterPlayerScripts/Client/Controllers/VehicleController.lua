@@ -413,10 +413,11 @@ local modeGui = New("ScreenGui", {
 	Enabled = false,
 	Parent = player:WaitForChild("PlayerGui"),
 })
-local function modeButton(text: string, x: number): TextButton
+-- stacked above the BREMSE pedal (clear of the phone + bag buttons on the far right)
+local function modeButton(text: string, y: number): TextButton
 	return New("TextButton", {
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, x, 1, -180),
+		Position = UDim2.new(1, -124, 1, y),
 		Size = UDim2.fromOffset(92, 52),
 		BackgroundColor3 = Color3.fromRGB(30, 30, 34),
 		BackgroundTransparency = 0.25,
@@ -427,8 +428,8 @@ local function modeButton(text: string, x: number): TextButton
 		Parent = modeGui,
 	}, { Make.Corner(14), Make.Stroke(Color3.new(1, 1, 1), 2, 0.6) })
 end
-local reverseButton = modeButton("R\nRückwärts", -124)
-local parkButton = modeButton("P\nParkbremse", -20)
+local reverseButton = modeButton("R\nRückwärts", -130)
+local parkButton = modeButton("P\nParkbremse", -188)
 local function showModes()
 	reverseButton.BackgroundColor3 = if reverseOn then Color3.fromRGB(220, 60, 60) else Color3.fromRGB(30, 30, 34)
 	parkButton.BackgroundColor3 = if parkOn then Color3.fromRGB(230, 150, 20) else Color3.fromRGB(30, 30, 34)
@@ -456,8 +457,8 @@ local cruise: number? = nil -- forward speed to hold, studs/s
 local forwardSpeed = 0 -- current forward speed, studs/s (updated while driving)
 local cruiseButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -20, 0, 118),
-	Size = UDim2.fromOffset(64, 64),
+	Position = UDim2.new(1, -16, 0, 16), -- very top right corner
+	Size = UDim2.fromOffset(60, 60),
 	BackgroundColor3 = Color3.fromRGB(20, 20, 24),
 	BackgroundTransparency = 0.2,
 	Text = "⏱",
@@ -881,6 +882,10 @@ local function start(vseat: VehicleSeat)
 	showModes()
 	modeGui.Enabled = true
 	wheelieButton.Visible = isBike
+	-- the bike's WHEELIE button sits above BREMSE: R / P go one step higher
+	local lift = if isBike then -56 else 0
+	reverseButton.Position = UDim2.new(1, -124, 1, -130 + lift)
+	parkButton.Position = UDim2.new(1, -124, 1, -188 + lift)
 	player:SetAttribute("DrivingTouch", isTouch)
 	setDefaultControls(false)
 	conn = RunService.Heartbeat:Connect(if isCar then driveCar else drive)
