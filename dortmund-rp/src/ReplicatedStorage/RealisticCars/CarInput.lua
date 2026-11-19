@@ -15,6 +15,7 @@ return {
 	reverse = false,
 	parking = false,
 	cruise = false, -- Tempomat: throttle comes only from the controller
+	noFuel = false, -- empty tank: no gas
 	telemetry = { kmh = 0, gear = 0, rpm = 0, maxRPM = 1, redline = 1 },
 	flip = nil,
 }

@@ -407,6 +407,7 @@ local function spawnCar(
 	end
 	VehicleBuilder.SetPlate(model, plateText or Plate.Random(Config.DefaultCityCode, rng))
 	model:PivotTo(CFrame.new(cf.Position + Vector3.new(0, above + 0.3, 0)) * (cf - cf.Position))
+	setupRefuel(model) -- ADMC can fill up an empty car
 	model.Parent = folder -- CarServer takes it over (tag "RealisticCar")
 
 	-- only the owner (or the job / admins) may drive; getting out puts you beside the car
@@ -1018,8 +1019,12 @@ function VehicleService.Start()
 					if speed > 2 then
 						local top = (model:GetAttribute("TopSpeed") or 100) :: number
 						local fuel = (model:GetAttribute("Fuel") or 100) :: number
+						-- cars (RealisticCars): TopSpeed is km/h, 1 stud = 0.25 m there
+						local ratio = if model:GetAttribute("CarType")
+							then (speed * 0.25 * 3.6) / math.max(top, 1)
+							else speed / top
 						-- a full tank lasts roughly 25 minutes at average speed
-						fuel = math.max(0, fuel - (0.05 + 0.08 * speed / top))
+						fuel = math.max(0, fuel - (0.05 + 0.08 * math.min(ratio, 1.5)))
 						model:SetAttribute("Fuel", fuel)
 					end
 				end

@@ -188,6 +188,9 @@ local function readInput(seat)
 			steer = CarInput.steer
 		end
 	end
+	if CarInput.external and CarInput.noFuel then
+		throttle = 0 -- Dortmund RP: empty tank
+	end
 	return throttle, brake, steer, analog
 end
 

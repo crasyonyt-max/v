@@ -816,6 +816,20 @@ local function driveCar(dt: number)
 		setCruise(nil) -- braking ends the Tempomat
 		holding = nil
 	end
+	-- fuel: an empty tank means no gas (braking and steering still work)
+	local fuel = (model:GetAttribute("Fuel") or 100) :: number
+	local empty = fuel <= 0
+	CarInput.noFuel = empty
+	if empty and holding then
+		setCruise(nil)
+		holding = nil
+	end
+	if empty and throttle > 0.05 and not warnedFuel then
+		warnedFuel = true
+		Notify.Show(Store.T("out_of_fuel"), true)
+	elseif not empty then
+		warnedFuel = false
+	end
 	CarInput.external = true
 	if holding then
 		-- hold the speed: gas when slower, a little brake when faster (downhill)
@@ -836,7 +850,8 @@ local function driveCar(dt: number)
 		else T.sub
 	local maxRpm = math.max(1, tonumber(tel.maxRPM) or 1)
 	rpmBar.Size = UDim2.fromScale(math.clamp((tonumber(tel.rpm) or 0) / maxRpm, 0, 1), 1)
-	fuelBar.Size = UDim2.fromScale(1, 1) -- cars don't use fuel
+	fuelBar.Size = UDim2.fromScale(math.clamp(fuel / 100, 0, 1), 1)
+	fuelBar.BackgroundColor3 = if fuel < 15 then T.bad else Color3.fromRGB(250, 190, 30)
 	local ind = model:GetAttribute("Indicator")
 	local blink = (os.clock() % 0.8) < 0.4
 	leftArrow.TextColor3 = if (ind == "L" or ind == "H") and blink
