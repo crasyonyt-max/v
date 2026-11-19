@@ -203,6 +203,13 @@ function Sim:step(dt)
 		end
 	end
 
+	-- Dortmund RP: brake assist on top of the tires (cfg.brakeAssist m/s² at full
+	-- pedal), so cars stop in a game-friendly distance. Never pushes backwards.
+	if cfg.brakeAssist and brake > 0.05 and abs(vForward) > 0.3 then
+		local dv = min(cfg.brakeAssist * brake * dt, abs(vForward))
+		body.impulse(look * (-sign(vForward) * massR * dv / MPS))
+	end
+
 	-- Steering: speed-sensitive lock with Ackermann geometry.
 	if inp.analog then
 		self.steer = inp.steer
