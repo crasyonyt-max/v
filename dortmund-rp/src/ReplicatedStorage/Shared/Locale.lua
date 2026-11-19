@@ -358,6 +358,10 @@ local S: { [string]: { de: string, en: string } } = {
 	aa_no_drop_event = { de = "Kein Dropper-Event aktiv.", en = "No dropper event running." },
 	-- Unemployed XP from traffic
 	drive_xp = { de = "XP zum Umtauschen", en = "XP to exchange" },
+	cruise_need_speed = {
+		de = "Tempomat: erst vorwärts fahren (ab 5 km/h).",
+		en = "Cruise control: drive forward first (5 km/h or more).",
+	},
 	trunk = { de = "Kofferraum", en = "Trunk" },
 	trunk_take = { de = "Nehmen", en = "Take" },
 	trunk_put = { de = "Einlagern", en = "Store" },

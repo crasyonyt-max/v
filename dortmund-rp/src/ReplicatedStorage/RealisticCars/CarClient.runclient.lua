@@ -118,6 +118,7 @@ local function updateHud(sim, tel)
 		rpm = tel.rpm,
 		maxRPM = cfg.engine.maxRPM,
 		redline = cfg.engine.redline,
+		brake = tel.brake, -- Dortmund RP: Tempomat ends on any brake
 	}
 	speedLabel.Text = tostring(math.floor(speed * (useMph and 2.23694 or 3.6) + 0.5))
 	unitLabel.Text = useMph and "mph" or "km/h"
@@ -173,7 +174,14 @@ local function readInput(seat)
 	if steer == 0 then
 		steer = seat.SteerFloat
 	end
-	if CarInput.external then
+	if CarInput.external and CarInput.cruise then
+		-- Dortmund RP Tempomat: our controller sets the gas, only steering is the driver's
+		throttle = CarInput.throttle
+		brake = math.max(brake, CarInput.brake)
+		if steer == 0 then
+			steer = CarInput.steer
+		end
+	elseif CarInput.external then
 		throttle = math.max(throttle, CarInput.throttle)
 		brake = math.max(brake, CarInput.brake)
 		if steer == 0 then

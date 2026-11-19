@@ -440,13 +440,69 @@ end
 function VehicleController.ToggleReverse()
 	reverseOn = not reverseOn
 	showModes()
+	VehicleController.CruiseOff()
 end
 function VehicleController.TogglePark()
 	parkOn = not parkOn
 	showModes()
+	VehicleController.CruiseOff()
 end
 reverseButton.Activated:Connect(VehicleController.ToggleReverse)
 parkButton.Activated:Connect(VehicleController.TogglePark)
+
+-- Tempomat (cruise control): ⏱ top right holds the current speed. While it is on
+-- only steering works; braking switches it off.
+local cruise: number? = nil -- forward speed to hold, studs/s
+local forwardSpeed = 0 -- current forward speed, studs/s (updated while driving)
+local cruiseButton = New("TextButton", {
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -20, 0, 118),
+	Size = UDim2.fromOffset(64, 64),
+	BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+	BackgroundTransparency = 0.2,
+	Text = "⏱",
+	TextSize = 26,
+	Font = T.black,
+	TextColor3 = Color3.new(1, 1, 1),
+	Parent = modeGui,
+}, { Make.Corner(32), Make.Stroke(Color3.fromRGB(120, 200, 255), 2, 0.3) })
+local cruiseLabel = New("TextLabel", {
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -4),
+	Size = UDim2.new(1, 0, 0, 16),
+	BackgroundTransparency = 1,
+	Text = "",
+	TextSize = 12,
+	Font = T.bold,
+	TextColor3 = Color3.fromRGB(120, 255, 150),
+	Parent = cruiseButton,
+})
+local function kmhOf(studsPerSecond: number): number
+	return studsPerSecond / Config.StudsPerMeter * 3.6
+end
+local function setCruise(value: number?)
+	cruise = value
+	cruiseButton.BackgroundColor3 = if value then Color3.fromRGB(20, 120, 60) else Color3.fromRGB(20, 20, 24)
+	cruiseButton.TextSize = if value then 20 else 26
+	cruiseLabel.Text = if value then tostring(math.floor(kmhOf(value) + 0.5)) .. " km/h" else ""
+	if CarInput then
+		CarInput.cruise = value ~= nil
+	end
+end
+cruiseButton.Activated:Connect(function()
+	if cruise then
+		setCruise(nil)
+	elseif reverseOn or parkOn or kmhOf(forwardSpeed) < 5 then
+		Notify.Show(Store.T("cruise_need_speed"), true)
+	else
+		setCruise(forwardSpeed)
+	end
+end)
+function VehicleController.CruiseOff()
+	if cruise then
+		setCruise(nil)
+	end
+end
 local exitButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -20, 0, 70),
@@ -592,6 +648,7 @@ local function stop()
 	modeGui.Enabled = false
 	reverseOn, parkOn = false, false
 	showModes()
+	setCruise(nil)
 	player:SetAttribute("DrivingTouch", nil)
 	for key in touch do
 		release(key)
@@ -614,6 +671,12 @@ local function drive(dt: number)
 
 	local speedNow = chassis.AssemblyLinearVelocity:Dot(chassis.CFrame.LookVector)
 	local throttle, steer = readInput(vseat, dt, math.clamp(math.abs(speedNow) / top, 0, 1))
+	forwardSpeed = math.max(speedNow, 0)
+	local holding = cruise
+	if holding and throttle < -0.05 then
+		setCruise(nil) -- braking ends the Tempomat
+		holding = nil
+	end
 	if fuel <= 0 then
 		if throttle ~= 0 and not warnedFuel then
 			warnedFuel = true
@@ -636,6 +699,9 @@ local function drive(dt: number)
 	if parkOn then
 		-- parking brake: stop and hold
 		cmd, torqueScale, braking = 0, 2.5, true
+	elseif holding then
+		-- Tempomat: the gas is ignored, the bike keeps the speed
+		cmd, torqueScale = math.min(top, holding), 1
 	elseif throttle > 0.05 then
 		if reverseOn then
 			if speed > 1 then
@@ -741,9 +807,24 @@ local function driveCar(dt: number)
 	local tel = CarInput.telemetry or {}
 	local kmh = tonumber(tel.kmh) or 0
 	local throttle, steer = readInput(vseat, dt, math.clamp(kmh / 200, 0, 1))
+	forwardSpeed = if (tonumber(tel.gear) or 0) >= 1 then kmh / 3.6 * Config.StudsPerMeter else 0
+	local holding = cruise
+	-- any brake (touch, keys, gamepad) ends the Tempomat
+	local driverBrake = (tonumber(tel.brake) or 0) > (CarInput.brake or 0) + 0.1
+	if holding and (throttle < -0.05 or keyDown(Enum.KeyCode.S, Enum.KeyCode.Down) or driverBrake) then
+		setCruise(nil) -- braking ends the Tempomat
+		holding = nil
+	end
 	CarInput.external = true
-	CarInput.throttle = math.max(throttle, 0)
-	CarInput.brake = math.max(-throttle, 0)
+	if holding then
+		-- hold the speed: gas when slower, a little brake when faster (downhill)
+		local diff = kmhOf(holding) - kmh
+		CarInput.throttle = math.clamp(diff * 0.12 + 0.15, 0, 1)
+		CarInput.brake = math.clamp(-diff * 0.08 - 0.1, 0, 0.5)
+	else
+		CarInput.throttle = math.max(throttle, 0)
+		CarInput.brake = math.max(-throttle, 0)
+	end
 	CarInput.steer = steer
 	speedLabel.Text = tostring(math.floor(kmh + 0.5))
 	local g = tonumber(tel.gear) or 0

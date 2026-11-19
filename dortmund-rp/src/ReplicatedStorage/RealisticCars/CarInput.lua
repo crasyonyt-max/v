@@ -14,6 +14,7 @@ return {
 	steer = 0,
 	reverse = false,
 	parking = false,
+	cruise = false, -- Tempomat: throttle comes only from the controller
 	telemetry = { kmh = 0, gear = 0, rpm = 0, maxRPM = 1, redline = 1 },
 	flip = nil,
 }
