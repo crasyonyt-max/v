@@ -1,6 +1,7 @@
 --!strict
 -- Driving (client owns the car's physics while driving) + dashboard UI.
--- Keys: W/S gas/brake, A/D steer, L lights, Q/E indicators, X hazards,
+-- Keys: W gas, S brake (only brakes), R reverse on/off, Y parking brake on/off,
+--       A/D steer, L lights, Q/E indicators, X hazards,
 --       B blue lights, N siren, V first-person camera. Mobile: on-screen buttons.
 -- Motorbike stunts: hold F = wheelie, 1 = one hand, 2 = no hands (no steering then).
 
@@ -402,6 +403,50 @@ pedal("Brake", "BREMSE", Vector2.new(92, 96), UDim2.new(1, -124, 1, -24), Vector
 local wheelieButton =
 	pedal("Wheelie", "WHEELIE", Vector2.new(92, 50), UDim2.new(1, -124, 1, -128), Vector2.new(1, 1), "wheelie")
 wheelieButton.TextSize = 16
+
+-- Reverse switch + parking brake: on-screen for everyone (keys R / Y)
+local reverseOn, parkOn = false, false
+local modeGui = New("ScreenGui", {
+	Name = "DriveModes",
+	ResetOnSpawn = false,
+	DisplayOrder = 9,
+	Enabled = false,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+local function modeButton(text: string, x: number): TextButton
+	return New("TextButton", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, x, 1, -180),
+		Size = UDim2.fromOffset(92, 52),
+		BackgroundColor3 = Color3.fromRGB(30, 30, 34),
+		BackgroundTransparency = 0.25,
+		Text = text,
+		TextSize = 15,
+		Font = T.black,
+		TextColor3 = Color3.new(1, 1, 1),
+		Parent = modeGui,
+	}, { Make.Corner(14), Make.Stroke(Color3.new(1, 1, 1), 2, 0.6) })
+end
+local reverseButton = modeButton("R\nRückwärts", -124)
+local parkButton = modeButton("P\nParkbremse", -20)
+local function showModes()
+	reverseButton.BackgroundColor3 = if reverseOn then Color3.fromRGB(220, 60, 60) else Color3.fromRGB(30, 30, 34)
+	parkButton.BackgroundColor3 = if parkOn then Color3.fromRGB(230, 150, 20) else Color3.fromRGB(30, 30, 34)
+	if CarInput then
+		CarInput.reverse = reverseOn
+		CarInput.parking = parkOn
+	end
+end
+function VehicleController.ToggleReverse()
+	reverseOn = not reverseOn
+	showModes()
+end
+function VehicleController.TogglePark()
+	parkOn = not parkOn
+	showModes()
+end
+reverseButton.Activated:Connect(VehicleController.ToggleReverse)
+parkButton.Activated:Connect(VehicleController.TogglePark)
 local exitButton = New("TextButton", {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -20, 0, 70),
@@ -544,6 +589,9 @@ local function stop()
 	motors, steers = {}, {}
 	gui.Enabled = false
 	touchGui.Enabled = false
+	modeGui.Enabled = false
+	reverseOn, parkOn = false, false
+	showModes()
 	player:SetAttribute("DrivingTouch", nil)
 	for key in touch do
 		release(key)
@@ -585,20 +633,26 @@ local function drive(dt: number)
 	local torqueScale = 1
 	local braking = false
 
-	if throttle > 0.05 then
-		if speed < -1 then
+	if parkOn then
+		-- parking brake: stop and hold
+		cmd, torqueScale, braking = 0, 2.5, true
+	elseif throttle > 0.05 then
+		if reverseOn then
+			if speed > 1 then
+				cmd, torqueScale, braking = 0, 2.5, true -- still rolling forward: brake first
+			else
+				cmd = math.max(-reverseTop, math.min(speed, 0) - accelRate * 0.25 * throttle)
+				torqueScale = throttle
+			end
+		elseif speed < -1 then
 			cmd, torqueScale, braking = 0, 2.5, true
 		else
 			cmd = math.min(top, math.max(speed, 0) + accelRate * 0.3 * throttle)
 			torqueScale = throttle
 		end
 	elseif throttle < -0.05 then
-		if speed > 1 then
-			cmd, torqueScale, braking = 0, 2.5, true
-		else
-			cmd = math.max(-reverseTop, math.min(speed, 0) - accelRate * 0.25 * -throttle)
-			torqueScale = -throttle
-		end
+		-- the brake only brakes (and holds the bike when stopped)
+		cmd, torqueScale, braking = 0, 2.5, math.abs(speed) > 0.5
 	else
 		cmd = 0
 		torqueScale = if math.abs(speed) < 1.5 then 1.5 else 0.06 -- hold when stopped, roll otherwise
@@ -652,9 +706,9 @@ local function drive(dt: number)
 	-- dashboard
 	local kmh = math.abs(speed) / Config.StudsPerMeter * 3.6
 	speedLabel.Text = tostring(math.floor(kmh + 0.5))
-	local gear = if math.abs(speed) < 0.5 and throttle == 0
+	local gear = if parkOn or (math.abs(speed) < 0.5 and throttle == 0 and not reverseOn)
 		then "P"
-		elseif speed < -0.5 or (throttle < 0 and speed < 1) then "R"
+		elseif reverseOn or speed < -0.5 then "R"
 		else "D"
 	gearLabel.Text = gear
 	gearLabel.TextColor3 = if gear == "D"
@@ -693,7 +747,7 @@ local function driveCar(dt: number)
 	CarInput.steer = steer
 	speedLabel.Text = tostring(math.floor(kmh + 0.5))
 	local g = tonumber(tel.gear) or 0
-	gearLabel.Text = if g == -1 then "R" elseif g == 0 then "N" else tostring(g)
+	gearLabel.Text = if parkOn then "P" elseif g == -1 then "R" elseif g == 0 then "N" else tostring(g)
 	gearLabel.TextColor3 = if g > 0
 		then Color3.fromRGB(120, 230, 140)
 		elseif g == -1 then Color3.fromRGB(250, 120, 120)
@@ -742,6 +796,9 @@ local function start(vseat: VehicleSeat)
 	buildButtons()
 	gui.Enabled = true
 	touchGui.Enabled = isTouch
+	reverseOn, parkOn = false, false
+	showModes()
+	modeGui.Enabled = true
 	wheelieButton.Visible = isBike
 	player:SetAttribute("DrivingTouch", isTouch)
 	setDefaultControls(false)
@@ -786,6 +843,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		-- indicators are Z / C, hazards X
 		if k == Enum.KeyCode.V then
 			setCamera(not firstPerson)
+		elseif k == Enum.KeyCode.R then
+			VehicleController.ToggleReverse()
+		elseif k == Enum.KeyCode.Y then
+			VehicleController.TogglePark()
 		elseif k == Enum.KeyCode.Z then
 			control("Indicator", "L")
 		elseif k == Enum.KeyCode.C then
@@ -809,6 +870,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		control("Siren")
 	elseif k == Enum.KeyCode.V then
 		setCamera(not firstPerson)
+	elseif k == Enum.KeyCode.R then
+		VehicleController.ToggleReverse()
+	elseif k == Enum.KeyCode.Y then
+		VehicleController.TogglePark()
 	elseif k == Enum.KeyCode.One and isBike then
 		VehicleController.SetHands(if hands == "OneHand" then "" else "OneHand")
 	elseif k == Enum.KeyCode.Two and isBike then

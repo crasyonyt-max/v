@@ -242,7 +242,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		commandRemote:FireServer(driving.model, "Headlights")
 	elseif key == K.G or key == K.DPadDown then
 		commandRemote:FireServer(driving.model, "Siren")
-	elseif key == K.R or key == K.ButtonY then
+	elseif key == K.ButtonY then -- Dortmund RP: R is the reverse switch (flip: 🔄 on the dashboard)
 		flipCar()
 	elseif key == K.U then
 		useMph = not useMph
@@ -409,7 +409,11 @@ RunService.Heartbeat:Connect(function(dt)
 			local throttle, brake, steer, analog = readInput(d.seat)
 			local inp = sim.input
 			inp.throttle, inp.brake, inp.steer, inp.analog = throttle, brake, steer, analog
-			inp.handbrake = handbrakeHeld and 1 or 0
+			inp.handbrake = (handbrakeHeld or CarInput.parking) and 1 or 0
+			-- Dortmund RP: separate reverse switch + parking brake (no auto-reverse)
+			inp.manual = CarInput.external
+			inp.reverse = CarInput.reverse
+			inp.parking = CarInput.parking
 			local tel = sim:step(dt)
 			sim:updateVisuals(sim.motors)
 			updateHud(sim, tel)

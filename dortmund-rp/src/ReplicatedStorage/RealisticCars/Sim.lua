@@ -190,7 +190,21 @@ function Sim:step(dt)
 
 	-- Pedals. In automatic, holding brake at a stop selects reverse.
 	local throttle, brake = inp.throttle, inp.brake
-	if self.auto then
+	if inp.manual and self.auto then
+		-- Dortmund RP: gas, brake, reverse switch and parking brake are separate.
+		-- The brake only brakes; the gas drives the way the reverse switch says.
+		local want = if inp.reverse then -1 else 1
+		local slow = abs(vForward) < 1.5
+		if self.gear == 0 or (slow and ((want == -1 and self.gear >= 1) or (want == 1 and self.gear == -1))) then
+			self:shift(want)
+		end
+		if (want == -1) ~= (self.gear == -1) then
+			throttle = 0 -- still rolling the other way: brake first
+		end
+		if inp.parking then
+			throttle = 0
+		end
+	elseif self.auto then
 		if self.gear >= 1 and inp.brake > 0.1 and inp.throttle < 0.05 and vForward < 0.6 then
 			self:shift(-1)
 		elseif self.gear == -1 and inp.throttle > 0.1 and inp.brake < 0.05 and vForward > -0.6 then
