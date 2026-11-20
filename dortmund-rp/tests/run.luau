@@ -1636,6 +1636,59 @@ test("v0.4: server codes, houses, furniture, laptops", function()
 	assert(#Laptops.List >= 5, "laptops")
 end)
 
+test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full", function()
+	local Imagine = requirePath(RS.Shared.Imagine)
+	local Items = requirePath(RS.Shared.Items)
+	assert(#Imagine.List > 40, "products from all shops")
+	local keys = {}
+	for _, p in Imagine.List do
+		assert(not keys[p.key], "unique key " .. p.key)
+		keys[p.key] = true
+	end
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	local fakes = { "DataService", "EconomyService", "GameLog", "Remotes", "State", "StoreService" }
+	for _, name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = any
+	end
+	cache["ServerScriptService/Server/OrderService"] = nil
+	local Orders = requirePath(Server.OrderService)
+	for _, name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	cache["ServerScriptService/Server/OrderService"] = nil
+	local food = Items.List[1].id
+	local data = {
+		inventory = {},
+		phones = {},
+		orders = {
+			{ n = 1, key = "item:" .. food, eta = 100, express = false },
+			{ n = 2, key = "furniture:sofa", eta = 100, express = false },
+			{ n = 3, key = "laptop:pear_air", eta = 500, express = true },
+		},
+	}
+	eq(Orders.Tick(nil, data, 50), 0, "nothing before the time")
+	eq(Orders.Tick(nil, data, 100), 2, "food + sofa arrive")
+	eq(data.inventory[1], food, "food in the bag")
+	eq(data.furniture.sofa, 1, "sofa in the furniture storage")
+	eq(#data.orders, 1, "laptop still on the way")
+	eq(Orders.Tick(nil, data, 500), 1, "laptop arrives")
+	eq(data.laptop, "pear_air", "laptop is yours")
+	-- full bag: the parcel waits
+	for i = 1, Items.MaxCarried do
+		data.inventory[i] = food
+	end
+	data.orders = { { n = 4, key = "item:" .. food, eta = 0, express = false } }
+	eq(Orders.Tick(nil, data, 10), 0, "bag full")
+	eq(#data.orders, 1, "waits")
+	eq(data.orders[1].waiting, true)
+	table.remove(data.inventory)
+	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")

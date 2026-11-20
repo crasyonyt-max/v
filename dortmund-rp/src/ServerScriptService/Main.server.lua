@@ -55,6 +55,7 @@ local services = {
 	require(Server.ServerService),
 	require(Server.HouseService),
 	require(Server.FurnitureService),
+	require(Server.OrderService),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),
