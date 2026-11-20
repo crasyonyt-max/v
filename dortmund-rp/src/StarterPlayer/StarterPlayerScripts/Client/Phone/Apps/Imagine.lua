@@ -115,13 +115,22 @@ local function orders(root: Instance)
 		local l = Make.Label("", 12, if o.express then ORANGE else T.sub, T.bold, { Parent = card })
 		table.insert(labels, { label = l, left = o.left, waiting = o.waiting, express = o.express })
 	end
-	-- count down while the app is open
+	-- count down while the app is open; when one is due, reload the list a moment
+	-- later (the server delivers within a few seconds), so delivered ones disappear
 	task.spawn(function()
 		local started = os.clock()
+		local reloadAt: number? = nil
 		while #labels > 0 and labels[1].label.Parent do
 			local passed = math.floor(os.clock() - started)
+			if reloadAt and os.clock() >= reloadAt then
+				Phone.Replace("imagine", "orders")
+				return
+			end
 			for _, e in labels do
 				local left = math.max(0, e.left - passed)
+				if left == 0 and not e.waiting and not reloadAt then
+					reloadAt = os.clock() + 7
+				end
 				e.label.Text = if e.waiting
 					then Store.T("imagine_waiting")
 					elseif left > 0 then (if e.express then "⚡ " else "🚚 ") .. Store.T(

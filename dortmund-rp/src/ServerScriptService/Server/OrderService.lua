@@ -83,7 +83,8 @@ function OrderService.Tick(player: Player?, data: { [string]: any }, now: number
 			if OrderService.Deliver(player, data, p) then
 				arrived += 1
 				if player then
-					Remotes.Push(player, "Notify", { key = "imagine_arrived", args = { p.name } })
+					-- say where it went (the bag, the furniture storage, or it is yours now)
+					Remotes.Push(player, "Notify", { key = "imagine_arrived_" .. p.kind, args = { p.name } })
 				end
 				continue
 			elseif not o.waiting then

@@ -448,7 +448,22 @@ local S: { [string]: { de: string, en: string } } = {
 	imagine_eta = { de = "Ankunft in %s", en = "Arrives in %s" },
 	imagine_soon = { de = "Wird gleich zugestellt …", en = "Arriving now …" },
 	imagine_waiting = { de = "🎒 Wartet – dein Rucksack ist voll", en = "🎒 Waiting – your bag is full" },
-	imagine_arrived = { de = "📦 Paket von imagine ist da: %s", en = "📦 Your imagine parcel arrived: %s" },
+	imagine_arrived_item = {
+		de = "📦 imagine-Paket ist da: %s – liegt in deinem 🎒 Rucksack.",
+		en = "📦 imagine parcel arrived: %s – it is in your 🎒 bag.",
+	},
+	imagine_arrived_furniture = {
+		de = "📦 imagine-Paket ist da: %s – im Möbellager. Aufstellen: Briefkasten deines Hauses → Haus verwalten → Einrichten.",
+		en = "📦 imagine parcel arrived: %s – in your furniture storage. Place it: your house mailbox → Manage house → Furnish.",
+	},
+	imagine_arrived_laptop = {
+		de = "📦 imagine-Paket ist da: %s – öffne ihn im 🎒 Rucksack.",
+		en = "📦 imagine parcel arrived: %s – open it from your 🎒 bag.",
+	},
+	imagine_arrived_phone = {
+		de = "📦 imagine-Paket ist da: %s – wechseln kannst du im Handyland.",
+		en = "📦 imagine parcel arrived: %s – switch to it in the Handyland.",
+	},
 	imagine_bag_full = {
 		de = "📦 %s ist da, aber dein Rucksack ist voll.",
 		en = "📦 %s arrived, but your bag is full.",
