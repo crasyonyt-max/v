@@ -68,6 +68,7 @@ local pcExit: ScreenGui? = nil
 local pcMonitor: BasePart? = nil
 local savedCamera: { [string]: any }? = nil
 local savedWalk: { [string]: number }? = nil
+local laptopGui: ScreenGui? = nil -- v0.4: the apps on a laptop (landscape, big)
 
 local function setPcMode(on: boolean, monitor: BasePart?)
 	pcMode = on
@@ -137,6 +138,11 @@ local function setPcMode(on: boolean, monitor: BasePart?)
 		return
 	end
 	-- back to the normal phone
+	if laptopGui then
+		body.Parent = gui
+		laptopGui:Destroy()
+		laptopGui = nil
+	end
 	if pcSurface then
 		body.Parent = gui
 		pcSurface:Destroy()
@@ -528,6 +534,79 @@ function Phone.Close()
 			body.Visible = false
 		end
 	end)
+end
+
+-- v0.4: opens all apps on a laptop (big landscape screen in the middle)
+function Phone.OpenLaptop(def: { name: string, body: Color3, accent: Color3 })
+	if isOpen then
+		Phone.Close()
+		task.wait(0.35)
+	end
+	local lg = New("ScreenGui", {
+		Name = "Laptop",
+		ResetOnSpawn = false,
+		DisplayOrder = 25,
+		IgnoreGuiInset = true,
+		Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+	})
+	laptopGui = lg
+	New(
+		"Frame",
+		{ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(), BackgroundTransparency = 0.5, Parent = lg }
+	)
+	local lid = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.45),
+		Position = UDim2.fromScale(0.5, 0.45),
+		Size = UDim2.fromScale(0.8, 0.8),
+		BackgroundColor3 = def.body,
+		Parent = lg,
+	}, {
+		Make.Corner(18),
+		New("UIAspectRatioConstraint", { AspectRatio = 1.55 }),
+		New("UISizeConstraint", { MaxSize = Vector2.new(1150, 742) }),
+	})
+	local screenFrame = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.49),
+		Size = UDim2.new(1, -28, 1, -40),
+		BackgroundColor3 = Color3.new(),
+		ClipsDescendants = true,
+		Parent = lid,
+	}, { Make.Corner(8) })
+	Make.Label(def.name, 11, def.accent, T.bold, {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -3),
+		Size = UDim2.new(0.6, 0, 0, 14),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = lid,
+	})
+	-- the keyboard deck under the screen
+	New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 1, 2),
+		Size = UDim2.new(1.06, 0, 0, 16),
+		BackgroundColor3 = def.body:Lerp(Color3.new(1, 1, 1), 0.15),
+		Parent = lid,
+	}, { Make.Corner(8) })
+	Make.Button("❌ " .. "Laptop zuklappen", T.bad, function()
+		Phone.Close()
+	end, {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -10),
+		Size = UDim2.fromOffset(190, 38),
+		TextSize = 15,
+		Parent = lg,
+	})
+	pcMode = true
+	local aspect = body:FindFirstChild("Aspect") :: UIAspectRatioConstraint
+	local max = body:FindFirstChild("MaxSize") :: UISizeConstraint
+	body.Parent = screenFrame
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.SizeConstraint = Enum.SizeConstraint.RelativeXY
+	body.Size = UDim2.fromScale(1, 1)
+	aspect.AspectRatio = 1.6
+	max.MaxSize = Vector2.new(5000, 5000)
+	Phone.Open()
 end
 
 -- Opens the phone's apps on a PC monitor (Admin Tower offices).

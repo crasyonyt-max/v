@@ -1383,6 +1383,7 @@ test("Robux money: rebuyable, every receipt paid once", function()
 		},
 		Remotes = any,
 		GameLog = any,
+		ServerService = any,
 	}
 	for name, fake in fakes do
 		overrides["ServerScriptService/Server/" .. name] = fake
@@ -1573,6 +1574,68 @@ test("owner cars: blue OWNER livery, Owner + Co-Owner only", function()
 	end
 end)
 
+test("v0.4: server codes, houses, furniture, laptops", function()
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	for _, name in { "Roles", "DataService", "Remotes", "GameLog" } do
+		overrides["ServerScriptService/Server/" .. name] = any
+	end
+	cache["ServerScriptService/Server/ServerService"] = nil
+	local Servers = requirePath(Server.ServerService)
+	for _, name in { "Roles", "DataService", "Remotes", "GameLog" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	cache["ServerScriptService/Server/ServerService"] = nil
+	local fakeRng = {
+		NextInteger = function(_, a, b)
+			return math.random(a, b)
+		end,
+	} :: any
+	local code = Servers.NewCode(fakeRng)
+	eq(#code, 8, "8 characters")
+	eq(Servers.CleanCode(code:lower()), code, "lower case works")
+	eq(Servers.CleanCode(code:sub(1, 4) .. "-" .. code:sub(5)), code, "with a dash")
+	eq(Servers.CleanCode("ABC"), nil, "too short")
+	eq(Servers.CleanCode("ABCD0O1I"), nil, "no 0 / O / 1 / I")
+
+	local Houses = requirePath(RS.Shared.Houses)
+	eq(#Houses.List, 8, "8 house types")
+	eq(Houses.List[1].price, 200000, "from 200.000 €")
+	eq(Houses.List[#Houses.List].price, 5000000, "to 5.000.000 €")
+	local HouseBuilder = requirePath(Server.HouseBuilder)
+	for _, h in Houses.List do
+		local built = HouseBuilder.Build(h, roblox.CFrame.new(), "Tester")
+		assert(built.door and built.mailbox, h.name .. ": door + mailbox")
+		local c = built.bounds.cf.Position
+		assert(
+			math.abs(c.X) + built.bounds.size.X / 2 <= Houses.PLOT_W / 2
+				and math.abs(c.Z) + built.bounds.size.Z / 2 <= Houses.PLOT_D / 2,
+			h.name .. " fits its plot"
+		)
+		built.model:Destroy()
+	end
+
+	local Furniture = requirePath(RS.Shared.Furniture)
+	assert(#Furniture.List >= 20, "furniture catalog")
+	for _, it in Furniture.List do
+		local m = Furniture.Build(it.id)
+		assert(m and m.PrimaryPart, it.id .. " builds")
+		m:Destroy()
+	end
+	assert(Furniture.ById[Furniture.FREE_BED], "free bed exists")
+	local half = roblox.Vector3.new(37, 0, 36)
+	eq(Furniture.Fits("bed_single", 0, 0.5, 0, 0, half, 40), true, "bed in the middle")
+	eq(Furniture.Fits("bed_single", 35, 0.5, 0, 0, half, 40), false, "bed through the hedge")
+	eq(Furniture.Fits("sofa", 33, 0.5, 0, 90, half, 40), true, "turned sofa fits at the side")
+	eq(Furniture.Fits("sofa", 0, 0 / 0, 0, 0, half, 40), false, "NaN refused")
+
+	local Laptops = requirePath(RS.Shared.Laptops)
+	assert(#Laptops.List >= 5, "laptops")
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")
@@ -1612,6 +1675,24 @@ test("mall, underground garages and plate service", function()
 	local Garages = requirePath(Server.GarageService)
 	local Plates = requirePath(Server.PlateService)
 	local Trains = requirePath(Server.TrainService)
+	for _, name in { "EconomyService", "State" } do
+		overrides["ServerScriptService/Server/" .. name] = stub
+	end
+	local realPlayers = fakeServices.Players
+	fakeServices.Players = {
+		GetPlayerByUserId = function()
+			return nil
+		end,
+		GetPlayers = function()
+			return {}
+		end,
+	}
+	local HouseSvc = requirePath(Server.HouseService)
+	fakeServices.Players = realPlayers
+	local FurnitureSvc = requirePath(Server.FurnitureService)
+	for _, name in { "EconomyService", "State" } do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
 	for _, name in { "Remotes", "Roles", "DataService" } do
 		overrides["ServerScriptService/Server/" .. name] = nil
 	end
@@ -1623,6 +1704,39 @@ test("mall, underground garages and plate service", function()
 	local Stops = requirePath(Server.BusStopService)
 	local BusStopData = requirePath(RS.Shared.BusStopData)
 	Stops.Build()
+	-- v0.4: housing estate + Swedea (switched on just for this test)
+	local Config = requirePath(RS.Shared.Config)
+	Config.V04 = true
+	HouseSvc.Build()
+	FurnitureSvc.Build()
+	assert(ws:FindFirstChild("Wohngebiet"), "estate built")
+	eq(#HouseSvc.Plots, 16, "16 plots")
+	assert(ws:FindFirstChild("Swedea"), "Swedea built")
+	local record = {
+		owner = 77,
+		ownerName = "Tester",
+		type = "luxusvilla",
+		members = {},
+		furniture = {},
+		bought = 0,
+	}
+	assert(HouseSvc.Create(record), "house record")
+	eq(HouseSvc.Create(record), false, "only one house per player")
+	local plot = HouseSvc.Spawn(record)
+	assert(plot and plot.built, "house on a plot")
+	eq(HouseSvc.RoleOf(record, 77), "owner")
+	eq(HouseSvc.CanEnter(record, 5), false, "strangers stay outside")
+	local saved = HouseSvc.Edit(77, function(r)
+		r.members["5"] = { role = "guest", name = "Gast" }
+		table.insert(r.furniture, { id = "sofa", x = 0, y = 0.6, z = 0, r = 0 })
+	end)
+	assert(saved, "edit saved")
+	eq(HouseSvc.CanEnter(saved, 5), true, "guest may enter")
+	eq(HouseSvc.CanBuild(saved, 5), false, "guest may not furnish")
+	FurnitureSvc.Render(77)
+	local furn = plot.built.model:FindFirstChild("Furniture")
+	assert(furn and #furn:GetChildren() == 1, "placed sofa shown")
+	Config.V04 = false
 	-- Stadtbahn: viaduct, stations, trains
 	local TrainLine = requirePath(RS.Shared.TrainLine)
 	Trains.Build()

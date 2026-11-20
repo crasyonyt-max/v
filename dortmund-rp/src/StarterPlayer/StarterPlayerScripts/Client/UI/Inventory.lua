@@ -6,7 +6,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local Items = require(ReplicatedStorage.Shared.Items)
+local Laptops = require(ReplicatedStorage.Shared.Laptops)
 local IDCard = require(script.Parent.IDCard)
 local Make = require(script.Parent.Make)
 local Notify = require(script.Parent.Notify)
@@ -129,6 +131,17 @@ local function render()
 			Notify.Error(r.err)
 		end
 	end, { Parent = idCard })
+	-- v0.4: your laptop (also not counted in the item limit)
+	local laptop = Config.V04 and Laptops.ById[tostring(Store.Get().laptop)]
+	if laptop then
+		local lc = Make.Card({ LayoutOrder = 0, Parent = list })
+		Make.Label("💻 " .. laptop.name, 14, T.text, T.bold, { Parent = lc })
+		Make.Button(Store.T("laptop_open"), T.accent, function()
+			panel.Visible = false
+			local Phone = require(script.Parent.Parent.Phone.Phone) :: any
+			Phone.OpenLaptop(laptop)
+		end, { Parent = lc })
+	end
 	-- group by item
 	local groups: { [string]: { Tool } } = {}
 	local order: { string } = {}

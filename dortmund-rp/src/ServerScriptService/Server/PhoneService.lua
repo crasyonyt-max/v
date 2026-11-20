@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Phones = require(ReplicatedStorage.Shared.Phones)
+local Laptops = require(ReplicatedStorage.Shared.Laptops)
 local DataService = require(script.Parent.DataService)
 local Economy = require(script.Parent.EconomyService)
 local Interaction = require(script.Parent.InteractionService)
@@ -76,6 +77,39 @@ function PhoneService.Start()
 		end
 		table.insert(data.phones, phone.id)
 		data.phone = phone.id
+		State.MarkDirty(player)
+		return Remotes.Ok()
+	end, { rate = 5 })
+
+	-- v0.4 laptops (Handyland, tab "Laptops")
+	Remotes.Handle("Laptop.Buy", function(player, laptopId: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		local laptop = typeof(laptopId) == "string" and Laptops.ById[laptopId] or nil
+		if not Config.V04 or not laptop then
+			return Remotes.Fail("bad_item")
+		end
+		if not Interaction.IsNear(player, "Shop", 30, "UI", "Handyland") then
+			return Remotes.Fail("not_near")
+		end
+		data.laptops = data.laptops or {}
+		if table.find(data.laptops, laptop.id) then
+			return Remotes.Fail("already_owned")
+		end
+		if not Economy.TrySpend(player, laptop.price, "Handyland: " .. laptop.name) then
+			return Remotes.Fail("no_money")
+		end
+		table.insert(data.laptops, laptop.id)
+		data.laptop = laptop.id
+		State.MarkDirty(player)
+		return Remotes.Ok()
+	end, { rate = 5 })
+
+	Remotes.Handle("Laptop.Equip", function(player, laptopId: any)
+		local data = DataService.Get(player) :: { [string]: any }
+		if typeof(laptopId) ~= "string" or not table.find(data.laptops or {}, laptopId) then
+			return Remotes.Fail("not_owned")
+		end
+		data.laptop = laptopId
 		State.MarkDirty(player)
 		return Remotes.Ok()
 	end, { rate = 5 })

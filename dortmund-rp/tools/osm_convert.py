@@ -501,6 +501,63 @@ def main():
     else:
         print("no mall site found")
 
+    # v0.4 housing estate ("Wohngebiet"): a big green area without roads / buildings
+    building_pts = []
+    for wid, (nd, t) in ways.items():
+        if "building" in t:
+            c = centre_ll(wid)
+            if c and inside_area(*c):
+                building_pts.append(project(*c))
+
+    def no_buildings(site, margin=0.0):
+        return not any(in_site(site, x, z, margin) for x, z in building_pts)
+
+    def far_from_sites(cx, cz, r):
+        return all(math.hypot(cx - o[0], cz - o[1]) > r + math.hypot(o[3], o[4]) / 2 for o in sites.values())
+
+    def find_green(size_m, kinds, near=None):
+        best = None
+        side = size_m / M_PER_STUD
+        for wid, (nd, t) in ways.items():
+            kind = t.get("landuse") or t.get("leisure") or t.get("amenity")
+            if kind not in kinds or len(nd) < 4:
+                continue
+            c = centre_ll(wid)
+            if not c or not inside_area(*c):
+                continue
+            pts = way_pts(wid)[:-1]
+            cx, cz, sx, sz, ang = min_rect(pts)
+            if min(sx, sz) < side:
+                continue
+            site = (cx, cz, -math.degrees(ang), side, side)
+            if not site_clear(site) or not no_buildings(site, 6) or not far_from_sites(cx, cz, side * 0.75):
+                continue
+            dist = math.hypot(cx - (near or (0, 0))[0], cz - (near or (0, 0))[1])
+            if best is None or dist < best[0]:
+                best = (dist, site)
+        return best[1] if best else None
+
+    estate = find_green(105, {"grass", "meadow", "recreation_ground", "park", "greenfield", "village_green", "parking"})
+    if estate:
+        ex, ez, _, ew, ed = estate
+        dd, rx, rz, _ = nearest_on_roads(ex, ez)
+        nx, nz = ex - rx, ez - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["Estate"] = (ex, ez, yaw, ew, ed)
+    else:
+        print("no housing estate site found")
+
+    # v0.4 Swedea furniture store: a large free car park
+    swedea = find_green(62, {"parking"})
+    if swedea:
+        sx_, sz_, _, sw, sd = swedea
+        dd, rx, rz, _ = nearest_on_roads(sx_, sz_)
+        nx, nz = sx_ - rx, sz_ - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["Swedea"] = (sx_, sz_, yaw, sw, sd)
+    else:
+        print("no Swedea site found")
+
     # ADMC / DXL / LKW: look inside real commercial / industrial areas for a free plot
     def overlaps(site):
         cx, cz, _, w, d = site

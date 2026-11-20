@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locations = require(ReplicatedStorage.Shared.Locations)
@@ -133,6 +134,26 @@ Phone.Register({
 				front.Position,
 				Color3.fromRGB(57, 160, 20)
 			)
+		end
+		if Config.V04 then
+			local myHouse = Players.LocalPlayer:GetAttribute("MyHouse")
+			if typeof(myHouse) == "Vector3" then
+				entry("🏡 " .. Store.T("my_house"), myHouse, Color3.fromRGB(60, 130, 70))
+			end
+			if sites.Estate then
+				entry(
+					"🏡 Wohngebiet am Park · Immobilienmakler",
+					Vector3.new(sites.Estate.x, 0, sites.Estate.z),
+					Color3.fromRGB(60, 130, 70)
+				)
+			end
+			if sites.Swedea then
+				entry(
+					"🛋 Swedea Möbelhaus",
+					Vector3.new(sites.Swedea.x, 0, sites.Swedea.z),
+					Color3.fromRGB(0, 81, 186)
+				)
+			end
 		end
 		entry("🚉 Dortmund Hbf", Vector3.new(Locations.Spawn[1], 0, Locations.Spawn[2]), Color3.fromRGB(0, 60, 140))
 		entry(

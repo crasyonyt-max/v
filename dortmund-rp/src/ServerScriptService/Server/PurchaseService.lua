@@ -14,6 +14,7 @@ local Economy = require(script.Parent.EconomyService)
 local GameLog = require(script.Parent.GameLog)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Remotes = require(script.Parent.Remotes)
+local ServerService = require(script.Parent.ServerService)
 
 local PurchaseService = {}
 
@@ -38,8 +39,38 @@ local function alreadyPaid(data: { [string]: any }, purchaseId: string): boolean
 end
 
 -- returns the Enum.ProductPurchaseDecision name (also used by the tests)
+-- v0.4: a private server (Config.PrivateServerProductId), also paid out once per receipt
+local function processServer(player: Player, receipt: { [string]: any }): string
+	local data = DataService.Get(player)
+	if not data then
+		return "NotProcessedYet"
+	end
+	data.receipts = data.receipts or {}
+	local purchaseId = tostring(receipt.PurchaseId)
+	if not alreadyPaid(data, purchaseId) then
+		local ps = ServerService.Create(player)
+		if not ps then
+			return "NotProcessedYet"
+		end
+		table.insert(data.receipts, purchaseId)
+		while #data.receipts > KEEP do
+			table.remove(data.receipts, 1)
+		end
+		Remotes.Push(player, "Notify", { key = "server_bought", args = { ps.code } })
+	end
+	return if DataService.Save(player, false) then "PurchaseGranted" else "NotProcessedYet"
+end
+
 function PurchaseService.Process(receipt: { [string]: any }): string
 	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	if
+		player
+		and Config.V04
+		and Config.PrivateServerProductId ~= 0
+		and receipt.ProductId == Config.PrivateServerProductId
+	then
+		return processServer(player, receipt)
+	end
 	local product = productFor(receipt.ProductId)
 	if not player or not product then
 		return "NotProcessedYet" -- player left / unknown product: Roblox asks again later

@@ -52,6 +52,10 @@ local function template(): { [string]: any }
 		tx = {}, -- bank transactions { amount, reason, t }
 		receipts = {}, -- Robux purchases already paid out (PurchaseIds, newest last)
 		trunks = {}, -- [car key] = { item ids } (Kofferraum)
+		servers = {}, -- v0.4: private servers this player owns (PrivateServerIds)
+		furniture = {}, -- v0.4: furniture storage [id] = count (Swedea)
+		freeBed = false, -- v0.4: the free Swedea bed was taken
+		laptops = {}, -- v0.4: owned laptop ids
 		stats = { joins = 0, playtime = 0 },
 		_lock = nil,
 	}

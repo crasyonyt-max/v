@@ -24,6 +24,8 @@ require(Server.AdminTowerService).Build()
 require(Server.MallBuilder).Build()
 require(Server.BusStopService).Build()
 require(Server.TrainService).Build()
+require(Server.HouseService).Build()
+require(Server.FurnitureService).Build()
 require(Server.GarageService).Build()
 require(Server.PlateService).Build()
 Interaction.Start()
@@ -50,6 +52,9 @@ local services = {
 	require(Server.QuakeService),
 	require(Server.IDService),
 	require(Server.TrunkService),
+	require(Server.ServerService),
+	require(Server.HouseService),
+	require(Server.FurnitureService),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),

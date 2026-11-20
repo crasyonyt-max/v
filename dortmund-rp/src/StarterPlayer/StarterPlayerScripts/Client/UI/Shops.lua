@@ -7,11 +7,15 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Furniture = require(ReplicatedStorage.Shared.Furniture)
+local Houses = require(ReplicatedStorage.Shared.Houses)
+local Laptops = require(ReplicatedStorage.Shared.Laptops)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Phones = require(ReplicatedStorage.Shared.Phones)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
+local BuildMode = require(script.Parent.BuildMode)
 local Make = require(script.Parent.Make)
 local Notify = require(script.Parent.Notify)
 local Net = require(script.Parent.Parent.Net)
@@ -132,8 +136,32 @@ end
 -- Handyland --------------------------------------------------------------------
 renderers.Handyland = function()
 	title.Text = "📱 " .. Store.T("handyland")
-	Make.Clear(tabBar)
 	local s = Store.Get()
+	-- v0.4: second tab with laptops
+	if Config.V04 then
+		tabs({ "handyland_phones", "handyland_laptops" })
+	else
+		Make.Clear(tabBar)
+	end
+	if Config.V04 and currentTab == 2 then
+		local lg = grid()
+		for i, l in Laptops.List do
+			local owned = table.find(s.laptops or {}, l.id) ~= nil
+			local line = Locale.Euro(l.price) .. "\n" .. l.info
+			if s.laptop == l.id then
+				itemCard(lg, i, l.body, l.name, line, Store.T("equipped"), T.panel, nil)
+			elseif owned then
+				itemCard(lg, i, l.body, l.name, line, Store.T("equip"), T.accent, function()
+					result(Net.Request("Laptop.Equip", l.id))
+				end)
+			else
+				itemCard(lg, i, l.body, l.name, line, Store.T("buy"), T.good, function()
+					result(Net.Request("Laptop.Buy", l.id))
+				end)
+			end
+		end
+		return
+	end
 	local g = grid()
 	for i, phone in Phones.List do
 		if phone.shop then
@@ -406,6 +434,209 @@ renderers.Housing = function()
 	title.Text = "🏠 Ferdinandstraße 24"
 	Make.Clear(tabBar)
 	Make.Label(Store.T("housing_soon"), 15, T.text, T.bold, { Parent = body })
+end
+
+-- v0.4 Immobilienmakler: buy a house (one per player) ----------------------------
+renderers.Makler = function()
+	title.Text = "🏡 Immobilienmakler"
+	Make.Clear(tabBar)
+	Make.Label(Store.T("house_makler_info"), 12, T.sub, T.font, { Parent = body })
+	local g = grid()
+	for i, h in Houses.List do
+		itemCard(g, i, h.wall, h.name, Locale.Euro(h.price) .. "\n" .. h.info, Store.T("buy"), T.good, function()
+			result(Net.Request("House.Buy", h.id))
+		end)
+	end
+end
+
+-- v0.4 "Haus verwalten" (mailbox of the house): furnish, people, sell ---------------
+local function roleName(role: any): string
+	return Store.T("house_role_name_" .. tostring(role))
+end
+
+renderers.HouseManage = function(ownerId: any)
+	Make.Clear(tabBar)
+	title.Text = "🏡 " .. Store.T("house_manage")
+	task.spawn(function()
+		local r = Net.Request("House.Mine")
+		if not r.ok then
+			Notify.Error(r.err)
+			return
+		end
+		local h = nil
+		if r.own and r.own.owner == ownerId then
+			h = r.own
+		end
+		for _, o in r.others or {} do
+			if o.owner == ownerId then
+				h = o
+			end
+		end
+		if not h then
+			Notify.Error("no_permission")
+			return
+		end
+		title.Text = ("🏡 %s · %s"):format(h.name, h.ownerName)
+		local head = Make.Card({ LayoutOrder = 1, Parent = body })
+		Make.Label(
+			("%s · %s"):format(roleName(h.role), Store.T("house_plot", h.plot or "?", h.furniture or 0)),
+			13,
+			T.text,
+			T.bold,
+			{
+				Parent = head,
+			}
+		)
+		Make.Button("🛠 " .. Store.T("house_furnish"), T.good, function()
+			Shops.Close()
+			BuildMode.Start(h.owner)
+		end, { Parent = head })
+
+		-- people: the owner sets co-owners + guests, co-owners set guests
+		local people = Make.Card({ LayoutOrder = 2, Parent = body })
+		Make.Label("👥 " .. Store.T("house_people"), 14, T.text, T.bold, { Parent = people })
+		for _, m in h.members or {} do
+			local canRemove = h.role == "owner" or (h.role == "coowner" and m.role == "guest")
+			Make.Row({
+				Make.Label(
+					("%s · %s"):format(m.name, roleName(m.role)),
+					12,
+					T.text,
+					T.font,
+					{ Size = UDim2.new(0.62, 0, 1, 0) }
+				),
+				Make.Button(Store.T("house_remove"), if canRemove then T.bad else T.panel, function()
+					if canRemove then
+						result(Net.Request("House.SetRole", h.owner, m.userId, nil))
+						Shops.Refresh()
+					end
+				end, { Size = UDim2.new(0.38, -4, 1, 0), TextSize = 11 }),
+			}, 30).Parent =
+				people
+		end
+		local selected: Player? = nil
+		local pick: TextButton
+		pick = Make.Button("👤 " .. Store.T("recipient"), T.panel, function()
+			local list = {}
+			for _, p in Players:GetPlayers() do
+				if p ~= Players.LocalPlayer and p.UserId ~= h.owner then
+					table.insert(list, p)
+				end
+			end
+			if #list == 0 then
+				Notify.Error("target_offline")
+				return
+			end
+			local i = if selected then (table.find(list, selected) or 0) else 0
+			selected = list[i % #list + 1]
+			pick.Text = "👤 " .. (selected :: Player).DisplayName
+		end, { Parent = people })
+		local function give(role: string)
+			if not selected then
+				Notify.Error("bad_target")
+				return
+			end
+			result(Net.Request("House.SetRole", h.owner, (selected :: Player).UserId, role))
+			Shops.Refresh()
+		end
+		local row = {}
+		if h.role == "owner" then
+			table.insert(
+				row,
+				Make.Button("⭐ " .. roleName("coowner"), T.good, function()
+					give("coowner")
+				end, { Size = UDim2.new(0.5, -3, 1, 0), TextSize = 12 })
+			)
+		end
+		table.insert(
+			row,
+			Make.Button("🚪 " .. roleName("guest"), T.accent, function()
+				give("guest")
+			end, { Size = UDim2.new(if h.role == "owner" then 0.5 else 1, -3, 1, 0), TextSize = 12 })
+		)
+		Make.Row(row, 34).Parent = people
+
+		if h.role == "owner" then
+			local sell = Make.Card({ LayoutOrder = 3, Parent = body })
+			Make.Label(
+				Store.T("house_sell_info", Locale.Euro(math.floor((h.price or 0) * Houses.SELL_BACK))),
+				12,
+				T.sub,
+				T.font,
+				{
+					Parent = sell,
+				}
+			)
+			local armed = false
+			local b: TextButton
+			b = Make.Button("💰 " .. Store.T("house_sell"), T.bad, function()
+				if not armed then
+					armed = true
+					b.Text = "⚠️ " .. Store.T("house_sell_confirm")
+					return
+				end
+				local rr = Net.Request("House.Sell")
+				if rr.ok then
+					Notify.Show(Store.T("house_sold", Locale.Euro(rr.refund or 0)))
+					Shops.Close()
+				else
+					Notify.Error(rr.err)
+				end
+			end, { Parent = sell })
+		end
+	end)
+end
+
+-- v0.4 Swedea: furniture (into your storage) + the free bed ----------------------
+renderers.Swedea = function()
+	title.Text = "🛋 SWEDEA"
+	local cats = { "swedea_all" }
+	for _, c in Furniture.Categories do
+		table.insert(cats, c)
+	end
+	Make.Clear(tabBar)
+	for i, key in cats do
+		Make.Button(if i == 1 then Store.T(key) else key, if i == currentTab then T.accent else T.card, function()
+			currentTab = i
+			Shops.Refresh()
+		end, { Size = UDim2.fromOffset(96, 32), LayoutOrder = i, TextSize = 11, Parent = tabBar })
+	end
+	local cat = if currentTab > 1 then cats[currentTab] else nil
+	task.spawn(function()
+		local r = Net.Request("Furniture.Storage")
+		local owned = if r.ok then r.items or {} else {}
+		if r.ok and r.freeBed then
+			local free = Make.Card({ LayoutOrder = 0, Parent = body })
+			Make.Label("🎁 " .. Store.T("swedea_free_bed"), 14, T.text, T.bold, { Parent = free })
+			Make.Button(Store.T("swedea_take"), T.good, function()
+				result(Net.Request("Swedea.FreeBed"))
+				Shops.Refresh()
+			end, { Parent = free })
+		end
+		Make.Label(Store.T("swedea_info"), 12, T.sub, T.font, { LayoutOrder = 1, Parent = body })
+		local g = grid()
+		g.LayoutOrder = 2
+		local n = 0
+		for _, it in Furniture.List do
+			if not cat or it.category == cat then
+				n += 1
+				itemCard(
+					g,
+					n,
+					it.color,
+					it.name .. " · " .. it.kind,
+					Locale.Euro(it.price)
+						.. (if (owned[it.id] or 0) > 0 then "\n" .. Store.T("swedea_have", owned[it.id]) else ""),
+					Store.T("buy"),
+					T.good,
+					function()
+						result(Net.Request("Swedea.Buy", it.id, 1))
+						Shops.Refresh()
+					end
+				)
+			end
+		end
+	end)
 end
 
 function Shops.Refresh()
