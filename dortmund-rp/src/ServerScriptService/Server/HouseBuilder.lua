@@ -169,10 +169,14 @@ function HouseBuilder.Build(def: Houses.HouseType, plot: CFrame, ownerName: stri
 	m.Name = def.name
 	local PW, PD = Houses.PLOT_W, Houses.PLOT_D
 	local w, d = def.w, def.d
-	-- the house stands 10 studs behind the street edge of the plot
+	-- the house stands 10 studs behind the street edge of the plot; with a garage the
+	-- house moves to one side and the garage stands next to it (both on the plot)
 	local hz = -PD / 2 + 10 + d / 2
+	local gw = if def.id == "modernevilla" or def.id == "luxusvilla" then 16 else 14
+	local total = w + (if def.garage then 2 + gw else 0)
+	local hx = -total / 2 + w / 2
 	local function at(x: number, y: number, z: number): CFrame
-		return plot * CFrame.new(x, y, z + hz)
+		return plot * CFrame.new(x + hx, y, z + hz)
 	end
 	local function plotAt(x: number, y: number, z: number): CFrame
 		return plot * CFrame.new(x, y, z)
@@ -184,7 +188,7 @@ function HouseBuilder.Build(def: Houses.HouseType, plot: CFrame, ownerName: stri
 		m,
 		"Path",
 		Vector3.new(5, 0.25, 10),
-		plotAt(0, 0.13, -PD / 2 + 5),
+		plotAt(hx, 0.13, -PD / 2 + 5),
 		Color3.fromRGB(170, 165, 155),
 		Enum.Material.Slate
 	)
@@ -210,12 +214,17 @@ function HouseBuilder.Build(def: Houses.HouseType, plot: CFrame, ownerName: stri
 		m,
 		"MailboxPost",
 		Vector3.new(0.4, 4, 0.4),
-		plotAt(4.5, 2, -PD / 2 + 1.5),
+		plotAt(hx + 4.5, 2, -PD / 2 + 1.5),
 		Color3.fromRGB(50, 50, 55),
 		Enum.Material.Metal
 	)
-	local box =
-		part(m, "Mailbox", Vector3.new(2.2, 1.6, 1.4), plotAt(4.5, 4.6, -PD / 2 + 1.5), Color3.fromRGB(240, 200, 30))
+	local box = part(
+		m,
+		"Mailbox",
+		Vector3.new(2.2, 1.6, 1.4),
+		plotAt(hx + 4.5, 4.6, -PD / 2 + 1.5),
+		Color3.fromRGB(240, 200, 30)
+	)
 	local nameLabel = sign(box, Enum.NormalId.Front, ownerName or "", Color3.new(0, 0, 0), Color3.fromRGB(240, 200, 30))
 
 	-- floors (slabs) and ceilings; stairs along the left wall, hole above them
@@ -430,23 +439,65 @@ function HouseBuilder.Build(def: Houses.HouseType, plot: CFrame, ownerName: stri
 
 	-- extras next to / behind the house
 	if def.garage then
-		local gx = w / 2 + 10
-		local gw = if def.id == "modernevilla" or def.id == "luxusvilla" then 16 else 14
-		if gx + gw / 2 <= PW / 2 - 1 then
-			part(m, "Garage", Vector3.new(gw, 10, 22), at(gx, 5, -d / 2 + 11), def.wall, def.material)
+		local gx = w / 2 + 2 + gw / 2 -- right next to the house
+		do
+			-- a real garage you can drive into: back + side walls, roof, floor, the
+			-- roller door rolled up under the roof
+			local gz, gd, gh = -d / 2 + 11, 22, 10
+			part(
+				m,
+				"GarageFloor",
+				Vector3.new(gw, 0.4, gd),
+				at(gx, 0.2, gz),
+				Color3.fromRGB(150, 150, 155),
+				Enum.Material.Concrete
+			)
+			part(m, "GarageBack", Vector3.new(gw, gh, 0.8), at(gx, gh / 2, gz + gd / 2 - 0.4), def.wall, def.material)
+			for _, sx in { -1, 1 } do
+				part(
+					m,
+					"GarageSide",
+					Vector3.new(0.8, gh, gd),
+					at(gx + sx * (gw / 2 - 0.4), gh / 2, gz),
+					def.wall,
+					def.material
+				)
+			end
+			part(m, "Garage", Vector3.new(gw, 1.6, 0.8), at(gx, gh - 0.8, gz - gd / 2 + 0.4), def.wall, def.material)
+			part(
+				m,
+				"GarageRoof",
+				Vector3.new(gw + 1, 0.6, gd + 1),
+				at(gx, gh + 0.3, gz),
+				def.roofColor,
+				Enum.Material.Concrete
+			)
 			part(
 				m,
 				"GarageDoor",
-				Vector3.new(gw - 2, 8, 0.4),
-				at(gx, 4, -d / 2 - 0.1),
+				Vector3.new(gw - 2, 0.6, 3),
+				at(gx, gh - 2, gz - gd / 2 + 2),
 				Color3.fromRGB(200, 200, 205),
 				Enum.Material.DiamondPlate
 			)
+			local light = part(
+				m,
+				"GarageLight",
+				Vector3.new(2, 0.2, 2),
+				at(gx, gh - 0.2, gz),
+				Color3.fromRGB(250, 248, 240),
+				Enum.Material.Neon
+			)
+			light.CanCollide = false
+			local l = Instance.new("PointLight")
+			l.Range = 16
+			l.Brightness = 0.5
+			l.Parent = light
 			part(
 				m,
 				"Driveway",
 				Vector3.new(gw - 2, 0.25, 10),
-				plotAt(gx, 0.13, -PD / 2 + 5),
+				plotAt(hx + gx, 0.13, -PD / 2 + 5),
 				Color3.fromRGB(120, 120, 125),
 				Enum.Material.Concrete
 			)

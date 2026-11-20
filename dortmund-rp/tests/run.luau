@@ -1626,6 +1626,19 @@ test("v0.4: server codes, houses, furniture, laptops", function()
 	for _, h in Houses.List do
 		local built = HouseBuilder.Build(h, roblox.CFrame.new(), "Tester")
 		assert(built.door and built.mailbox, h.name .. ": door + mailbox")
+		local garage = built.model:FindFirstChild("Garage")
+		if h.garage then
+			assert(garage, h.name .. " has its garage")
+			local gp = garage.CFrame.Position
+			assert(math.abs(gp.X) + garage.Size.X / 2 <= Houses.PLOT_W / 2 - 1, h.name .. ": garage on the plot")
+			local house = built.bounds
+			assert(
+				gp.X - garage.Size.X / 2 >= house.cf.Position.X + house.size.X / 2,
+				h.name .. ": garage next to the house, not inside"
+			)
+		else
+			eq(garage, nil, h.name .. " has no garage")
+		end
 		local c = built.bounds.cf.Position
 		assert(
 			math.abs(c.X) + built.bounds.size.X / 2 <= Houses.PLOT_W / 2

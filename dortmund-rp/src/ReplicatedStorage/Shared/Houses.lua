@@ -154,7 +154,7 @@ for _, h in Houses.List do
 end
 
 Houses.FLOOR_H = 12 -- studs per storey
-Houses.PLOT_W = 76
+Houses.PLOT_W = 80 -- house + garage side by side
 Houses.PLOT_D = 74
 Houses.SELL_BACK = 0.5 -- selling gives half the price back
 Houses.MAX_FURNITURE = 150
