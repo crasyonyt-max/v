@@ -48,8 +48,12 @@ local function processServer(player: Player, receipt: { [string]: any }): string
 	data.receipts = data.receipts or {}
 	local purchaseId = tostring(receipt.PurchaseId)
 	if not alreadyPaid(data, purchaseId) then
-		local ps = ServerService.Create(player)
+		GameLog.Add("server", player, "private server purchase " .. purchaseId .. ": creating")
+		Remotes.Push(player, "Notify", { key = "server_creating" })
+		local ps, err = ServerService.Create(player)
 		if not ps then
+			GameLog.Add("server", player, "private server purchase " .. purchaseId .. " failed: " .. tostring(err))
+			Remotes.Push(player, "Notify", { key = "server_create_retry", error = true })
 			return "NotProcessedYet"
 		end
 		table.insert(data.receipts, purchaseId)
@@ -57,8 +61,14 @@ local function processServer(player: Player, receipt: { [string]: any }): string
 			table.remove(data.receipts, 1)
 		end
 		Remotes.Push(player, "Notify", { key = "server_bought", args = { ps.code } })
+		Remotes.Push(player, "ServerBought", { code = ps.code })
 	end
-	return if DataService.Save(player, false) then "PurchaseGranted" else "NotProcessedYet"
+	if DataService.Save(player, false) then
+		GameLog.Add("server", player, "private server purchase " .. purchaseId .. ": done")
+		return "PurchaseGranted"
+	end
+	GameLog.Add("server", player, "private server purchase " .. purchaseId .. ": save failed, Roblox retries")
+	return "NotProcessedYet"
 end
 
 function PurchaseService.Process(receipt: { [string]: any }): string
@@ -108,6 +118,7 @@ function PurchaseService.Start()
 		end
 		if not ok then
 			warn("[Purchase] " .. tostring(decision))
+			GameLog.Add("server", receipt.PlayerId, "purchase error: " .. tostring(decision))
 		end
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end

@@ -1599,6 +1599,23 @@ test("v0.4: server codes, houses, furniture, laptops", function()
 	eq(Servers.CleanCode(code:lower()), code, "lower case works")
 	eq(Servers.CleanCode(code:sub(1, 4) .. "-" .. code:sub(5)), code, "with a dash")
 	eq(Servers.CleanCode("ABC"), nil, "too short")
+	-- regression: two statements starting with "(" ran together into one call
+	-- ("(store):SetAsync(...)(store):SetAsync(...)") and lost the first purchases
+	local fs = require("@lune/fs")
+	local function scan(dir: string)
+		for _, name in fs.readDir(dir) do
+			local path = dir .. "/" .. name
+			if fs.isDir(path) then
+				if name ~= "RealisticCars" and name ~= "CityData" then
+					scan(path)
+				end
+			elseif name:match("%.lua$") then
+				local text = fs.readFile(path)
+				assert(not text:find("%)%(%w+ :: "), path .. ": a call chained onto the line before")
+			end
+		end
+	end
+	scan("src")
 	eq(Servers.CleanCode("ABCD0O1I"), nil, "no 0 / O / 1 / I")
 
 	local Houses = requirePath(RS.Shared.Houses)

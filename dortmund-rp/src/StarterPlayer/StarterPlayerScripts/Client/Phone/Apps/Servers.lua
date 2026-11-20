@@ -48,7 +48,13 @@ local function thisServer(root: Instance)
 				r.players or 0,
 				r.max or 0
 			)
-			codeBox.Text = tostring(r.code)
+			if r.code then
+				codeBox.Text = tostring(r.code)
+			else
+				-- normal servers have no code (only private servers do)
+				codeBox.Visible = false
+				label.Text ..= "\n" .. Store.T("server_no_code")
+			end
 		end
 	end)
 end
@@ -162,7 +168,7 @@ local function publicServers(root: Instance)
 					s.name,
 					s.players or 0,
 					s.max or 0,
-					s.code
+					if s.code then "Code " .. s.code else Store.T("server_normal")
 				),
 				13,
 				T.text,
@@ -173,7 +179,7 @@ local function publicServers(root: Instance)
 				Make.Label(Store.T("server_here"), 12, T.good, T.bold, { Parent = c })
 			else
 				Make.Button(Store.T("server_join"), T.good, function()
-					join(s.code)
+					join(s.key or s.code)
 				end, { Parent = c })
 			end
 		end
@@ -187,6 +193,13 @@ local function joinCode(root: Instance)
 		join(box.Text)
 	end, { Parent = c })
 end
+
+-- a bought private server arrived: show it right away
+Net.On("ServerBought", function()
+	if Phone.IsOpen() then
+		Phone.Replace("servers", "mine")
+	end
+end)
 
 Phone.Register({
 	id = "servers",

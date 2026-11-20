@@ -73,6 +73,8 @@ local S: { [string]: { de: string, en: string } } = {
 		en = "Tap to buy. Then select it in your inventory and click to eat/drink.",
 	},
 	app_navi = { de = "Navi", en = "Maps" },
+	app_servers = { de = "Server", en = "Servers" },
+	app_imagine = { de = "imagine", en = "imagine" },
 	navi_shops = { de = "Einkaufen", en = "Shopping" },
 	navi_jobs = { de = "Dienststellen", en = "Stations" },
 	navi_places = { de = "Orte", en = "Places" },
@@ -385,6 +387,15 @@ local S: { [string]: { de: string, en: string } } = {
 	server_public_on = { de = "Öffentlich", en = "Public" },
 	server_public_off = { de = "Privat", en = "Private" },
 	server_open = { de = "Server betreten", en = "Join server" },
+	server_creating = { de = "⭐ Dein privater Server wird erstellt …", en = "⭐ Creating your private server …" },
+	server_create_retry = {
+		de = "Server konnte noch nicht erstellt werden. Roblox versucht es automatisch erneut (spätestens beim nächsten Beitreten).",
+		en = "Could not create the server yet. Roblox retries automatically (at the latest when you rejoin).",
+	},
+	server_no_code = {
+		de = "Öffentlicher Server · kein Code (nur private Server haben Codes)",
+		en = "Public server · no code (only private servers have codes)",
+	},
 	server_bought = {
 		de = "⭐ Dein privater Server ist bereit! Code: %s",
 		en = "⭐ Your private server is ready! Code: %s",

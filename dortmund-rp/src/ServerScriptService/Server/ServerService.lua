@@ -3,9 +3,10 @@
 -- Robux, a Developer Product) can be named and made public; public servers are
 -- listed in the Servers app; anyone can join any server with its code.
 --
---   normal server   : random code per server instance, joined by JobId
---   private server  : a reserved server (TeleportService:ReserveServer), stable code,
---                     owner / name / public saved in the "_PServers" DataStore
+--   normal server   : NO code; listed under "Public Servers", joined by its JobId
+--   private server  : a reserved server (TeleportService:ReserveServer) with a fixed
+--                     8-character code (public or private), owner / name / public saved
+--                     in the "_PServers" DataStore
 --
 -- Running servers announce themselves in a MemoryStore sorted map every 30 s.
 
@@ -109,22 +110,36 @@ local function save(ps: PServer): boolean
 	if not store then
 		return false
 	end
-	local ok = pcall(function()
-		(store :: DataStore):SetAsync("ps_" .. ps.id, ps)(store :: DataStore):SetAsync("code_" .. ps.code, ps.id)
-	end)
-	return ok
+	local ds = store :: DataStore
+	for attempt = 1, 3 do
+		-- (two separate statements: a line starting with "(" would be read as a call
+		-- on the line before – that was the bug that lost the first purchases)
+		local ok, err = pcall(function()
+			ds:SetAsync("ps_" .. ps.id, ps)
+			ds:SetAsync("code_" .. ps.code, ps.id)
+		end)
+		if ok then
+			return true
+		end
+		warn("[Servers] save failed: " .. tostring(err))
+		task.wait(attempt * 2)
+	end
+	return false
 end
 
 -- where a code leads: a running server (MemoryStore) or a private server (DataStore)
 local function resolve(code: string): { [string]: any }?
-	if liveMap then
+	if string.sub(code, 1, 4) == "job_" then
+		-- a normal server from the list (no code): its live entry
+		if not liveMap then
+			return nil
+		end
 		local ok, entry = pcall(function()
 			return (liveMap :: MemoryStoreSortedMap):GetAsync(code)
 		end)
-		if ok and typeof(entry) == "table" then
-			return entry
-		end
+		return if ok and typeof(entry) == "table" then entry else nil
 	end
+	-- codes only lead to private servers (saved in the DataStore)
 	if store then
 		local ok, psid = pcall(function()
 			return (store :: DataStore):GetAsync("code_" .. code)
@@ -140,7 +155,7 @@ local function resolve(code: string): { [string]: any }?
 end
 
 local function teleport(player: Player, entry: { [string]: any }): (boolean, string?)
-	if entry.code == info.code then
+	if (entry.code ~= nil and entry.code == info.code) or entry.jobId == game.JobId then
 		return false, "server_already_here"
 	end
 	local options = Instance.new("TeleportOptions")
@@ -174,9 +189,17 @@ function ServerService.Create(player: Player): (PServer?, string?)
 	if not data then
 		return nil, "error"
 	end
-	local ok, accessCode, psid = pcall(function()
-		return TeleportService:ReserveServer(game.PlaceId)
-	end)
+	local ok, accessCode, psid = false, nil, nil
+	for attempt = 1, 3 do
+		ok, accessCode, psid = pcall(function()
+			return TeleportService:ReserveServer(game.PlaceId)
+		end)
+		if ok and typeof(accessCode) == "string" and typeof(psid) == "string" then
+			break
+		end
+		GameLog.Add("server", player, ("ReserveServer failed (try %d): %s"):format(attempt, tostring(accessCode)))
+		task.wait(attempt * 2)
+	end
 	if not ok or typeof(accessCode) ~= "string" or typeof(psid) ~= "string" then
 		warn("[Servers] ReserveServer failed: " .. tostring(accessCode))
 		return nil, "server_create_failed"
@@ -192,6 +215,7 @@ function ServerService.Create(player: Player): (PServer?, string?)
 		created = os.time(),
 	}
 	if not save(ps) then
+		GameLog.Add("server", player, "private server could not be saved")
 		return nil, "server_create_failed"
 	end
 	data.servers = data.servers or {}
@@ -225,13 +249,19 @@ local function setAttributes()
 	Workspace:SetAttribute("ServerOwnerId", info.owner)
 end
 
+-- key in the live list: the code of a private server, "job_<JobId>" for normal ones
+function ServerService.ListKey(): string
+	return if info.code ~= "" then info.code else "job_" .. game.JobId
+end
+
 -- tell everyone this server exists (list + code lookup)
 local function announce()
 	if not liveMap then
 		return
 	end
 	local entry = {
-		code = info.code,
+		key = ServerService.ListKey(),
+		code = if info.code ~= "" then info.code else nil,
 		name = info.name,
 		kind = info.kind,
 		public = info.public,
@@ -242,7 +272,7 @@ local function announce()
 		t = os.time(),
 	}
 	pcall(function()
-		(liveMap :: MemoryStoreSortedMap):SetAsync(info.code, entry, ANNOUNCE_TTL)
+		(liveMap :: MemoryStoreSortedMap):SetAsync(ServerService.ListKey(), entry, ANNOUNCE_TTL)
 	end)
 end
 
@@ -261,8 +291,8 @@ local function identify()
 			return
 		end
 	end
-	info.code = ServerService.NewCode()
-	info.name = "Emergency Dortmund · " .. info.code
+	info.code = "" -- normal servers have no code (only private servers do)
+	info.name = "Emergency Dortmund"
 	if game.PrivateServerId ~= "" then
 		-- a Roblox VIP server: private, not listed
 		info.kind = "private"
@@ -294,14 +324,14 @@ function ServerService.Start()
 	game:BindToClose(function()
 		if liveMap then
 			pcall(function()
-				(liveMap :: MemoryStoreSortedMap):RemoveAsync(info.code)
+				(liveMap :: MemoryStoreSortedMap):RemoveAsync(ServerService.ListKey())
 			end)
 		end
 	end)
 
 	Remotes.Handle("Servers.Info", function()
 		return Remotes.Ok({
-			code = info.code,
+			code = if info.code ~= "" then info.code else nil,
 			name = info.name,
 			kind = info.kind,
 			public = info.public,
@@ -327,12 +357,13 @@ function ServerService.Start()
 			local e = item.value
 			if typeof(e) == "table" and e.public and os.time() - (tonumber(e.t) or 0) < ANNOUNCE_TTL then
 				table.insert(out, {
+					key = e.key or e.code,
 					code = e.code,
 					name = e.name,
 					kind = e.kind,
 					players = e.players,
 					max = e.max,
-					here = e.code == info.code,
+					here = e.jobId == game.JobId,
 				})
 			end
 		end
@@ -347,7 +378,12 @@ function ServerService.Start()
 	end, { rate = 6, needsData = false })
 
 	Remotes.Handle("Servers.Join", function(player, code: any)
-		local c = ServerService.CleanCode(code)
+		-- from the list a normal server comes as "job_<JobId>", otherwise a code
+		local c = if typeof(code) == "string"
+				and string.sub(code, 1, 4) == "job_"
+				and #code < 80
+			then code
+			else ServerService.CleanCode(code)
 		if not c then
 			return Remotes.Fail("server_bad_code")
 		end
