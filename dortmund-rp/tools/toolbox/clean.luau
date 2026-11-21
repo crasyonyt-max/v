@@ -183,7 +183,11 @@ for _, p in car:GetChildren() do
 	if p:IsA("BasePart") and not skipPaint(p) then
 		local s = p.Size
 		local lum = 0.3 * p.Color.R + 0.59 * p.Color.G + 0.11 * p.Color.B
-		if lum > 0.06 then
+		local c = p.Color
+		local sat = math.max(c.R, c.G, c.B) - math.min(c.R, c.G, c.B)
+		-- dark grey / black is trim, tyres or the interior, never the paint (a dark
+		-- colour with a tint, like dark blue, still counts)
+		if lum > 0.3 or (lum > 0.06 and sat > 0.12) then
 			local k = key(p.Color)
 			area[k] = (area[k] or 0) + 2 * (s.X * s.Y + s.Y * s.Z + s.X * s.Z)
 		end
@@ -195,9 +199,23 @@ for k, a in area do
 		paintKey, best = k, a
 	end
 end
+-- every part close to that colour is paint too (models often use two near-identical shades)
+local paintColor = nil
+for _, p in car:GetChildren() do
+	if p:IsA("BasePart") and paintKey and key(p.Color) == paintKey then
+		paintColor = p.Color
+		break
+	end
+end
+local function nearPaint(c): boolean
+	return paintColor ~= nil
+		and math.abs(c.R - paintColor.R) <= 0.1
+		and math.abs(c.G - paintColor.G) <= 0.1
+		and math.abs(c.B - paintColor.B) <= 0.1
+end
 local painted = 0
 for _, p in car:GetChildren() do
-	if p:IsA("BasePart") and paintKey and not skipPaint(p) and key(p.Color) == paintKey then
+	if p:IsA("BasePart") and paintKey and not skipPaint(p) and nearPaint(p.Color) then
 		p:SetAttribute("Paint", true)
 		painted += 1
 	end

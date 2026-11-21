@@ -262,18 +262,27 @@ function ToolboxBodies.Apply(model: Model, vehicle: any): boolean
 			lbDy = (mid.Y + roof + 0.04) - lowest
 		end
 	end
-	-- seats: low roof (sports cars) = seat goes down so the head stays inside
+	-- seats: same relative spot in the real body as in the generated one (the real
+	-- cabin is shorter / longer), then down under a low roof so the head stays inside
 	local HEADROOM = 3.1 -- seat top to the top of a sitting character's head
-	local seatDrop: { [BasePart]: number } = {}
-	for _, seat in model:GetChildren() do
-		if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
-			local l = frame:PointToObjectSpace(seat.Position)
-			local roof = roofAt(l.X, l.Z)
-			if roof then
-				local want = math.max(roof - HEADROOM, lo.Y + 0.4)
-				if l.Y > want then
-					seatDrop[seat] = l.Y - want
+	local seatMove: { [BasePart]: Vector3 } = {}
+	local hb = model:FindFirstChild("Hitbox") :: BasePart?
+	if hb then
+		local hc = frame:PointToObjectSpace(hb.Position)
+		local gFront, gLen = hc.Z - hb.Size.Z / 2, math.max(hb.Size.Z, 0.1)
+		local gHalf = math.max(hb.Size.X / 2, 0.1)
+		for _, seat in model:GetChildren() do
+			if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+				local l = frame:PointToObjectSpace(seat.Position)
+				local t = math.clamp((l.Z - gFront) / gLen, 0.05, 0.95)
+				local z = frontZ + t * (rearZ - frontZ)
+				local x = math.clamp(l.X / gHalf * sideX, -(sideX - 0.8), sideX - 0.8)
+				local y = l.Y
+				local roof = roofAt(x, z)
+				if roof then
+					y = math.min(y, math.max(roof - HEADROOM, lo.Y + 0.4))
 				end
+				seatMove[seat] = Vector3.new(x, y, z) - l
 			end
 		end
 	end
@@ -350,8 +359,8 @@ function ToolboxBodies.Apply(model: Model, vehicle: any): boolean
 		end
 	end
 
-	for seat, dy in seatDrop do
-		moveWelded(seat, Vector3.new(0, -dy, 0))
+	for seat, d in seatMove do
+		moveWelded(seat, frame:VectorToWorldSpace(d))
 	end
 
 	-- lettering panels on both sides (the livery writes POLIZEI / NOTARZT / ... on them)

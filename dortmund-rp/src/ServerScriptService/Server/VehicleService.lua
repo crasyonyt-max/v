@@ -361,13 +361,17 @@ addCarDetails = function(model: Model)
 		for _, k in { "FL", "FR", "RL", "RR" } do
 			local at = model:GetAttribute("SpotInd" .. k)
 			if typeof(at) == "Vector3" then
-				local out = if k:sub(1, 1) == "F" then -0.03 else 0.03
+				-- a little into the body (the measuring ray can stop just in front of the
+				-- visible surface); only shown while blinking
+				local out = if k:sub(1, 1) == "F" then 0.12 else -0.12
 				local ind = Instance.new("Part")
 				ind.Name = if k:sub(2, 2) == "L" then "IndicatorL" else "IndicatorR"
 				ind.Size = Vector3.new(0.55, 0.22, 0.08)
 				ind.CFrame = frame * CFrame.new(at + Vector3.new(0, 0, out))
 				ind.Color = AMBER_OFF
 				ind.Material = Enum.Material.Glass
+				ind.Transparency = 1
+				ind:SetAttribute("OnlyLit", true)
 				ind.Parent = model
 				weldTo(ind)
 			end

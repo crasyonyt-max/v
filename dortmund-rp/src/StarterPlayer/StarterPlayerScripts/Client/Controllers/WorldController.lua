@@ -45,6 +45,9 @@ end
 local function setLit(part: BasePart, on: boolean, onColor: Color3, offColor: Color3)
 	part.Color = if on then onColor else offColor
 	part.Material = if on then Enum.Material.Neon else Enum.Material.Glass
+	if part:GetAttribute("OnlyLit") then
+		part.Transparency = if on then 0 else 1 -- real car bodies have their own lamps
+	end
 	local light = part:FindFirstChildWhichIsA("Light")
 	if light then
 		light.Enabled = on
