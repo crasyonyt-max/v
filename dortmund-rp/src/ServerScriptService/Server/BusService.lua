@@ -325,6 +325,19 @@ function BusService.Build(model: Model, freeRide: boolean, lounge: boolean?): bo
 	if roof then
 		roofY = frame:PointToObjectSpace(roof.CFrame.Position).Y
 	end
+	-- V1.0 real bus body: its measured outline instead of the generated hitbox
+	local bodyFrame, bMin, bMax =
+		model:GetAttribute("BodyFrame"), model:GetAttribute("BodyMin"), model:GetAttribute("BodyMax")
+	local realBody = typeof(bodyFrame) == "CFrame" and typeof(bMin) == "Vector3" and typeof(bMax) == "Vector3"
+	if realBody then
+		local lo, hi = bMin :: Vector3, bMax :: Vector3
+		frame = chassis.CFrame * (bodyFrame :: CFrame) * CFrame.new(0, (lo.Y + hi.Y) / 2, (lo.Z + hi.Z) / 2)
+		W, L = hi.X - lo.X, hi.Z - lo.Z
+		local H = hi.Y - lo.Y
+		floorY = -H / 2 + math.min(1.2, H * 0.12) -- the bus floor sits a bit above the bottom
+		roofY = H / 2 - 0.3
+		driverLocal = frame:PointToObjectSpace(driverSeat.CFrame.Position)
+	end
 	local function at(x: number, y: number, z: number): CFrame
 		return frame * CFrame.new(x, y, z)
 	end
@@ -342,7 +355,7 @@ function BusService.Build(model: Model, freeRide: boolean, lounge: boolean?): bo
 				Color3.fromRGB(70, 90, 100),
 				Enum.Material.Glass
 			)
-			p.Transparency = 0.35
+			p.Transparency = if realBody then 1 else 0.35
 			p:SetAttribute("Leaf", leaf)
 			p:SetAttribute("Door", i)
 			weld(p, chassis)
@@ -355,6 +368,10 @@ function BusService.Build(model: Model, freeRide: boolean, lounge: boolean?): bo
 			Color3.fromRGB(60, 20, 20),
 			Enum.Material.Neon
 		)
+		if realBody then
+			lamp.Size = Vector3.new(0.12, 0.3, 1.2)
+			lamp.CFrame = at(W / 2 + 0.06, roofY - 0.6, z)
+		end
 		weld(lamp, chassis)
 	end
 

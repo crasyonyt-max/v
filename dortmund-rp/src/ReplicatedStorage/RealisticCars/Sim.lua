@@ -204,6 +204,11 @@ function Sim:step(dt)
 		if inp.parking then
 			throttle = 0
 		end
+		-- auto hold: no pedal at (almost) standstill = brakes on, the car stays put
+		-- (no idle creep, no rolling away on a slope)
+		if throttle < 0.05 and brake < 0.05 and abs(vForward) < 0.8 then
+			brake = 1
+		end
 	elseif self.auto then
 		if self.gear >= 1 and inp.brake > 0.1 and inp.throttle < 0.05 and vForward < 0.6 then
 			self:shift(-1)
@@ -273,7 +278,7 @@ function Sim:step(dt)
 			-- Clutch / torque converter slipping: engine held near slipTarget.
 			self.rpm = moveTowards(self.rpm, slipTarget, 8000 * dt)
 			engineTorque = torqueAt(e.torque, self.rpm) * thr
-			if self.auto and thr < 0.05 and brake < 0.05 then
+			if self.auto and not inp.manual and thr < 0.05 and brake < 0.05 then
 				engineTorque = e.creepTorque
 			end
 		else

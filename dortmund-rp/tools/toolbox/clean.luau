@@ -93,6 +93,36 @@ for _, d in root:GetDescendants() do
 	end
 end
 
+-- the car's own wheels: one model per corner (WheelFL ...) inside Car, same frame.
+-- The game welds each one to its physics wheel so it turns and steers with it.
+local wheelParts = 0
+for key, parts in wheelSets do
+	local wm = roblox.Instance.new("Model")
+	wm.Name = "Wheel" .. key
+	for _, d in parts do
+		if d.Transparency >= 0.98 or dropName(d.Name) then
+			continue
+		end
+		local p = d:Clone()
+		for _, c in p:GetChildren() do
+			if not KEEP_CHILD[c.ClassName] then
+				c:Destroy()
+			end
+		end
+		p.CFrame = inv * d.CFrame
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanTouch = false
+		p.CanQuery = false
+		p.Massless = true
+		p.Parent = wm
+		wheelParts += 1
+	end
+	if #wm:GetChildren() > 0 then
+		wm.Parent = car
+	end
+end
+
 -- paint: the colour with the biggest surface (not glass / neon / see-through / dark trim)
 local area: { [string]: number } = {}
 local function key(c)
@@ -107,7 +137,7 @@ local function skipPaint(p)
 		or n:find("engine") or n:find("chas") or n:find("window")
 end
 for _, p in car:GetChildren() do
-	if not skipPaint(p) then
+	if p:IsA("BasePart") and not skipPaint(p) then
 		local s = p.Size
 		local lum = 0.3 * p.Color.R + 0.59 * p.Color.G + 0.11 * p.Color.B
 		if lum > 0.06 then
@@ -124,7 +154,7 @@ for k, a in area do
 end
 local painted = 0
 for _, p in car:GetChildren() do
-	if paintKey and not skipPaint(p) and key(p.Color) == paintKey then
+	if p:IsA("BasePart") and paintKey and not skipPaint(p) and key(p.Color) == paintKey then
 		p:SetAttribute("Paint", true)
 		painted += 1
 	end
@@ -133,6 +163,9 @@ end
 -- bounding box (local)
 local minV, maxV = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
 for _, p in car:GetChildren() do
+	if not p:IsA("BasePart") then
+		continue
+	end
 	local cf, s = p.CFrame, p.Size / 2
 	for _, sx in { -1, 1 } do
 		for _, sy in { -1, 1 } do
@@ -162,4 +195,4 @@ fs.writeFile(process.args[3], serde.encode("json", {
 	max = { maxV.X, maxV.Y, maxV.Z },
 	wheels = { FL = lw("FL"), FR = lw("FR"), RL = lw("RL"), RR = lw("RR") },
 }))
-print(("%s: %d parts kept, %d dropped, %d painted, length %.1f"):format(root.Name, kept, removed, painted, maxV.Z - minV.Z))
+print(("%s: %d parts kept, %d dropped, %d painted, %d wheel parts, length %.1f"):format(root.Name, kept, removed, painted, wheelParts, maxV.Z - minV.Z))

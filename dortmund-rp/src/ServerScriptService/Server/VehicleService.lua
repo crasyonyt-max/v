@@ -331,6 +331,49 @@ addCarDetails = function(model: Model)
 		w.Part1 = p
 		w.Parent = p
 	end
+	-- V1.0 real bodies: plates and indicators go onto the measured bumper spots
+	local bodyFrame = model:GetAttribute("BodyFrame")
+	if typeof(bodyFrame) == "CFrame" then
+		local frame = chassis.CFrame * bodyFrame
+		for _, spot in
+			{
+				{ "FrontPlate", "PlateFront", Enum.NormalId.Front, "SpotPlateF", -1 },
+				{ "RearPlate", "PlateRear", Enum.NormalId.Back, "SpotPlateR", 1 },
+			}
+		do
+			local base = model:FindFirstChild(spot[1], true) :: BasePart?
+			local at = model:GetAttribute(spot[4])
+			if typeof(at) == "Vector3" then
+				local cf = frame * CFrame.new(at + Vector3.new(0, 0, spot[5] * 0.04))
+				local p = VehicleBuilder.MakePlate(model, spot[2], cf, spot[3])
+				p.Size = Vector3.new(
+					math.max(if base then base.Size.X else 0, 1.6),
+					math.max(if base then base.Size.Y else 0, 0.4),
+					0.06
+				)
+				p.CFrame = cf
+				weldTo(p)
+			end
+			if base then
+				base.Transparency = 1
+			end
+		end
+		for _, k in { "FL", "FR", "RL", "RR" } do
+			local at = model:GetAttribute("SpotInd" .. k)
+			if typeof(at) == "Vector3" then
+				local out = if k:sub(1, 1) == "F" then -0.03 else 0.03
+				local ind = Instance.new("Part")
+				ind.Name = if k:sub(2, 2) == "L" then "IndicatorL" else "IndicatorR"
+				ind.Size = Vector3.new(0.55, 0.22, 0.08)
+				ind.CFrame = frame * CFrame.new(at + Vector3.new(0, 0, out))
+				ind.Color = AMBER_OFF
+				ind.Material = Enum.Material.Glass
+				ind.Parent = model
+				weldTo(ind)
+			end
+		end
+		return
+	end
 	for _, spot in
 		{ { "FrontPlate", "PlateFront", Enum.NormalId.Front }, { "RearPlate", "PlateRear", Enum.NormalId.Back } }
 	do
