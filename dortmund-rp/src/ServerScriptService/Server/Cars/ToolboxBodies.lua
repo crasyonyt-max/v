@@ -122,7 +122,11 @@ local function fitWheel(model: Model, wm: Model, corner: string, center: Vector3
 	if ratio > 0.5 and ratio < 2 then
 		wm:ScaleTo(wm:GetScale() * ratio) -- same size as the physics wheel: no floating / sinking
 	end
-	wm:PivotTo(CFrame.new(tire.Position) * (wm:GetPivot() - wm:GetPivot().Position))
+	-- the wheel's centre exactly on the axle (else it wobbles while turning); along the
+	-- axle it keeps the body's own track
+	local axle = tire.CFrame.RightVector
+	local onAxle = tire.Position + axle * (center - tire.Position):Dot(axle)
+	wm:PivotTo(CFrame.new(onAxle) * (wm:GetPivot() - wm:GetPivot().Position))
 	for _, p in wm:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = false
@@ -258,6 +262,21 @@ function ToolboxBodies.Apply(model: Model, vehicle: any): boolean
 			lbDy = (mid.Y + roof + 0.04) - lowest
 		end
 	end
+	-- seats: low roof (sports cars) = seat goes down so the head stays inside
+	local HEADROOM = 3.1 -- seat top to the top of a sitting character's head
+	local seatDrop: { [BasePart]: number } = {}
+	for _, seat in model:GetChildren() do
+		if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+			local l = frame:PointToObjectSpace(seat.Position)
+			local roof = roofAt(l.X, l.Z)
+			if roof then
+				local want = math.max(roof - HEADROOM, lo.Y + 0.4)
+				if l.Y > want then
+					seatDrop[seat] = l.Y - want
+				end
+			end
+		end
+	end
 	-- lettering height: where the side really is
 	local letterY = lo.Y + H * 0.42
 	local letterX = sideAt(1, letterY, zc) or half
@@ -329,6 +348,10 @@ function ToolboxBodies.Apply(model: Model, vehicle: any): boolean
 				moveWelded(p, Vector3.new(0, lbDy, 0))
 			end
 		end
+	end
+
+	for seat, dy in seatDrop do
+		moveWelded(seat, Vector3.new(0, -dy, 0))
 	end
 
 	-- lettering panels on both sides (the livery writes POLIZEI / NOTARZT / ... on them)

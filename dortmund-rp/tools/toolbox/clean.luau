@@ -32,21 +32,64 @@ end
 local wheel = {}
 local inWheel: { [any]: boolean } = {}
 for key, parts in wheelSets do
-	-- centre = the biggest round part (tyre), radius = its half height
-	local best = nil
+	-- centre = middle of the bounding box of all visible wheel parts (tyres are often
+	-- split into pieces, so one part's centre is not the axle); radius = the biggest
+	-- part's largest size / 2, at most half the box height
+	local lo, hi = nil, nil
+	local r = 0
 	for _, p in parts do
 		inWheel[p] = true
-		if p.Transparency < 1 and (not best or p.Size.Magnitude > best.Size.Magnitude) then
-			best = p
+		if p.Transparency < 0.98 then
+			local cf, h = p.CFrame, p.Size / 2
+			for _, sx in { -1, 1 } do
+				for _, sy in { -1, 1 } do
+					for _, sz in { -1, 1 } do
+						local c = cf * Vector3.new(sx * h.X, sy * h.Y, sz * h.Z)
+						lo = if lo then Vector3.new(math.min(lo.X, c.X), math.min(lo.Y, c.Y), math.min(lo.Z, c.Z)) else c
+						hi = if hi then Vector3.new(math.max(hi.X, c.X), math.max(hi.Y, c.Y), math.max(hi.Z, c.Z)) else c
+					end
+				end
+			end
+			r = math.max(r, math.max(p.Size.X, p.Size.Y, p.Size.Z) / 2)
 		end
 	end
-	if best then
-		local s = best.Size
-		local r = math.max(math.min(s.X, s.Y), math.min(s.Y, s.Z), math.min(s.X, s.Z)) / 2
-		wheel[key] = { pos = best.CFrame.Position, r = r }
+	if lo and hi then
+		wheel[key] = { pos = (lo + hi) / 2, r = math.min(r, (hi.Y - lo.Y) / 2) }
 	end
 end
 assert(wheel.FL and wheel.FR and wheel.RL and wheel.RR, "wheels not found")
+
+-- trucks with two rear axles: RL and RR can come from different axles. Then RR is
+-- RL turned around the car's centre line, and the other axle stays on the body
+-- (it doesn't turn, but it is where it belongs).
+do
+	local lat = (wheel.FR.pos - wheel.FL.pos) * Vector3.new(1, 0, 1)
+	lat = lat.Unit
+	local along = Vector3.new(-lat.Z, 0, lat.X)
+	if math.abs((wheel.RL.pos - wheel.RR.pos):Dot(along)) > 1 then
+		local c = (wheel.FL.pos + wheel.FR.pos) / 2
+		local d = (wheel.RL.pos - c):Dot(lat)
+		local P = wheel.RL.pos - lat * d
+		local turn = CFrame.new(P) * CFrame.Angles(0, math.pi, 0) * CFrame.new(-P)
+		for _, p in wheelSets.RR do
+			inWheel[p] = nil
+		end
+		local mirrored = {}
+		for _, p in wheelSets.RL do
+			local q = p:Clone()
+			for _, ch in q:GetChildren() do
+				if not ch:IsA("SpecialMesh") and not ch:IsA("SurfaceAppearance") then
+					ch:Destroy()
+				end
+			end
+			q.CFrame = turn * p.CFrame
+			table.insert(mirrored, q)
+		end
+		wheelSets.RR = mirrored
+		wheel.RR = { pos = turn * wheel.RL.pos, r = wheel.RL.r }
+		print("rear axles differ: RR mirrored from RL")
+	end
+end
 
 local front = (wheel.FL.pos + wheel.FR.pos) / 2
 local rear = (wheel.RL.pos + wheel.RR.pos) / 2

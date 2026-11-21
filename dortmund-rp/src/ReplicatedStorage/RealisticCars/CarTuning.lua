@@ -54,12 +54,18 @@ function CarTuning.PeakPS(torque: { { number } }): number
 	return best
 end
 
-function CarTuning.Get(carType: string?, power: number?, topSpeed: number?): any
+function CarTuning.Get(carType: string?, power: number?, topSpeed: number?, wheelRadius: number?, track: number?): any
 	local base = carType and Configs.Cars[carType]
 	if not base then
 		return nil
 	end
-	local key = ("%s|%s|%s"):format(carType :: string, tostring(power), tostring(topSpeed))
+	local key = ("%s|%s|%s|%s|%s"):format(
+		carType :: string,
+		tostring(power),
+		tostring(topSpeed),
+		tostring(wheelRadius),
+		tostring(track)
+	)
 	local cfg = cache[key]
 	if cfg then
 		return cfg
@@ -76,12 +82,25 @@ function CarTuning.Get(carType: string?, power: number?, topSpeed: number?): any
 		cfg.powerScale = scale
 	end
 	cfg.topSpeed = topSpeed
+	-- V1.0 real bodies: their own wheel size and track (set by the generator)
+	if wheelRadius then
+		cfg.wheelRadius = wheelRadius
+	end
+	if track then
+		cfg.trackWidth = track
+	end
 	cache[key] = cfg
 	return cfg
 end
 
 function CarTuning.For(model: Instance): any
-	return CarTuning.Get(model:GetAttribute("CarType"), model:GetAttribute("Power"), model:GetAttribute("TopSpeed"))
+	return CarTuning.Get(
+		model:GetAttribute("CarType"),
+		model:GetAttribute("Power"),
+		model:GetAttribute("TopSpeed"),
+		model:GetAttribute("WheelRadius"),
+		model:GetAttribute("TrackWidth")
+	)
 end
 
 return CarTuning

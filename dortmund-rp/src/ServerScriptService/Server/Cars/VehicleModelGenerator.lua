@@ -102,7 +102,17 @@ function Generator.Get(vehicle)
 	cfg.accentColor = nil
 	cfg.liveryParts = true
 	cfg.color = vehicle.Livery.Colors.Body or preset.color
+	-- V1.0 real bodies: the physics wheels get the body's own wheel size and track,
+	-- so its wheels fill the arches and stand on the road (CarTuning reads them back)
+	local wheelR, track = Generator.WheelFit(vehicle, cfg, Configs.METERS_PER_STUD)
+	if wheelR then
+		cfg.wheelRadius, cfg.trackWidth = wheelR, track
+	end
 	local ok, model = pcall(Builder.build, cfg, CFrame.new(0, 0, 0))
+	if ok and wheelR then
+		model:SetAttribute("WheelRadius", wheelR)
+		model:SetAttribute("TrackWidth", track)
+	end
 	if not ok then
 		warn(("[VehicleModelGenerator] could not build %s: %s"):format(vehicle.Model, tostring(model)))
 		return nil
@@ -126,6 +136,30 @@ function Generator.Get(vehicle)
 	model:SetAttribute("Power", power)
 	model.Parent = folder
 	return model
+end
+
+-- wheel radius + track (meters) of a real body at the size it gets on this car
+function Generator.WheelFit(vehicle: any, cfg: any, mps: number): (number?, number?)
+	if not vehicle.Toolbox then
+		return nil, nil
+	end
+	local ok, bodies = pcall(function()
+		return require(game:GetService("ServerStorage"):WaitForChild("ToolboxBodies", 5) :: any)
+	end)
+	local info = ok and bodies and bodies[vehicle.Toolbox]
+	if not info then
+		return nil, nil
+	end
+	local w = info.wheels
+	local bodyBase = math.abs(w.FL[3] - w.RL[3])
+	if bodyBase < 0.1 then
+		return nil, nil
+	end
+	local s = cfg.wheelbase / mps / bodyBase
+	local r = (w.FL[4] + w.RL[4]) / 2 * s * mps
+	local tr = (math.abs(w.FL[1] - w.FR[1]) + math.abs(w.RL[1] - w.RR[1])) / 2 * s * mps
+	return math.clamp(r, cfg.wheelRadius * 0.6, cfg.wheelRadius * 1.4),
+		math.clamp(tr, cfg.trackWidth * 0.6, cfg.trackWidth * 1.2)
 end
 
 -- Builds placeholders for missing models. Returns how many were built.
