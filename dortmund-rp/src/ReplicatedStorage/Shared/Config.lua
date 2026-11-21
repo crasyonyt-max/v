@@ -10,6 +10,17 @@ Config.Version = "0.4.0"
 -- v0.4 (servers, houses, Swedea furniture, laptops): built but switched off until
 -- the release. true = everything of v0.4 is in the game.
 Config.V04 = true
+-- V1.0 (crime: robberies, weapons, prison; admin freecam; Creator Store cars with
+-- liveries): built but switched off until the release. true = all of V1.0 in the game.
+Config.V10 = false
+-- crime
+Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
+Config.JailSeconds = 120
+Config.RobberySeconds = 20 -- stay at the till this long
+Config.RobberyMoney = { 800, 2500 }
+Config.RobberyCooldown = 600 -- per store and server
+Config.ArrestReward = 300
+Config.BlackMarketPistol = 8000
 -- Developer Product for a private server (199 R$). 0 = not created yet.
 Config.PrivateServerProductId = 3733968924
 

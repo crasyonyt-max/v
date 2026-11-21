@@ -124,6 +124,24 @@ CarPerformance.Cars = {
 	["MAR Lion's Stadt"] = { 80, 360 },
 	["Solaria Urbano Elektro"] = { 80, 340 },
 	["Mercator Sitaro G"] = { 80, 394 },
+	-- V1.0 real bodies (Creator Store)
+	["Chevrolett Tahu"] = { 225, 355 },
+	["Volvar V60 Kombi"] = { 240, 254 },
+	["BMV 330i F30"] = { 250, 252 },
+	["Audix RS7 Sportbak"] = { 305, 600 },
+	["Volvar XC90"] = { 230, 455 },
+	["Audix Q3"] = { 220, 230 },
+	["Mercator Sprintor RTW"] = { 150, 190 },
+	["Fort Transita"] = { 160, 170 },
+	["MAR Feuerwehr-LKW"] = { 100, 290 },
+	["Mercator Sprintor Werkstatt"] = { 160, 190 },
+	["Volkswerk Kaddy Maxi"] = { 180, 122 },
+	["Setro Stadtbus"] = { 80, 354 },
+	["Hyunday Sonate"] = { 210, 185 },
+	["Toyara Kamry"] = { 210, 218 },
+	["Kio K5 Hybrid"] = { 200, 195 },
+	["Koenigshaus One:1 RS"] = { 440, 1360 },
+	["BMV M3 G80 Kompetition"] = { 290, 510 },
 } :: { [string]: { number } }
 
 -- top speed (km/h), power (PS) or nil for a car that is not listed

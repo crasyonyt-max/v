@@ -57,6 +57,7 @@ local function template(): { [string]: any }
 		freeBed = false, -- v0.4: the free Swedea bed was taken
 		laptops = {}, -- v0.4: owned laptop ids
 		orders = {}, -- v0.4: imagine orders on the way { n, key, eta, express }
+		weapon = false, -- V1.0: "pistol" from the black market
 		stats = { joins = 0, playtime = 0 },
 		_lock = nil,
 	}

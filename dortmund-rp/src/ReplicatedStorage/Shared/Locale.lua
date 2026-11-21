@@ -469,6 +469,49 @@ local S: { [string]: { de: string, en: string } } = {
 		en = "📦 %s arrived, but your bag is full.",
 	},
 	imagine_too_many = { de = "Höchstens 10 offene Bestellungen.", en = "At most 10 open orders." },
+	crime_wanted = {
+		de = "🚨 Du wirst gesucht! 5:00 – lass dich nicht erwischen.",
+		en = "🚨 You are wanted! 5:00 – don't get caught.",
+	},
+	crime_wanted_again = {
+		de = "🚨 Neue Straftat – die Fahndung läuft wieder 5:00.",
+		en = "🚨 New crime – wanted again for 5:00.",
+	},
+	crime_wanted_hud = { de = "GESUCHT", en = "WANTED" },
+	crime_prison = { de = "GEFÄNGNIS", en = "PRISON" },
+	crime_free = { de = "✅ Die Fahndung ist vorbei – du bist frei.", en = "✅ You are no longer wanted." },
+	crime_jailed = {
+		de = "🔒 Festgenommen! %s Min. Gefängnis, %s € Beute beschlagnahmt.",
+		en = "🔒 Arrested! %s min prison, %s € of stolen money taken.",
+	},
+	crime_released = { de = "🔓 Du bist wieder frei.", en = "🔓 You are free again." },
+	crime_arrest_done = { de = "🚔 %s festgenommen (+Belohnung).", en = "🚔 %s arrested (+reward)." },
+	crime_not_civil = {
+		de = "Das geht nur als Zivilist (nicht im Dienst).",
+		en = "Only civilians can do that (not on duty).",
+	},
+	crime_store_empty = {
+		de = "Die Kasse ist leer – hier wurde gerade erst geraubt.",
+		en = "The till is empty – it was robbed recently.",
+	},
+	crime_robbery_failed = {
+		de = "Raub abgebrochen – du hast dich zu weit entfernt.",
+		en = "Robbery failed – you went too far away.",
+	},
+	crime_robbery_done = { de = "💰 Beute: %s € – jetzt weg hier!", en = "💰 Loot: %s € – get away!" },
+	crime_not_wanted = { de = "Diese Person wird nicht gesucht.", en = "This person is not wanted." },
+	weapon_fire = { de = "FEUER", en = "FIRE" },
+	weapon_empty = { de = "Magazin leer – nachladen (R / 🔄).", en = "Empty – reload (R / 🔄)." },
+	weapon_not_now = { de = "Jetzt nicht (im Fahrzeug / im Gefängnis).", en = "Not now (in a vehicle / in prison)." },
+	weapon_police_only_suspects = {
+		de = "Die Polizei darf nur auf Gesuchte schießen.",
+		en = "Police may only shoot wanted people.",
+	},
+	blackmarket_info = {
+		de = "Psst … Waffe kaufen ist kein Verbrechen. Schießen schon.",
+		en = "Psst … buying is no crime. Shooting is.",
+	},
+	blackmarket_pistol = { de = "🔫 Pistole", en = "🔫 Pistol" },
 	my_house = { de = "Mein Haus", en = "My house" },
 	house_makler_info = {
 		de = "Ein Haus pro Spieler. Es steht auf jedem Server im Wohngebiet am Park für dich bereit.",

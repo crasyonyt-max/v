@@ -13,6 +13,7 @@ local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local Phones = require(ReplicatedStorage.Shared.Phones)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
+local Freecam = require(script.Parent.Parent.Parent.UI.Freecam)
 local IDCard = require(script.Parent.Parent.Parent.UI.IDCard)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
 local MapPicker = require(script.Parent.Parent.Parent.UI.MapPicker)
@@ -220,6 +221,15 @@ local function selfTab(root: ScrollingFrame)
 	if spectating then
 		Make.Button("👁 Stop spectating", T.panel, function()
 			Admin.Spectate(nil)
+		end, { Parent = card })
+	end
+	-- V1.0 freecam: free flying, or around the player you are spectating
+	if Config.V10 then
+		Make.Button(if spectating then "🎥 Freecam (um Spieler)" else "🎥 Freecam", T.accent, function()
+			local subject = Workspace.CurrentCamera.CameraSubject
+			local target = if spectating and subject and subject:IsA("Humanoid") then subject.Parent :: Model else nil
+			Phone.Close()
+			Freecam.Start(target)
 		end, { Parent = card })
 	end
 end

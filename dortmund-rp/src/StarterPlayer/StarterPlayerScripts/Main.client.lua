@@ -31,6 +31,8 @@ require(Client.Controllers.TrainController)
 require(Client.Controllers.QuakeFX)
 require(Client.Controllers.IDCheck)
 require(Client.Controllers.HouseDoors)
+require(Client.Controllers.CrimeController)
+require(Client.Controllers.WeaponController)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 Net.On("OpenPC", function(payload)

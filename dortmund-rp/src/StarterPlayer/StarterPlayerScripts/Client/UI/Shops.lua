@@ -639,6 +639,29 @@ renderers.Swedea = function()
 	end)
 end
 
+-- V1.0 black market: a pistol for civilians -------------------------------------------
+renderers.Blackmarket = function()
+	title.Text = "🕶 ???"
+	Make.Clear(tabBar)
+	Make.Label(Store.T("blackmarket_info"), 12, T.sub, T.font, { Parent = body })
+	local g = grid()
+	local owned = Store.Get().weapon == "pistol" or Players.LocalPlayer:GetAttribute("Weapon") == "pistol"
+	itemCard(
+		g,
+		1,
+		Color3.fromRGB(30, 30, 34),
+		Store.T("blackmarket_pistol"),
+		Locale.Euro(Config.BlackMarketPistol),
+		if owned then Store.T("owned") else Store.T("buy"),
+		if owned then T.panel else T.bad,
+		if owned
+			then nil
+			else function()
+				result(Net.Request("Weapon.Buy"))
+			end
+	)
+end
+
 function Shops.Refresh()
 	if not currentUI then
 		return

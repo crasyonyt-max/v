@@ -558,6 +558,17 @@ def main():
     else:
         print("no Swedea site found")
 
+    # V1.0 prison (JVA Dortmund): a big free green area or car park
+    prison = find_green(72, {"grass", "meadow", "recreation_ground", "greenfield", "parking", "brownfield"})
+    if prison:
+        px_, pz_, _, pw, pd = prison
+        dd, rx, rz, _ = nearest_on_roads(px_, pz_)
+        nx, nz = px_ - rx, pz_ - rz
+        yaw = math.degrees(math.atan2(nx / (math.hypot(nx, nz) or 1), nz / (math.hypot(nx, nz) or 1)))
+        sites["Prison"] = (px_, pz_, yaw, pw, pd)
+    else:
+        print("no prison site found")
+
     # ADMC / DXL / LKW: look inside real commercial / industrial areas for a free plot
     def overlaps(site):
         cx, cz, _, w, d = site

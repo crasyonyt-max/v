@@ -49,6 +49,10 @@ local BODY_RULES = {
 local DEFAULT_RULE = { Type = "Sedan" }
 
 function Generator.RuleFor(vehicle)
+	-- V1.0 Creator Store bodies name their physics type directly
+	if vehicle.CarType then
+		return { Type = vehicle.CarType }
+	end
 	local byCategory = CATEGORY_RULES[vehicle.Category]
 	if byCategory then
 		return byCategory
@@ -105,6 +109,17 @@ function Generator.Get(vehicle)
 	end
 	model.Name = vehicle.Model
 	model:SetAttribute("Placeholder", true)
+	-- V1.0: a real (cleaned Creator Store) body when it is available; until then the
+	-- car keeps its generated body and is not cached, so it gets the real one later
+	if vehicle.Toolbox then
+		local ToolboxBodies = require(script.Parent.ToolboxBodies)
+		if not ToolboxBodies.Apply(model, vehicle) then
+			local topSpeed, power = CarPerformance.Get(vehicle.Model)
+			model:SetAttribute("TopSpeed", topSpeed)
+			model:SetAttribute("Power", power)
+			return model
+		end
+	end
 	-- Dortmund RP: every car its own top speed + power (Shared/CarPerformance)
 	local topSpeed, power = CarPerformance.Get(vehicle.Model)
 	model:SetAttribute("TopSpeed", topSpeed)

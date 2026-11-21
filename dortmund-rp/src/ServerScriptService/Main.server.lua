@@ -26,8 +26,10 @@ require(Server.BusStopService).Build()
 require(Server.TrainService).Build()
 require(Server.HouseService).Build()
 require(Server.FurnitureService).Build()
+require(Server.PrisonService).Build()
 require(Server.GarageService).Build()
 require(Server.PlateService).Build()
+require(Server.CrimeService).Build() -- after all stores: robbery prompts on the tills
 Interaction.Start()
 task.spawn(require(Server.StoreBuilder).Build) -- NPCs load from the web; don't block spawning
 Players.CharacterAutoLoads = true
@@ -56,6 +58,10 @@ local services = {
 	require(Server.HouseService),
 	require(Server.FurnitureService),
 	require(Server.OrderService),
+	require(Server.PrisonService),
+	require(Server.CrimeService),
+	require(Server.WeaponService),
+	require(Server.Cars.ToolboxBodies),
 	require(Server.AdminService),
 	require(Server.StoreService),
 	require(Server.NewsService),

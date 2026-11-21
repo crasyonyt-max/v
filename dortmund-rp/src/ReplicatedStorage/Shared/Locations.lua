@@ -52,6 +52,7 @@ Locations.Sites = {
 	Mall = { x = 1504.3, z = -125.7, yaw = 176.58, width = 157.1, depth = 157.1 },
 	Estate = { x = 2802.7, z = -183.8, yaw = -130.91, width = 375.0, depth = 375.0 },
 	Swedea = { x = 4999.3, z = 681.3, yaw = -109.32, width = 221.4, depth = 221.4 },
+	Prison = { x = 4662.3, z = 78.9, yaw = 100.65, width = 257.1, depth = 257.1 },
 	LKW = { x = 5589.5, z = -93.0, yaw = -130.93, width = 285.7, depth = 214.3 },
 	DXL = { x = 4480.2, z = 5862.4, yaw = -43.11, width = 221.4, depth = 164.3 },
 	ADMC = { x = 2427.5, z = 7019.3, yaw = 3.93, width = 207.1, depth = 157.1 },

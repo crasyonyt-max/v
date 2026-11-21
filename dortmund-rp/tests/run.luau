@@ -1719,6 +1719,159 @@ test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full
 	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
 end)
 
+test("V1.0: real-body cars, crime rules, weapons", function()
+	local Config = requirePath(RS.Shared.Config)
+	-- cars: with V1.0 on, every Creator Store body has its job / civil / admin versions
+	Config.V10 = true
+	cache["ReplicatedStorage/VehicleConfig"] = nil
+	local VC = requirePath(RS.VehicleConfig)
+	local Bodies = requirePath(pathProxy({ "ServerStorage", "ToolboxBodies" }))
+	local Perf = requirePath(RS.Shared.CarPerformance)
+	local byBody: { [number]: { any } } = {}
+	for _, v in VC.List do
+		if v.Toolbox then
+			assert(Bodies[v.Toolbox], v.Name .. ": body data")
+			assert(v.CarType, v.Name .. ": physics type")
+			assert(Perf.Get(v.Model), v.Name .. ": speed + power")
+			assert(v.Livery, v.Name .. ": livery")
+			byBody[v.Toolbox] = byBody[v.Toolbox] or {}
+			table.insert(byBody[v.Toolbox], v)
+		end
+	end
+	local bodies = 0
+	for _ in Bodies do
+		bodies += 1
+	end
+	eq(bodies, 17, "17 cleaned bodies")
+	for id, list in byBody do
+		local civil, admin = false, false
+		for _, v in list do
+			civil = civil or v.Category == "Dealership"
+			admin = admin or v.Category == "GameAdmin"
+		end
+		if id == 97903463217450 or id == 18912299148 then
+			eq(civil, false, "One:1 / M3 not for sale")
+			eq(admin, true, "One:1 / M3 admin cars")
+		else
+			eq(civil, true, list[1].Model .. " also civil")
+		end
+	end
+	local police = 0
+	for _, v in VC.List do
+		if v.Toolbox and v.Category == "Police" then
+			police += 1
+			eq(v.LightType, if v.Model == "Audix RS7 Sportbak" then "hidden_blue" else "blue", v.Name)
+		end
+	end
+	eq(police, 4, "4 new police cars")
+	Config.V10 = false
+	cache["ReplicatedStorage/VehicleConfig"] = nil
+
+	-- crime rules (fake jobs / money)
+	local jobs: { [any]: string } = {}
+	local bank: { [any]: number } = {}
+	local any = setmetatable({}, {
+		__index = function()
+			return function() end
+		end,
+	})
+	local fakes = {
+		JobService = {
+			Get = function(p)
+				return jobs[p] or "Unemployed"
+			end,
+		},
+		EconomyService = {
+			Balance = function(p)
+				return bank[p] or 0
+			end,
+			TrySpend = function(p, n)
+				bank[p] = (bank[p] or 0) - n
+				return true
+			end,
+			Add = function(p, n)
+				bank[p] = (bank[p] or 0) + n
+				return true
+			end,
+			Earn = function(p, n)
+				bank[p] = (bank[p] or 0) + n
+				return n
+			end,
+		},
+		GameLog = any,
+		Remotes = any,
+		XPService = any,
+		DataService = any,
+		InteractionService = any,
+		PrisonService = {
+			Cells = {},
+			Inside = function()
+				return true
+			end,
+		},
+	}
+	for name, fake in fakes do
+		overrides["ServerScriptService/Server/" .. name] = fake
+	end
+	cache["ServerScriptService/Server/CrimeService"] = nil
+	cache["ServerScriptService/Server/WeaponService"] = nil
+	local Crime = requirePath(Server.CrimeService)
+	overrides["ServerScriptService/Server/CrimeService"] = Crime
+	local Weapon = requirePath(Server.WeaponService)
+	overrides["ServerScriptService/Server/CrimeService"] = nil
+	for name in fakes do
+		overrides["ServerScriptService/Server/" .. name] = nil
+	end
+	cache["ServerScriptService/Server/CrimeService"] = nil
+	cache["ServerScriptService/Server/WeaponService"] = nil
+	local function fakePlayer(name)
+		local attrs = {}
+		return {
+			Name = name,
+			DisplayName = name,
+			UserId = #name,
+			Parent = true,
+			SetAttribute = function(_, k, v)
+				attrs[k] = v
+			end,
+			GetAttribute = function(_, k)
+				return attrs[k]
+			end,
+		} :: any
+	end
+	Config.V10 = true
+	local robber, cop, other = fakePlayer("Robber"), fakePlayer("Cop"), fakePlayer("Other")
+	jobs[cop] = "Police"
+	eq(Crime.IsCivil(robber), true)
+	eq(Crime.IsCivil(cop), false, "police are not civilians")
+	eq(Crime.IsCriminal(robber), false)
+	Crime.Crime(robber, "test")
+	eq(Crime.IsCriminal(robber), true, "crime -> wanted")
+	local first = Crime.Wanted[robber].untilT
+	assert(first - os.time() >= Config.CriminalSeconds - 1, "5 minutes")
+	Crime.Wanted[robber].untilT = os.time() + 252 -- 4:12 left
+	Crime.Crime(robber, "again")
+	assert(Crime.Wanted[robber].untilT - os.time() >= Config.CriminalSeconds - 1, "new crime -> 5:00 again")
+	-- weapons: police only hurt wanted people, everyone else commits a crime
+	eq(Weapon.MayHurt(cop, other), false, "police can't shoot innocent people")
+	eq(Weapon.MayHurt(cop, robber), true, "police can shoot criminals")
+	eq(Weapon.MayHurt(other, cop), true, "civilians can (it is a crime)")
+	eq(Weapon.MayHurt(other, other), false, "not yourself")
+	-- arrest: prison, stolen money gone, reward for the officer
+	bank[robber] = 5000
+	Crime.Wanted[robber].stolen = 2000
+	Crime.Jail(robber, cop)
+	eq(Crime.IsCriminal(robber), false, "no longer wanted")
+	eq(Crime.IsJailed(robber), true, "in prison")
+	eq(bank[robber], 3000, "stolen money taken")
+	eq(bank[cop], Config.ArrestReward, "officer reward")
+	eq(Weapon.MayHurt(other, robber), false, "prisoners can't be hurt")
+	Config.V10 = false
+
+	local Weapons = requirePath(RS.Shared.Weapons)
+	assert(Weapons.ById.service_pistol and Weapons.ById.pistol, "two weapons")
+end)
+
 test("custom plates: city is always DO", function()
 	local Plate = requirePath(RS.Shared.Plate)
 	eq(Plate.NormalizeDO("AB 123"), "DO-AB 123")
@@ -1820,6 +1973,15 @@ test("mall, underground garages and plate service", function()
 	local furn = plot.built.model:FindFirstChild("Furniture")
 	assert(furn and #furn:GetChildren() == 1, "placed sofa shown")
 	Config.V04 = false
+	-- V1.0 prison
+	local Prison = requirePath(Server.PrisonService)
+	Config.V10 = true
+	Prison.Build()
+	Config.V10 = false
+	assert(ws:FindFirstChild("JVA Dortmund"), "prison built")
+	eq(#Prison.Cells, 8, "8 cells")
+	eq(Prison.Inside(Prison.Cells[1].Position), true, "cells are inside the walls")
+	eq(Prison.Inside((Prison.Exit :: any).Position), false, "the exit is outside")
 	-- Stadtbahn: viaduct, stations, trains
 	local TrainLine = requirePath(RS.Shared.TrainLine)
 	Trains.Build()

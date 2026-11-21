@@ -2,3 +2,4 @@ build/
 data/osm/
 __pycache__/
 data/toolbox/
+data/toolbox_clean/
