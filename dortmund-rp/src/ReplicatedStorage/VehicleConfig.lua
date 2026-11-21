@@ -258,13 +258,16 @@ local function makeId(category, name)
 	return id
 end
 
--- V1.0: the generated ("blocky") cars are retired; their prices are kept for the refund
+-- Config.RealCars: real-body cars instead of the generated ("blocky") ones. Whichever
+-- set is switched off, its civil prices are kept for the one-time refund.
 local okConfig, SharedConfig = pcall(function()
 	return require(script.Parent:WaitForChild("Shared"):WaitForChild("Config"))
 end)
-local V10 = okConfig and SharedConfig.V10 == true
-VehicleConfig.RetiredPrices = {} -- [old vehicle id] = price paid
-VehicleConfig.RetiredStarters = {} -- [old vehicle id] = true (free starter cars)
+local V10 = okConfig and SharedConfig.RealCars == true -- (name kept: the V1.0 car set)
+VehicleConfig.RetiredPrices = {} -- [blocky vehicle id] = price paid (while real cars are on)
+VehicleConfig.RetiredStarters = {} -- [blocky vehicle id] = true (free starter cars)
+VehicleConfig.ArchivedPrices = {} -- [real-body vehicle id] = price paid (while archived)
+VehicleConfig.ArchivedStarters = {} -- [real-body vehicle id] = true (free starter cars)
 
 local function add(fields)
 	local id = makeId(fields.Category, fields.Name)
@@ -463,6 +466,19 @@ local V10_LABEL = {
 	LKW = "LKW",
 }
 
+if not V10 then
+	-- archived: only the prices, for the refund
+	for _, row in ipairs(V10_CARS) do
+		local model, price = row[2], row[4]
+		if price and not row.admin then
+			VehicleConfig.ArchivedPrices[makeId("Dealership", model)] = price
+			if row.starter then
+				VehicleConfig.ArchivedPrices[makeId("Starter", model)] = 0
+				VehicleConfig.ArchivedStarters[makeId("Starter", model)] = true
+			end
+		end
+	end
+end
 if V10 then
 	for _, row in ipairs(V10_CARS) do
 		local id, model, carType, price, paint, jobs = row[1], row[2], row[3], row[4], row[5], row[6]

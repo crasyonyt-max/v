@@ -247,7 +247,7 @@ test("vehicle catalog: one motorbike", function()
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
 	-- V1.0: only real-body cars (the blocky ones are retired): admin = bike, One:1 RS,
 	-- M3 G80, Setro admin bus + their 3 owner versions; 14 civil cars at the Autohaus
-	local v10 = requirePath(RS.Shared.Config).V10
+	local v10 = requirePath(RS.Shared.Config).RealCars
 	eq(#Vehicles.ByCategory("Admin"), if v10 then 7 else 23, "admin bike + admin cars + admin bus + owner ones")
 	eq(#Vehicles.ByCategory("Dealer"), if v10 then 14 else 20, "dealership cars")
 	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
@@ -1263,7 +1263,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	end
 	eq(
 		buses,
-		if requirePath(RS.Shared.Config).V10 then 3 else 6,
+		if requirePath(RS.Shared.Config).RealCars then 3 else 6,
 		"job buses + admin bus + owner bus (+ V1.0 Setro: job, admin, owner)"
 	)
 	assert(admin, "admin bus exists")
@@ -1271,7 +1271,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	eq(admin.Livery.Colors.Body:ToHex():upper(), "FF7300", "admin bus: orange ADMIN livery")
 	local Jobs = requirePath(RS.Shared.Jobs)
 	assert(Jobs.ById.Bus, "bus driver job")
-	eq(#Vehicles.ForJob("Bus"), if requirePath(RS.Shared.Config).V10 then 1 else 4, "buses in the bus job garage")
+	eq(#Vehicles.ForJob("Bus"), if requirePath(RS.Shared.Config).RealCars then 1 else 4, "buses in the bus job garage")
 end)
 
 test("train timetable: smooth, both ways, all stations", function()
@@ -1542,7 +1542,7 @@ test("Kofferraum: limits by body, ID can't go in", function()
 		end
 		error("no car " .. model)
 	end
-	if requirePath(RS.Shared.Config).V10 then
+	if requirePath(RS.Shared.Config).RealCars then
 		eq(limit("Koenigshaus One:1 RS"), 14)
 		eq(limit("BMV 330i F30"), 45)
 		eq(limit("Mercator Sprintor Werkstatt"), 500)
@@ -1596,7 +1596,7 @@ test("owner cars: blue OWNER livery, Owner + Co-Owner only", function()
 			end
 		end
 	end
-	eq(n, if requirePath(RS.Shared.Config).V10 then 3 else 11, "every admin car + the bus as owner versions")
+	eq(n, if requirePath(RS.Shared.Config).RealCars then 3 else 11, "every admin car + the bus as owner versions")
 	for _, v in Vehicles.ByCategory("Admin") do
 		if v.name:find("%(Owner%)") then
 			eq(v.adminLevel, "Owner", v.name)
@@ -1753,6 +1753,7 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 	local Config = requirePath(RS.Shared.Config)
 	-- cars: with V1.0 on, every Creator Store body has its job / civil / admin versions
 	Config.V10 = true
+	Config.RealCars = true
 	cache["ReplicatedStorage/VehicleConfig"] = nil
 	local VC = requirePath(RS.VehicleConfig)
 	local Bodies = requirePath(pathProxy({ "ServerStorage", "ToolboxBodies" }))
@@ -1811,6 +1812,29 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 			free = free or (v.Category == job and v.XPRequired == 0)
 		end
 		assert(free, job .. ": a car from 0 XP")
+	end
+	-- archived (Config.RealCars = false): the blocky cars are back, the real-body
+	-- ones are gone and their prices are kept for the refund
+	Config.RealCars = false
+	cache["ReplicatedStorage/VehicleConfig"] = nil
+	local VA = requirePath(RS.VehicleConfig)
+	for _, v in VA.List do
+		eq(v.Toolbox, nil, v.Name .. ": no real-body car while archived")
+	end
+	eq(next(VA.RetiredPrices), nil, "blocky cars not retired")
+	local archivedN = 0
+	for id, price in VA.ArchivedPrices do
+		archivedN += 1
+		assert(typeof(price) == "number", id)
+		eq(VA.Get(id), nil, id .. " archived")
+	end
+	assert(archivedN >= 14, "civil real-body prices kept for the refund")
+	for _, job in VA.Jobs do
+		local free = false
+		for _, v in VA.List do
+			free = free or (v.Category == job and v.XPRequired == 0)
+		end
+		assert(free, job .. ": a blocky car from 0 XP")
 	end
 	Config.V10 = false
 	cache["ReplicatedStorage/VehicleConfig"] = nil
@@ -1943,7 +1967,7 @@ test("admin cars: orange livery with red sirens", function()
 			eq(v.Livery.Colors.Body:ToHex():upper(), "FF7300", v.Name .. " orange")
 		end
 	end
-	eq(n, if requirePath(RS.Shared.Config).V10 then 3 else 11, "admin cars + admin bus")
+	eq(n, if requirePath(RS.Shared.Config).RealCars then 3 else 11, "admin cars + admin bus")
 end)
 
 test("mall, underground garages and plate service", function()

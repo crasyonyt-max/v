@@ -221,6 +221,10 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🚗 V1.0: Die alten Autos sind weg – du hast %s zurückbekommen. Neue Autos gibt's im Autohaus!",
 		en = "🚗 V1.0: the old cars are gone – you got %s back. New cars are at the Autohaus!",
 	},
+	cars_refunded_rc = {
+		de = "🚗 Die neuen Autos sind archiviert, die alten sind zurück – du hast %s zurückbekommen.",
+		en = "🚗 The new cars are archived and the old ones are back – you got %s back.",
+	},
 	cars_refunded = {
 		de = "Die Autos wurden entfernt. Du hast %s zurückbekommen und fährst jetzt Motorrad!",
 		en = "Cars were removed. You got %s back and ride a motorbike now!",

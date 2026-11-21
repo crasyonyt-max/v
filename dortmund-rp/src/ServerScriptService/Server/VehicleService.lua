@@ -702,10 +702,17 @@ local function migrate(player: Player, data: { [string]: any })
 	local retired: { string } = {}
 	local retiredRefund = 0
 	local lostStarter = false
+	-- archived real-body cars: refunded once as well (own wave)
+	local archived: { string } = {}
+	local archivedRefund = 0
 	for uid, entry in data.vehicles do
 		local def = Vehicles.ById[entry.id]
 		if entry.id == Vehicles.BikeId then
 			hasBike = true
+		elseif not def and VehicleConfig.ArchivedPrices[entry.id] ~= nil then
+			table.insert(archived, uid)
+			archivedRefund += VehicleConfig.ArchivedPrices[entry.id]
+			lostStarter = lostStarter or VehicleConfig.ArchivedStarters[entry.id] == true
 		elseif not def and VehicleConfig.RetiredPrices[entry.id] ~= nil then
 			table.insert(retired, uid)
 			retiredRefund += VehicleConfig.RetiredPrices[entry.id]
@@ -776,6 +783,38 @@ local function migrate(player: Player, data: { [string]: any })
 			task.delay(7, function()
 				if player.Parent then
 					Remotes.Push(player, "Notify", { key = "cars_refunded_v1", args = { Locale.Euro(retiredRefund) } })
+				end
+			end)
+		end
+	end
+	if #archived > 0 then
+		local payArchived = false
+		if archivedRefund > 0 and not data.carsRefundedRC then
+			local claim = claimRefund(player.UserId, archivedRefund, "rc_")
+			if claim == "error" then
+				archived = {} -- decide on the next join
+			elseif claim == "new" then
+				payArchived = true
+			end
+		end
+		for _, uid in archived do
+			local entry = data.vehicles[uid]
+			data.vehicles[uid] = nil
+			if entry and typeof(entry.plate) == "string" then
+				task.spawn(releasePlate, entry.plate, player.UserId)
+			end
+		end
+		if #archived > 0 then
+			data.carsRefundedRC = true
+			if lostStarter then
+				data.carStarterChosen = false -- pick one of the free starter cars again
+			end
+		end
+		if payArchived then
+			Economy.Add(player, archivedRefund, "Erstattung: archivierte Autos")
+			task.delay(8, function()
+				if player.Parent then
+					Remotes.Push(player, "Notify", { key = "cars_refunded_rc", args = { Locale.Euro(archivedRefund) } })
 				end
 			end)
 		end

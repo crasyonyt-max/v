@@ -13,6 +13,10 @@ Config.V04 = true
 -- V1.0 (crime: robberies, weapons, prison; admin freecam; Creator Store cars with
 -- liveries): built but switched off until the release. true = all of V1.0 in the game.
 Config.V10 = true
+-- Real-body cars (cleaned Creator Store bodies, VehicleConfig V10_CARS): ARCHIVED.
+-- false = the generated ("blocky") cars are the fleet; the real-body list, bodies
+-- (group assets) and code stay in the game, switched off. true = real-body cars again.
+Config.RealCars = false
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

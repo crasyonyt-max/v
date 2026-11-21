@@ -41,8 +41,8 @@ local function load(id: number, assetId: number)
 end
 
 function ToolboxBodies.Start()
-	if not Config.V10 then
-		return
+	if not Config.RealCars then
+		return -- archived
 	end
 	for id, info in Bodies do
 		if info.assetId and info.assetId ~= 0 then
