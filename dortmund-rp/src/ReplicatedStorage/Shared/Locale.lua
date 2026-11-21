@@ -217,6 +217,10 @@ local S: { [string]: { de: string, en: string } } = {
 	change_plate = { de = "Kennzeichen ändern (4.000 €)", en = "Change plate (€4,000)" },
 	fuel = { de = "Tank", en = "Fuel" },
 	no_cars = { de = "Dein Motorrad kommt gleich …", en = "Your motorbike is on its way …" },
+	cars_refunded_v1 = {
+		de = "🚗 V1.0: Die alten Autos sind weg – du hast %s zurückbekommen. Neue Autos gibt's im Autohaus!",
+		en = "🚗 V1.0: the old cars are gone – you got %s back. New cars are at the Autohaus!",
+	},
 	cars_refunded = {
 		de = "Die Autos wurden entfernt. Du hast %s zurückbekommen und fährst jetzt Motorrad!",
 		en = "Cars were removed. You got %s back and ride a motorbike now!",

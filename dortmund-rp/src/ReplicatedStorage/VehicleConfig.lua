@@ -258,6 +258,14 @@ local function makeId(category, name)
 	return id
 end
 
+-- V1.0: the generated ("blocky") cars are retired; their prices are kept for the refund
+local okConfig, SharedConfig = pcall(function()
+	return require(script.Parent:WaitForChild("Shared"):WaitForChild("Config"))
+end)
+local V10 = okConfig and SharedConfig.V10 == true
+VehicleConfig.RetiredPrices = {} -- [old vehicle id] = price paid
+VehicleConfig.RetiredStarters = {} -- [old vehicle id] = true (free starter cars)
+
 local function add(fields)
 	local id = makeId(fields.Category, fields.Name)
 	if VehicleConfig.Vehicles[id] then
@@ -284,6 +292,7 @@ local function add(fields)
 		Extras = fields.Extras or {},
 		Toolbox = fields.Toolbox, -- V1.0: Creator Store body id (ServerStorage.ToolboxBodies)
 		CarType = fields.CarType, -- V1.0: RealisticCars physics type for that body
+		LivingRoom = fields.LivingRoom, -- V1.0 owner bus: a living room inside
 		Order = #VehicleConfig.List + 1,
 	}
 	if not LiveryConfig.LightTypes[entry.LightType] then
@@ -304,13 +313,22 @@ local function painted(category, name, price, paint, extra)
 end
 
 for _, row in ipairs(DEALERSHIP) do
-	painted("Dealership", row[1], row[2], row[3])
+	if V10 then
+		VehicleConfig.RetiredPrices[makeId("Dealership", row[1])] = row[2]
+	else
+		painted("Dealership", row[1], row[2], row[3])
+	end
 end
 for _, row in ipairs(CIVILIAN_STARTERS) do
-	painted("Starter", row[1], 0, row[2], { IsStarter = true })
+	if V10 then
+		VehicleConfig.RetiredPrices[makeId("Starter", row[1])] = 0
+		VehicleConfig.RetiredStarters[makeId("Starter", row[1])] = true
+	else
+		painted("Starter", row[1], 0, row[2], { IsStarter = true })
+	end
 end
 
-for _, fleet in ipairs(JOB_FLEETS) do
+for _, fleet in ipairs(if V10 then {} else JOB_FLEETS) do
 	for _, row in ipairs(fleet.Vehicles) do
 		local overrides = {}
 		for _, k in ipairs(LIVERY_FIELDS) do
@@ -341,6 +359,7 @@ for _, pack in ipairs(GAMEPASS_PACKS) do
 	end
 end
 
+if not V10 then
 -- Dortmund RP: admin cars wear the orange ADMIN livery with red sirens
 -- (the paint column above is no longer used for them).
 for _, list in ipairs({ { "ServerAdmin", SERVER_ADMIN_CARS }, { "GameAdmin", GAME_ADMIN_CARS } }) do
@@ -386,6 +405,7 @@ do
 		LiveryError = err,
 	})
 end
+end -- (V1.0: admin / owner cars are the real-body ones below)
 
 -------------------------------------------------------------------------------
 -- V1.0: real car bodies (cleaned Creator Store models) – only when Config.V10 is on.
@@ -393,64 +413,96 @@ end
 --   civil paint, { job versions }, admin = true for the admin-only cars }
 -------------------------------------------------------------------------------
 local V10_CARS = {
-	{ 139248881138858, "Chevrolett Tahu", "SUV", 78000, "Black", { { Job = "Police", XP = 6000, Preset = "POLICE" } } },
-	{ 104249280161278, "Volvar V60 Kombi", "Sedan", 46000, "Silver", { { Job = "Police", XP = 2500, Preset = "POLICE" } } },
-	{ 136084137048809, "BMV 330i F30", "Sedan", 44000, "Blue", { { Job = "Police", XP = 1500, Preset = "POLICE" } } },
-	{ 13667534655, "Audix RS7 Sportbak", "Sports", 128000, "Grey", { { Job = "Police", XP = 12000, Preset = "POLICE_UNMARKED" } } },
-	{ 137230131095877, "Volvar XC90", "SUV", 72000, "White", { { Job = "Notarzt", XP = 3500, Preset = "NOTARZT" } } },
-	{ 14324975719, "Audix Q3", "SUV", 41000, "White", { { Job = "Notarzt", XP = 1500, Preset = "NOTARZT" } } },
-	{ 3754078609, "Mercator Sprintor RTW", "Van", 52000, "White", { { Job = "EMS", XP = 3000, Preset = "EMS" } } },
-	{ 87089223661838, "Fort Transita", "Van", 39000, "White", { { Job = "EMS", XP = 1500, Preset = "EMS", Lettering = "KRANKENTRANSPORT" } } },
-	{ 10464796614, "MAR Feuerwehr-LKW", "Truck", 95000, "Red", { { Job = "Fire", XP = 4000, Preset = "FIRE" } } },
-	{ 10208824301, "Mercator Sprintor Werkstatt", "Van", 48000, "White", { { Job = "ADMC", XP = 2000, Preset = "ADMC" } } },
-	{ 16893194014, "Volkswerk Kaddy Maxi", "Van", 32000, "White", { { Job = "ADMC", XP = 750, Preset = "ADMC" } } },
+	-- Polizei
+	{ 136084137048809, "BMV 330i F30", "Sedan", 44000, "Blue", { { Job = "Police", XP = 0, Preset = "POLICE" } } },
+	{ 104249280161278, "Volvar V60 Kombi", "Sedan", 46000, "Silver", { { Job = "Police", XP = 1000, Preset = "POLICE" } } },
+	{ 139248881138858, "Chevrolett Tahu", "SUV", 78000, "Black", { { Job = "Police", XP = 3000, Preset = "POLICE" } } },
+	{ 13667534655, "Audix RS7 Sportbak", "Sports", 128000, "Grey", { { Job = "Police", XP = 8000, Preset = "POLICE_UNMARKED" } } },
+	-- Notarzt
+	{ 14324975719, "Audix Q3", "SUV", 41000, "White", { { Job = "Notarzt", XP = 0, Preset = "NOTARZT" } } },
+	{ 137230131095877, "Volvar XC90", "SUV", 72000, "White", { { Job = "Notarzt", XP = 2000, Preset = "NOTARZT" } } },
+	-- Rettungsdienst (KTW) + DXL
+	{ 87089223661838, "Fort Transita", "Van", 39000, "White", {
+		{ Job = "EMS", XP = 0, Preset = "EMS", Lettering = "KRANKENTRANSPORT", Label = "KTW" },
+		{ Job = "DXL", XP = 500, Preset = "DXL" },
+	} },
+	{ 3754078609, "Mercator Sprintor RTW", "Van", 52000, "White", { { Job = "EMS", XP = 1500, Preset = "EMS" } } },
+	-- Feuerwehr + LKW
+	{ 10464796614, "MAR Pritschen-LKW", "Truck", 95000, "Red", {
+		{ Job = "Fire", XP = 0, Preset = "FIRE" },
+		{ Job = "LKW", XP = 0, Preset = "LKW" },
+	} },
+	-- ADMC + DXL
+	{ 16893194014, "Volkswerk Kaddy Maxi", "Van", 32000, "White", {
+		{ Job = "ADMC", XP = 0, Preset = "ADMC" },
+		{ Job = "DXL", XP = 0, Preset = "DXL" },
+	} },
+	{ 10208824301, "Mercator Sprintor Werkstatt", "Van", 48000, "White", {
+		{ Job = "ADMC", XP = 1000, Preset = "ADMC" },
+		{ Job = "DXL", XP = 1500, Preset = "DXL" },
+	} },
 	-- bus: no civil version, only the bus job + an admin and an owner bus (no siren)
-	{ 9837028915, "Setro Stadtbus", "Bus", nil, nil, { { Job = "Bus", XP = 2500, Preset = "BUS" } }, staffBus = true },
-	{ 128358438587558, "Hyunday Sonate", "Sedan", 29000, "Silver", {} },
-	{ 109489565583811, "Toyara Kamry", "Sedan", 33000, "White", {} },
-	{ 78963742836529, "Kio K5 Hybrid", "Sedan", 34000, "Grey", {} },
-	{ 97903463217450, "Koenigshaus One:1 RS", "Supercar", nil, nil, {}, admin = true },
-	{ 18912299148, "BMV M3 G80 Kompetition", "Sports", nil, nil, {}, admin = true },
+	{ 9837028915, "Setro Stadtbus", "Bus", nil, nil, { { Job = "Bus", XP = 0, Preset = "BUS" } }, staffBus = true },
+	-- civil (also the free starter cars to pick from)
+	{ 128358438587558, "Hyunday Sonate", "Sedan", 29000, "Silver", {}, starter = true },
+	{ 109489565583811, "Toyara Kamry", "Sedan", 33000, "White", {}, starter = true },
+	{ 78963742836529, "Kio K5 Hybrid", "Sedan", 34000, "Grey", {}, starter = true },
+	-- admin only (+ owner versions)
+	{ 97903463217450, "Koenigshaus One:1 RS", "Supercar", nil, nil, {}, admin = "GameAdmin" },
+	{ 18912299148, "BMV M3 G80 Kompetition", "Sports", nil, nil, {}, admin = "ServerAdmin" },
 }
 VehicleConfig.V10Cars = V10_CARS
-local V10_LABEL = { Police = "Polizei", Notarzt = "NEF", EMS = "RTW", Fire = "Feuerwehr", ADMC = "ADMC", Bus = "Linienbus" }
+local V10_LABEL = {
+	Police = "Polizei",
+	Notarzt = "NEF",
+	EMS = "RTW",
+	Fire = "Feuerwehr",
+	ADMC = "ADMC",
+	Bus = "Linienbus",
+	DXL = "DXL",
+	LKW = "LKW",
+}
 
-local okConfig, SharedConfig = pcall(function()
-	return require(script.Parent:WaitForChild("Shared"):WaitForChild("Config"))
-end)
-if okConfig and SharedConfig.V10 then
+if V10 then
 	for _, row in ipairs(V10_CARS) do
 		local id, model, carType, price, paint, jobs = row[1], row[2], row[3], row[4], row[5], row[6]
-		-- civil version at the Autohaus (not for the admin-only ones)
+		local real = { Toolbox = id, CarType = carType }
+		-- civil version at the Autohaus, and the free starter pick
 		if price and not row.admin then
-			painted("Dealership", model, price, paint, { Toolbox = id, CarType = carType })
+			painted("Dealership", model, price, paint, real)
+			if row.starter then
+				painted("Starter", model, 0, paint, { IsStarter = true, Toolbox = id, CarType = carType })
+			end
 		end
 		-- job versions in their liveries
 		for _, j in ipairs(jobs) do
 			local livery, err = LiveryConfig.Resolve(j.Preset, if j.Lettering then { Lettering = j.Lettering } else nil)
 			add({
-				Name = model .. " (" .. (if j.Lettering then "KTW" else V10_LABEL[j.Job] or j.Job) .. ")",
+				Name = model .. " (" .. (j.Label or V10_LABEL[j.Job] or j.Job) .. ")",
 				Model = model,
 				Category = j.Job,
 				Job = j.Job,
 				XPRequired = j.XP,
+				IsStarter = j.XP == 0,
 				Livery = livery,
 				LiveryError = err,
 				Toolbox = id,
 				CarType = carType,
 			})
 		end
-		-- admin + owner bus: ADMIN / OWNER livery, no siren (free rides for admins)
+		-- admin + owner bus: ADMIN / OWNER livery, no siren; the owner bus is a small living room
 		if row.staffBus then
 			local adminLivery, adminErr = LiveryConfig.Resolve("ADMIN", { LightType = "none", Lettering = "ADMIN BUS" })
 			add({ Name = model .. " (Admin)", Model = model, Category = "GameAdmin", Price = 0, Livery = adminLivery, LiveryError = adminErr, Toolbox = id, CarType = carType })
 			local ownerLivery, ownerErr = LiveryConfig.Resolve("OWNER", { LightType = "none", Lettering = "OWNER BUS" })
-			add({ Name = model .. " (Owner)", Model = model, Category = "Owner", Price = 0, Livery = ownerLivery, LiveryError = ownerErr, Toolbox = id, CarType = carType })
+			add({ Name = model .. " (Owner)", Model = model, Category = "Owner", Price = 0, Livery = ownerLivery, LiveryError = ownerErr, Toolbox = id, CarType = carType, LivingRoom = true })
 		end
-		-- admin cars: orange ADMIN livery with red sirens
+		-- admin cars: orange ADMIN livery with red sirens, + a blue OWNER version
 		if row.admin then
 			local livery, err = LiveryConfig.Resolve("ADMIN")
-			add({ Name = model, Model = model, Category = "GameAdmin", Price = 0, Livery = livery, LiveryError = err, Toolbox = id, CarType = carType })
+			add({ Name = model, Model = model, Category = row.admin, Price = 0, Livery = livery, LiveryError = err, Toolbox = id, CarType = carType })
+			local ownerLivery, ownerErr = LiveryConfig.Resolve("OWNER")
+			add({ Name = model .. " (Owner)", Model = model, Category = "Owner", Price = 0, Livery = ownerLivery, LiveryError = ownerErr, Toolbox = id, CarType = carType })
 		end
 	end
 end

@@ -245,10 +245,11 @@ local VehicleBuilder = requirePath(Server.VehicleBuilder)
 test("vehicle catalog: one motorbike", function()
 	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
-	-- V1.0 adds 2 admin cars (One:1 RS, M3 G80) and 15 civil real-body cars
+	-- V1.0: only real-body cars (the blocky ones are retired): admin = bike, One:1 RS,
+	-- M3 G80, Setro admin bus + their 3 owner versions; 14 civil cars at the Autohaus
 	local v10 = requirePath(RS.Shared.Config).V10
-	eq(#Vehicles.ByCategory("Admin"), if v10 then 27 else 23, "admin bike + 10 admin cars + admin bus + 11 owner ones")
-	eq(#Vehicles.ByCategory("Dealer"), if v10 then 34 else 20, "dealership cars")
+	eq(#Vehicles.ByCategory("Admin"), if v10 then 7 else 23, "admin bike + admin cars + admin bus + owner ones")
+	eq(#Vehicles.ByCategory("Dealer"), if v10 then 14 else 20, "dealership cars")
 	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
 	eq(#Vehicles.ByCategory("Pack"), 25, "gamepass pack cars")
 	for _, job in { "Police", "Fire", "Rettungsdienst", "Notarzt", "ADMC", "DXL", "LKW" } do
@@ -1218,7 +1219,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		buses += 1
 		local model = Generator.Get(v):Clone()
 		local free = v.Category == "GameAdmin" or v.Category == "Owner"
-		assert(BusService.Build(model, free), v.Name .. " equipped")
+		assert(BusService.Build(model, free, v.LivingRoom), v.Name .. " equipped")
 		eq(model:GetAttribute("Bus"), true)
 		local seats, doors, displays = 0, 0, 0
 		for _, c in model:GetChildren() do
@@ -1232,7 +1233,18 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 				displays += 1
 			end
 		end
-		assert(seats >= 12, v.Name .. ": passenger seats " .. seats)
+		if v.LivingRoom then
+			-- owner bus: living room (sofa + armchair to sit on), no seat rows
+			local sofa = false
+			for _, c in model:GetChildren() do
+				sofa = sofa or c.Name == "sofa"
+				assert(not c.Name:match("^Seat%d"), v.Name .. ": no passenger seat rows")
+			end
+			assert(sofa, v.Name .. ": sofa in the living room")
+			eq(seats, 4, v.Name .. ": 3 sofa places + armchair")
+		else
+			assert(seats >= 12, v.Name .. ": passenger seats " .. seats)
+		end
 		eq(doors, 4, v.Name .. ": two double doors")
 		eq(displays, 3, v.Name .. ": front, side, rear display")
 		if free then
@@ -1251,7 +1263,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	end
 	eq(
 		buses,
-		if requirePath(RS.Shared.Config).V10 then 9 else 6,
+		if requirePath(RS.Shared.Config).V10 then 3 else 6,
 		"job buses + admin bus + owner bus (+ V1.0 Setro: job, admin, owner)"
 	)
 	assert(admin, "admin bus exists")
@@ -1259,7 +1271,7 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 	eq(admin.Livery.Colors.Body:ToHex():upper(), "FF7300", "admin bus: orange ADMIN livery")
 	local Jobs = requirePath(RS.Shared.Jobs)
 	assert(Jobs.ById.Bus, "bus driver job")
-	eq(#Vehicles.ForJob("Bus"), if requirePath(RS.Shared.Config).V10 then 5 else 4, "buses in the bus job garage")
+	eq(#Vehicles.ForJob("Bus"), if requirePath(RS.Shared.Config).V10 then 1 else 4, "buses in the bus job garage")
 end)
 
 test("train timetable: smooth, both ways, all stations", function()
@@ -1530,13 +1542,21 @@ test("Kofferraum: limits by body, ID can't go in", function()
 		end
 		error("no car " .. model)
 	end
-	eq(limit("Koenigshaus Jesco"), 14)
-	eq(limit("Koenigshaus One:1"), 14)
-	eq(limit("Kupra Formentor VZ5"), 50)
-	eq(limit("BMV M4 Kompetition"), 45)
-	eq(limit("Mercator Sprintor"), 500)
-	eq(limit("RTW Mercator Sprintor"), 500, "job cars too")
-	eq(limit("Mercator Sitaro"), 5)
+	if requirePath(RS.Shared.Config).V10 then
+		eq(limit("Koenigshaus One:1 RS"), 14)
+		eq(limit("BMV 330i F30"), 45)
+		eq(limit("Mercator Sprintor Werkstatt"), 500)
+		eq(limit("Mercator Sprintor RTW"), 500, "job cars too")
+		eq(limit("Setro Stadtbus"), 5)
+	else
+		eq(limit("Koenigshaus Jesco"), 14)
+		eq(limit("Koenigshaus One:1"), 14)
+		eq(limit("Kupra Formentor VZ5"), 50)
+		eq(limit("BMV M4 Kompetition"), 45)
+		eq(limit("Mercator Sprintor"), 500)
+		eq(limit("RTW Mercator Sprintor"), 500, "job cars too")
+		eq(limit("Mercator Sitaro"), 5)
+	end
 	eq(Trunk.LimitFor("Motorbike"), 10, "motorbike")
 	local any = setmetatable({}, {
 		__index = function()
@@ -1576,7 +1596,7 @@ test("owner cars: blue OWNER livery, Owner + Co-Owner only", function()
 			end
 		end
 	end
-	eq(n, if requirePath(RS.Shared.Config).V10 then 12 else 11, "every admin car + the buses as owner versions")
+	eq(n, if requirePath(RS.Shared.Config).V10 then 3 else 11, "every admin car + the bus as owner versions")
 	for _, v in Vehicles.ByCategory("Admin") do
 		if v.name:find("%(Owner%)") then
 			eq(v.adminLevel, "Owner", v.name)
@@ -1760,7 +1780,7 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 		local civil, admin = false, false
 		for _, v in list do
 			civil = civil or v.Category == "Dealership"
-			admin = admin or v.Category == "GameAdmin"
+			admin = admin or v.Category == "GameAdmin" or v.Category == "ServerAdmin"
 		end
 		if id == 97903463217450 or id == 18912299148 or id == 9837028915 then
 			eq(civil, false, "One:1 / M3 / Setro bus not for sale")
@@ -1777,6 +1797,21 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 		end
 	end
 	eq(police, 4, "4 new police cars")
+	-- the retired blocky cars: their prices are kept for the one-time refund
+	local retired = 0
+	for id, price in VC.RetiredPrices do
+		retired += 1
+		assert(typeof(price) == "number", id)
+		eq(VC.Get(id), nil, id .. " is gone")
+	end
+	eq(retired, 23, "20 Autohaus + 3 starter cars retired")
+	for _, job in VC.Jobs do
+		local free = false
+		for _, v in VC.List do
+			free = free or (v.Category == job and v.XPRequired == 0)
+		end
+		assert(free, job .. ": a car from 0 XP")
+	end
 	Config.V10 = false
 	cache["ReplicatedStorage/VehicleConfig"] = nil
 
@@ -1902,13 +1937,13 @@ test("admin cars: orange livery with red sirens", function()
 	for _, v in VehicleConfig.List do
 		if v.Category == "ServerAdmin" or v.Category == "GameAdmin" then
 			n += 1
-			local bus = v.Model == "Solaria Urbano Elektro"
+			local bus = v.Model == "Solaria Urbano Elektro" or v.Model == "Setro Stadtbus"
 			eq(v.LightType, if bus then "none" else "red", v.Name .. " lights (bus: no siren)")
 			eq(v.Livery.Lettering, if bus then "ADMIN BUS" else "ADMIN", v.Name .. " lettering")
 			eq(v.Livery.Colors.Body:ToHex():upper(), "FF7300", v.Name .. " orange")
 		end
 	end
-	eq(n, 11, "10 admin cars + admin bus")
+	eq(n, if requirePath(RS.Shared.Config).V10 then 3 else 11, "admin cars + admin bus")
 end)
 
 test("mall, underground garages and plate service", function()

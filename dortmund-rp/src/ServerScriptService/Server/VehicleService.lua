@@ -402,7 +402,8 @@ local function spawnCar(
 		BusService.Equip(
 			model,
 			player,
-			vcfg.Category == "GameAdmin" or vcfg.Category == "ServerAdmin" or vcfg.Category == "Owner"
+			vcfg.Category == "GameAdmin" or vcfg.Category == "ServerAdmin" or vcfg.Category == "Owner",
+			vcfg.LivingRoom == true -- owner bus: living room inside
 		)
 	end
 	VehicleBuilder.SetPlate(model, plateText or Plate.Random(Config.DefaultCityCode, rng))
@@ -597,13 +598,13 @@ pcall(function()
 end)
 
 -- "new" = first time, pay it · "paid" = already paid before · "error" = try next join
-local function claimRefund(userId: number, amount: number): string
+local function claimRefund(userId: number, amount: number, wave: string?): string
 	if not refundStore then
 		return "error"
 	end
 	local result = "error"
 	local ok = pcall(function()
-		(refundStore :: DataStore):UpdateAsync("u_" .. userId, function(old: any)
+		(refundStore :: DataStore):UpdateAsync((wave or "u_") .. userId, function(old: any)
 			if old ~= nil then
 				result = "paid"
 				return nil
@@ -650,10 +651,18 @@ local function migrate(player: Player, data: { [string]: any })
 	local refund = 0
 	local hasBike = false
 	local oldCars: { string } = {}
+	-- V1.0: the generated ("blocky") cars are gone; refunded once (own wave)
+	local retired: { string } = {}
+	local retiredRefund = 0
+	local lostStarter = false
 	for uid, entry in data.vehicles do
 		local def = Vehicles.ById[entry.id]
 		if entry.id == Vehicles.BikeId then
 			hasBike = true
+		elseif not def and VehicleConfig.RetiredPrices[entry.id] ~= nil then
+			table.insert(retired, uid)
+			retiredRefund += VehicleConfig.RetiredPrices[entry.id]
+			lostStarter = lostStarter or VehicleConfig.RetiredStarters[entry.id] == true
 		elseif not def then
 			-- a car of the old system (removed): refunded once
 			refund += Vehicles.LegacyPrices[entry.id] or 0
@@ -691,6 +700,38 @@ local function migrate(player: Player, data: { [string]: any })
 				Remotes.Push(player, "Notify", { key = "cars_refunded", args = { Locale.Euro(refund) } })
 			end
 		end)
+	end
+	if #retired > 0 then
+		local payRetired = false
+		if retiredRefund > 0 and not data.carsRefundedV1 then
+			local claim = claimRefund(player.UserId, retiredRefund, "v1_")
+			if claim == "error" then
+				retired = {} -- decide on the next join
+			elseif claim == "new" then
+				payRetired = true
+			end
+		end
+		for _, uid in retired do
+			local entry = data.vehicles[uid]
+			data.vehicles[uid] = nil
+			if entry and typeof(entry.plate) == "string" then
+				task.spawn(releasePlate, entry.plate, player.UserId)
+			end
+		end
+		if #retired > 0 then
+			data.carsRefundedV1 = true
+			if lostStarter then
+				data.carStarterChosen = false -- pick one of the new free starter cars
+			end
+		end
+		if payRetired then
+			Economy.Add(player, retiredRefund, "Erstattung: alte Autos (V1.0)")
+			task.delay(7, function()
+				if player.Parent then
+					Remotes.Push(player, "Notify", { key = "cars_refunded_v1", args = { Locale.Euro(retiredRefund) } })
+				end
+			end)
+		end
 	end
 	if not hasBike then
 		addOwned(player, Vehicles.BikeId)

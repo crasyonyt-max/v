@@ -227,7 +227,75 @@ BusService.ServeStop = serveStop
 
 -- Adds the bus parts (before the model is parented). Everything is welded to the
 -- chassis, massless and non-colliding. Returns false for a model without a body.
-function BusService.Build(model: Model, freeRide: boolean): boolean
+-- V1.0 owner bus: a small living room instead of seat rows (sofa + armchair to sit on)
+local function livingRoom(
+	model: Model,
+	chassis: BasePart,
+	frame: CFrame,
+	W: number,
+	L: number,
+	floorY: number,
+	startZ: number
+)
+	local Furniture = require(ReplicatedStorage.Shared.Furniture)
+	local function place(id: string, x: number, z: number, turn: number, seats: number?)
+		local m = Furniture.Build(id)
+		if not m then
+			return
+		end
+		Furniture.Place(m, frame * CFrame.new(x, floorY, z) * CFrame.Angles(0, turn, 0))
+		for _, p in m:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = false
+				p.CanCollide = false
+				p.CanQuery = false
+				p.CanTouch = false
+				p.Massless = true
+				weld(p, chassis)
+			end
+		end
+		m.Parent = model
+		-- sittable spots on sofa / armchair (doors decide, like the bus seats)
+		local hit = m.PrimaryPart
+		for k = 1, seats or 0 do
+			if not hit then
+				break
+			end
+			local seat = Instance.new("Seat")
+			seat.Name = "Lounge" .. id .. k
+			seat.Size = Vector3.new(1.6, 0.2, 1.6)
+			local off = if (seats or 1) > 1 then (k - (seats + 1) / 2) * 2.6 else 0
+			seat.CFrame = hit.CFrame * CFrame.new(off, -hit.Size.Y / 2 + 1.6, -0.3)
+			seat.Transparency = 1
+			seat.CanCollide = false
+			seat.CanTouch = false
+			seat.Massless = true
+			seat.Parent = model
+			weld(seat, chassis)
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "EnterPrompt"
+			prompt.ActionText = "Hinsetzen"
+			prompt.ObjectText = "Owner Lounge"
+			prompt.HoldDuration = 0.15
+			prompt.MaxActivationDistance = 14
+			prompt.RequiresLineOfSight = false
+			prompt.KeyboardKeyCode = Enum.KeyCode.Q
+			prompt.Enabled = false
+			prompt.Parent = seat
+		end
+	end
+	local zA = startZ + 4
+	place("rug", 0, zA + 8, 0)
+	place("sofa", -W / 2 + 2.6, zA + 7, math.pi / 2, 3) -- along the left side, facing the aisle
+	place("coffee_table", 0, zA + 7, math.pi / 2)
+	place("tv", W / 2 - 0.8, zA + 7, -math.pi / 2) -- TV on the right wall
+	place("armchair", 0, zA + 16, math.pi, 1)
+	place("floor_lamp", -W / 2 + 1.4, zA + 1, 0)
+	place("plant", W / 2 - 1.4, math.min(zA + 18, L / 2 - 3), 0)
+	place("shelf", W / 2 - 1.2, math.min(zA + 13, L / 2 - 4), -math.pi / 2)
+end
+
+function BusService.Build(model: Model, freeRide: boolean, lounge: boolean?): boolean
 	local chassis = model:FindFirstChild("Chassis") :: BasePart?
 	local hb = model:FindFirstChild("Hitbox") :: BasePart?
 	local driverSeat = model:FindFirstChild("DriverSeat") :: BasePart?
@@ -291,10 +359,20 @@ function BusService.Build(model: Model, freeRide: boolean): boolean
 	end
 
 	-- passenger seats: rows of 2 + 2 behind the driver, none in front of the middle door
+	-- (the owner bus: a living room instead, and only the driver's seat)
 	local rows = 0
 	local seatY = driverLocal.Y
 	local z = driverLocal.Z + 7
 	local n = 2
+	if lounge then
+		for _, s in model:GetChildren() do
+			if s:IsA("Seat") then
+				s:Destroy() -- only the driver's seat stays
+			end
+		end
+		livingRoom(model, chassis, frame, W, L, floorY + 0.2, driverLocal.Z + 3)
+		z = math.huge -- no seat rows
+	end
 	while z < L / 2 - 2 and rows < MAX_ROWS do
 		for _, x in { -W / 2 + 1.4, -W / 2 + 3.2, W / 2 - 3.2, W / 2 - 1.4 } do
 			if x > 0 and math.abs(z - doorZ[2]) < 3 then
@@ -367,8 +445,8 @@ function BusService.Build(model: Model, freeRide: boolean): boolean
 end
 
 -- Called by VehicleService.spawnCar before the model is parented.
-function BusService.Equip(model: Model, owner: Player, freeRide: boolean)
-	if not BusService.Build(model, freeRide) then
+function BusService.Equip(model: Model, owner: Player, freeRide: boolean, lounge: boolean?)
+	if not BusService.Build(model, freeRide, lounge) then
 		return
 	end
 	-- doors: slide the leaves open, lamp green, prompts on; opening clears the stop request
