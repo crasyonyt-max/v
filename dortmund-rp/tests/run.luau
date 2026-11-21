@@ -245,8 +245,10 @@ local VehicleBuilder = requirePath(Server.VehicleBuilder)
 test("vehicle catalog: one motorbike", function()
 	eq(#Vehicles.ByCategory("Starter"), 1, "one civilian bike")
 	eq(Vehicles.ByCategory("Starter")[1].id, Vehicles.BikeId)
-	eq(#Vehicles.ByCategory("Admin"), 23, "admin bike + 10 admin cars + admin bus + 11 owner ones")
-	eq(#Vehicles.ByCategory("Dealer"), 20, "dealership cars")
+	-- V1.0 adds 2 admin cars (One:1 RS, M3 G80) and 15 civil real-body cars
+	local v10 = requirePath(RS.Shared.Config).V10
+	eq(#Vehicles.ByCategory("Admin"), if v10 then 27 else 23, "admin bike + 10 admin cars + admin bus + 11 owner ones")
+	eq(#Vehicles.ByCategory("Dealer"), if v10 then 34 else 20, "dealership cars")
 	eq(#Vehicles.ByCategory("CarStarter"), 3, "starter cars to pick from")
 	eq(#Vehicles.ByCategory("Pack"), 25, "gamepass pack cars")
 	for _, job in { "Police", "Fire", "Rettungsdienst", "Notarzt", "ADMC", "DXL", "LKW" } do
@@ -1247,13 +1249,17 @@ test("buses: seats, doors, displays; admin bus free + no siren", function()
 		end
 		model:Destroy()
 	end
-	eq(buses, 6, "4 job buses + admin bus + owner bus")
+	eq(
+		buses,
+		if requirePath(RS.Shared.Config).V10 then 9 else 6,
+		"job buses + admin bus + owner bus (+ V1.0 Setro: job, admin, owner)"
+	)
 	assert(admin, "admin bus exists")
 	eq(admin.LightType, "none", "admin bus: no siren")
 	eq(admin.Livery.Colors.Body:ToHex():upper(), "FF7300", "admin bus: orange ADMIN livery")
 	local Jobs = requirePath(RS.Shared.Jobs)
 	assert(Jobs.ById.Bus, "bus driver job")
-	eq(#Vehicles.ForJob("Bus"), 4, "4 buses in the bus job garage")
+	eq(#Vehicles.ForJob("Bus"), if requirePath(RS.Shared.Config).V10 then 5 else 4, "buses in the bus job garage")
 end)
 
 test("train timetable: smooth, both ways, all stations", function()
@@ -1563,10 +1569,14 @@ test("owner cars: blue OWNER livery, Owner + Co-Owner only", function()
 		if v.Category == "Owner" then
 			n += 1
 			eq(v.Livery.Colors.Body:ToHex():upper(), "0A5CFF", v.Name .. " blue")
-			eq(v.Livery.Lettering, if v.Model == "Solaria Urbano Elektro" then "OWNER BUS" else "OWNER")
+			local bus = v.Model == "Solaria Urbano Elektro" or v.Model == "Setro Stadtbus"
+			eq(v.Livery.Lettering, if bus then "OWNER BUS" else "OWNER")
+			if bus then
+				eq(v.LightType, "none", v.Name .. ": no siren")
+			end
 		end
 	end
-	eq(n, 11, "every admin car + the bus as owner version")
+	eq(n, if requirePath(RS.Shared.Config).V10 then 12 else 11, "every admin car + the buses as owner versions")
 	for _, v in Vehicles.ByCategory("Admin") do
 		if v.name:find("%(Owner%)") then
 			eq(v.adminLevel, "Owner", v.name)
@@ -1752,9 +1762,9 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 			civil = civil or v.Category == "Dealership"
 			admin = admin or v.Category == "GameAdmin"
 		end
-		if id == 97903463217450 or id == 18912299148 then
-			eq(civil, false, "One:1 / M3 not for sale")
-			eq(admin, true, "One:1 / M3 admin cars")
+		if id == 97903463217450 or id == 18912299148 or id == 9837028915 then
+			eq(civil, false, "One:1 / M3 / Setro bus not for sale")
+			eq(admin, true, "One:1 / M3 / Setro bus admin versions")
 		else
 			eq(civil, true, list[1].Model .. " also civil")
 		end

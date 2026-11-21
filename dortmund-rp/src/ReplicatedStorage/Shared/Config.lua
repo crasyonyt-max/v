@@ -5,14 +5,14 @@
 local Config = {}
 
 Config.GameName = "Emergency Dortmund"
-Config.Version = "0.4.0"
+Config.Version = "1.0.0"
 
 -- v0.4 (servers, houses, Swedea furniture, laptops): built but switched off until
 -- the release. true = everything of v0.4 is in the game.
 Config.V04 = true
 -- V1.0 (crime: robberies, weapons, prison; admin freecam; Creator Store cars with
 -- liveries): built but switched off until the release. true = all of V1.0 in the game.
-Config.V10 = false
+Config.V10 = true
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

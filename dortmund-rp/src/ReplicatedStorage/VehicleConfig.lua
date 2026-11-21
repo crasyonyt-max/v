@@ -404,7 +404,8 @@ local V10_CARS = {
 	{ 10464796614, "MAR Feuerwehr-LKW", "Truck", 95000, "Red", { { Job = "Fire", XP = 4000, Preset = "FIRE" } } },
 	{ 10208824301, "Mercator Sprintor Werkstatt", "Van", 48000, "White", { { Job = "ADMC", XP = 2000, Preset = "ADMC" } } },
 	{ 16893194014, "Volkswerk Kaddy Maxi", "Van", 32000, "White", { { Job = "ADMC", XP = 750, Preset = "ADMC" } } },
-	{ 9837028915, "Setro Stadtbus", "Bus", 180000, "White", { { Job = "Bus", XP = 2500, Preset = "BUS" } } },
+	-- bus: no civil version, only the bus job + an admin and an owner bus (no siren)
+	{ 9837028915, "Setro Stadtbus", "Bus", nil, nil, { { Job = "Bus", XP = 2500, Preset = "BUS" } }, staffBus = true },
 	{ 128358438587558, "Hyunday Sonate", "Sedan", 29000, "Silver", {} },
 	{ 109489565583811, "Toyara Kamry", "Sedan", 33000, "White", {} },
 	{ 78963742836529, "Kio K5 Hybrid", "Sedan", 34000, "Grey", {} },
@@ -438,6 +439,13 @@ if okConfig and SharedConfig.V10 then
 				Toolbox = id,
 				CarType = carType,
 			})
+		end
+		-- admin + owner bus: ADMIN / OWNER livery, no siren (free rides for admins)
+		if row.staffBus then
+			local adminLivery, adminErr = LiveryConfig.Resolve("ADMIN", { LightType = "none", Lettering = "ADMIN BUS" })
+			add({ Name = model .. " (Admin)", Model = model, Category = "GameAdmin", Price = 0, Livery = adminLivery, LiveryError = adminErr, Toolbox = id, CarType = carType })
+			local ownerLivery, ownerErr = LiveryConfig.Resolve("OWNER", { LightType = "none", Lettering = "OWNER BUS" })
+			add({ Name = model .. " (Owner)", Model = model, Category = "Owner", Price = 0, Livery = ownerLivery, LiveryError = ownerErr, Toolbox = id, CarType = carType })
 		end
 		-- admin cars: orange ADMIN livery with red sirens
 		if row.admin then
