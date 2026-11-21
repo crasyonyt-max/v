@@ -122,7 +122,7 @@ local function step(dt: number)
 		title.Text = "🎥 Freecam · " .. (orbitTarget :: Model).Name
 		return
 	end
-	local speed = if keyDown(Enum.KeyCode.LeftShift) then 120 else 40
+	local speed = if keyDown(Enum.KeyCode.LeftShift) then 360 else 120
 	local move = rot.LookVector * fwd + rot.RightVector * side + Vector3.yAxis * vert
 	if move.Magnitude > 0 then
 		pos += move.Unit * speed * dt

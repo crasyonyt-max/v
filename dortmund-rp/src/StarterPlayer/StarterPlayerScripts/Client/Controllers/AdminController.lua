@@ -10,7 +10,7 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local AdminController = {}
 
-local FLY_SPEED = 90
+local FLY_SPEED = 250 -- studs/s (Shift on PC: ×3)
 
 local flyVelocity: LinearVelocity? = nil
 local flyAlign: AlignOrientation? = nil
