@@ -1743,6 +1743,9 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 		bodies += 1
 	end
 	eq(bodies, 17, "17 cleaned bodies")
+	for id, info in Bodies do
+		assert(info.assetId and info.assetId ~= 0, id .. ": uploaded to the group")
+	end
 	for id, list in byBody do
 		local civil, admin = false, false
 		for _, v in list do
