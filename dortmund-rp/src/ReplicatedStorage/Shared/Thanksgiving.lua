@@ -1,7 +1,8 @@
 --!strict
 -- Thanksgiving event (an AA dropper event, DropEvents id "thanksgiving"):
 --   * dropper multiplier 10x with a 0.05 % chance per drop
---   * while it runs: 1–10 live turkeys every 2 minutes near the players; collect them
+--   * while it runs: every 2 minutes 1–10 live turkeys on the server, on random streets
+--     and in parks (uncollected ones walk off when the next ones come); collect them
 --     (they're a normal carried item, so they also fit in a car trunk)
 --   * put a live turkey in an oven (Swedea furniture): it comes out as a golden roast
 --     (no gore, it simply turns into a baked one) plus a random item, XP or cash
@@ -15,8 +16,7 @@ Thanksgiving.OVEN = "oven" -- Furniture id
 
 Thanksgiving.SPAWN_EVERY = 120 -- seconds
 Thanksgiving.SPAWN_MIN, Thanksgiving.SPAWN_MAX = 1, 10
-Thanksgiving.MAX_ALIVE = 40 -- on the server at once
-Thanksgiving.LIFETIME = 10 * 60 -- an uncollected turkey walks off after this
+Thanksgiving.LIFETIME = 10 * 60 -- safety: an uncollected turkey walks off after this
 Thanksgiving.BAKE_SECONDS = 6
 
 -- the bonus for baking: one of these, picked at random

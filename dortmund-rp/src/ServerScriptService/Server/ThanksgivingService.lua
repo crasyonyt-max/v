@@ -1,6 +1,6 @@
 --!strict
--- Thanksgiving event (Shared/Thanksgiving): turkeys spawn near the players every 2
--- minutes while the AA dropper event "thanksgiving" runs; collect them (carried item,
+-- Thanksgiving event (Shared/Thanksgiving): every 2 minutes 1–10 turkeys on the server,
+-- on random streets and in parks, while the AA dropper event "thanksgiving" runs; collect them (carried item,
 -- fits in the trunk) and bake them in an oven (Swedea furniture) for a roast and a
 -- random bonus: an item, XP or cash.
 
@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 
 local Items = require(ReplicatedStorage.Shared.Items)
 local Locale = require(ReplicatedStorage.Shared.Locale)
+local Locations = require(ReplicatedStorage.Shared.Locations)
 local TG = require(ReplicatedStorage.Shared.Thanksgiving)
 local DropEventService = require(script.Parent.DropEventService)
 local Economy = require(script.Parent.EconomyService)
@@ -118,36 +119,62 @@ local function spawnTurkey(pos: Vector3)
 	alive[t] = os.time() + TG.LIFETIME
 end
 
-local function count(): number
-	local n = 0
-	for _ in alive do
-		n += 1
+-- a random spot on a street (road / pavement) or in a park (grass area) of the city
+local function cityFolders(): (Instance?, Instance?, Instance?)
+	local city = Workspace:FindFirstChild("City")
+	if not city then
+		return nil, nil, nil
 	end
-	return n
+	return city:FindFirstChild("Roads"), city:FindFirstChild("Pavements"), city:FindFirstChild("Areas")
 end
 
--- one wave: 1–10 turkeys, each near a random player
-function ThanksgivingService.SpawnWave(): number
-	local players = {}
+function ThanksgivingService.RandomSpot(): Vector3?
+	local roads, walks, areas = cityFolders()
+	if not roads and not areas then
+		return nil
+	end
+	local b = Locations.Bounds
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local ignore: { Instance } = { turkeyFolder() }
 	for _, p in Players:GetPlayers() do
-		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if root then
-			table.insert(players, root)
+		if p.Character then
+			table.insert(ignore, p.Character)
 		end
 	end
-	if #players == 0 then
-		return 0
+	local vehicles = Workspace:FindFirstChild("Vehicles")
+	if vehicles then
+		table.insert(ignore, vehicles)
+	end
+	params.FilterDescendantsInstances = ignore
+	for _ = 1, 80 do
+		local x, z = rng:NextNumber(b[1], b[3]), rng:NextNumber(b[2], b[4])
+		local hit = Workspace:Raycast(Vector3.new(x, 1500, z), Vector3.new(0, -3000, 0), params)
+		local inst = hit and hit.Instance
+		if inst and hit.Normal.Y > 0.8 then
+			local street = (roads and inst:IsDescendantOf(roads)) or (walks and inst:IsDescendantOf(walks))
+			local park = areas and inst:IsDescendantOf(areas) and inst.Material == Enum.Material.Grass
+			if street or park then
+				return hit.Position
+			end
+		end
+	end
+	return nil
+end
+
+-- one wave: the old turkeys walk off, 1–10 new ones appear somewhere in the city
+-- (on a street or in a park) – that's for the whole server
+function ThanksgivingService.SpawnWave(): number
+	for t in alive do
+		remove(t)
 	end
 	local want = rng:NextInteger(TG.SPAWN_MIN, TG.SPAWN_MAX)
 	local made = 0
-	for _ = 1, want * 4 do
-		if made >= want or count() >= TG.MAX_ALIVE then
+	for _ = 1, want * 2 do
+		if made >= want then
 			break
 		end
-		local root = players[rng:NextInteger(1, #players)]
-		local a = rng:NextNumber(0, math.pi * 2)
-		local d = rng:NextNumber(25, 90)
-		local pos = ground(root.Position.X + math.cos(a) * d, root.Position.Z + math.sin(a) * d, root.Position.Y)
+		local pos = ThanksgivingService.RandomSpot()
 		if pos then
 			spawnTurkey(pos)
 			made += 1
