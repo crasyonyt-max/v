@@ -33,6 +33,7 @@ require(Client.Controllers.IDCheck)
 require(Client.Controllers.HouseDoors)
 require(Client.Controllers.CrimeController)
 require(Client.Controllers.WeaponController)
+require(Client.Controllers.TestBanner)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 Net.On("OpenPC", function(payload)

@@ -2,7 +2,7 @@
 -- The motorbike: everyone owns one (free), job bikes in livery, plates, paint, fuel, lights.
 -- The old cars were removed; their owners get the price back once (see migrate).
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")

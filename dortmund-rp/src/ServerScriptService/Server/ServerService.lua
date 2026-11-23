@@ -10,7 +10,7 @@
 --
 -- Running servers announce themselves in a MemoryStore sorted map every 30 s.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local MemoryStoreService = game:GetService("MemoryStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,7 +49,9 @@ pcall(function()
 	store = DataStoreService:GetDataStore(Config.DataStoreName .. "_PServers")
 end)
 pcall(function()
-	liveMap = MemoryStoreService:GetSortedMap("LiveServers")
+	if not Config.Testing then -- the testing server isn't in the server list
+		liveMap = MemoryStoreService:GetSortedMap("LiveServers")
+	end
 end)
 
 -- this server

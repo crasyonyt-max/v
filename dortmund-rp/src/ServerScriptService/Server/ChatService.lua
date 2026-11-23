@@ -3,9 +3,9 @@
 -- and the admin hotline 23646, which reaches every Game Admin.
 -- All text is filtered with TextService before anyone else sees it.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local HttpService = game:GetService("HttpService")
-local MessagingService = game:GetService("MessagingService")
+local MessagingService = require(script.Parent.Sandbox).MessagingService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService = game:GetService("TextService")

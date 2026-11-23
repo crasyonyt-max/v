@@ -17,6 +17,13 @@ Config.V10 = true
 -- false = the generated ("blocky") cars are the fleet; the real-body list, bodies
 -- (group assets) and code stay in the game, switched off. true = real-body cars again.
 Config.RealCars = false
+
+-- Admin testing server: a second place in the experience that gets new updates first.
+-- 0 = not set up yet (the Admin app hides the "Testserver" tab). In that place every
+-- save and cross-server message stays inside the server (ServerScriptService Sandbox).
+Config.MainPlaceId = 82852214034070
+Config.TestPlaceId = 0
+Config.Testing = Config.TestPlaceId ~= 0 and game.PlaceId == Config.TestPlaceId
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

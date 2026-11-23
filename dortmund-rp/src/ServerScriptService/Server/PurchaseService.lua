@@ -112,6 +112,11 @@ end
 
 function PurchaseService.Start()
 	MarketplaceService.ProcessReceipt = function(receipt)
+		if Config.Testing then
+			-- testing server: nothing is saved there, so Robux purchases wait for the
+			-- real game (Roblox hands the receipt to the next real server they join)
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 		local ok, decision = pcall(PurchaseService.Process, receipt)
 		if ok and decision == "PurchaseGranted" then
 			return Enum.ProductPurchaseDecision.PurchaseGranted

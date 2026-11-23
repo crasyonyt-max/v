@@ -2,7 +2,7 @@
 -- Player data with session locking, autosave and safe shutdown.
 -- All data is plain JSON (no Color3 etc.), so it can be saved directly.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

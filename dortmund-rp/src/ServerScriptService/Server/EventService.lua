@@ -4,10 +4,10 @@
 -- DataStore and announced to every server with MessagingService.
 -- Plus the automatic weekly event (see Boosts.WeeklyEnds).
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local HttpService = game:GetService("HttpService")
 local MarketplaceService = game:GetService("MarketplaceService")
-local MessagingService = game:GetService("MessagingService")
+local MessagingService = require(script.Parent.Sandbox).MessagingService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")

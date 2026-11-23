@@ -68,6 +68,10 @@ local function myServers(root: Instance)
 			Notify.Error("pack_not_setup")
 			return
 		end
+		if Config.Testing then
+			Notify.Error("test_no_purchases")
+			return
+		end
 		MarketplaceService:PromptProductPurchase(Players.LocalPlayer, id)
 	end, { Parent = head })
 	local list = New("Frame", {

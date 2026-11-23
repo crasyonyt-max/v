@@ -63,6 +63,10 @@ Phone.Register({
 					("%s  ·  %d R$"):format(Locale.Euro(p.cash), p.robux),
 					Color3.fromRGB(0, 170, 90),
 					function()
+						if Config.Testing then
+							Notify.Error("test_no_purchases")
+							return
+						end
 						MarketplaceService:PromptProductPurchase(Players.LocalPlayer, p.id)
 					end,
 					{ Parent = buyCard }

@@ -1749,6 +1749,52 @@ test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full
 	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
 end)
 
+test("testing server: saves and messages stay in the server", function()
+	local real = { p1 = { bank = 100 } }
+	local wrote = false
+	fakeServices.DataStoreService = {
+		GetDataStore = function()
+			return {
+				GetAsync = function(_, k)
+					return real[k]
+				end,
+				SetAsync = function()
+					wrote = true
+				end,
+				UpdateAsync = function()
+					wrote = true
+				end,
+				RemoveAsync = function()
+					wrote = true
+				end,
+			}
+		end,
+	}
+	cache["ServerScriptService/Server/Sandbox"] = nil
+	local Sandbox = requirePath(Server.Sandbox)
+	eq(Sandbox.Active, false, "main game: real services")
+	local ds = Sandbox._local.DataStoreService:GetDataStore("x")
+	eq(ds:GetAsync("p1").bank, 100, "reads the real save")
+	ds:UpdateAsync("p1", function(old)
+		old.bank = 5000
+		return old
+	end)
+	eq(ds:GetAsync("p1").bank, 5000, "sees its own change")
+	eq(real.p1.bank, 100, "real save untouched")
+	ds:SetAsync("ban_7", { reason = "test" })
+	ds:RemoveAsync("p1")
+	eq(ds:GetAsync("p1"), nil, "removed here")
+	eq(wrote, false, "nothing written to the real DataStore")
+	local got = nil
+	local ms = Sandbox._local.MessagingService
+	ms:SubscribeAsync("AAEvents", function(m)
+		got = m.Data
+	end)
+	ms:PublishAsync("AAEvents", { boost = 3 })
+	assert(got and got.boost == 3, "events reach this server's own listeners")
+	fakeServices.DataStoreService = nil
+end)
+
 test("Thanksgiving: event, turkeys, oven", function()
 	local DropEvents = requirePath(RS.Shared.DropEvents)
 	local TG = requirePath(RS.Shared.Thanksgiving)

@@ -6,10 +6,10 @@
 --   Server Admin : private server owner + people they appoint. Same moderation tools,
 --                  but only on their own server (bans = server bans). No giving.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local HttpService = game:GetService("HttpService")
 local Lighting = game:GetService("Lighting")
-local MessagingService = game:GetService("MessagingService")
+local MessagingService = require(script.Parent.Sandbox).MessagingService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -259,7 +259,15 @@ handlers.ban = function(actor, args, isGA)
 	end
 	local minutes = Remotes.Check.Int(args.minutes, 0, 525600 * 10) or 0
 	local reason = (typeof(args.reason) == "string" and string.sub(args.reason, 1, 200)) or "Regelverstoß"
-	if isGA then
+	if Config.Testing then
+		-- testing server: nothing global, a ban only kicks (and lasts until it closes)
+		serverBans[userId] = { reason = reason, by = actor.Name }
+		local target = Players:GetPlayerByUserId(userId)
+		if target then
+			target:Kick("🧪 Testserver – gebannt / banned: " .. reason)
+		end
+		log(actor, "ban (testing server)", string.format("%d, %s", userId, reason), false)
+	elseif isGA then
 		local ok, err = pcall(function()
 			Players:BanAsync({
 				UserIds = { userId },

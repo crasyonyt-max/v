@@ -2,9 +2,9 @@
 -- News for the phone's News app. Game Admins post and delete them in the Admin app
 -- (see AdminService); they are saved and shared by every server.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local HttpService = game:GetService("HttpService")
-local MessagingService = game:GetService("MessagingService")
+local MessagingService = require(script.Parent.Sandbox).MessagingService -- local only on the testing server
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)

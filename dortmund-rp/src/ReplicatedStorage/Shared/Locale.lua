@@ -221,6 +221,22 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🚗 V1.0: Die alten Autos sind weg – du hast %s zurückbekommen. Neue Autos gibt's im Autohaus!",
 		en = "🚗 V1.0: the old cars are gone – you got %s back. New cars are at the Autohaus!",
 	},
+	-- admin testing server
+	admin_test = { de = "🧪 Testserver", en = "🧪 Test server" },
+	admin_test_back = { de = "🏠 Zum Spiel", en = "🏠 Back to game" },
+	test_joining = { de = "🧪 Du kommst auf den Testserver …", en = "🧪 Joining the test server …" },
+	test_leaving = { de = "🏠 Zurück ins Spiel …", en = "🏠 Back to the game …" },
+	test_banner = {
+		de = "🧪 TESTSERVER – nichts hier wird gespeichert",
+		en = "🧪 TEST SERVER – nothing here is saved",
+	},
+	test_only_admins = { de = "Der Testserver ist nur für Admins.", en = "The test server is for admins only." },
+	test_no_purchases = {
+		de = "Käufe mit Robux gehen nur im richtigen Spiel.",
+		en = "Robux purchases only work in the real game.",
+	},
+	test_not_set = { de = "Der Testserver ist noch nicht eingerichtet.", en = "The test server isn't set up yet." },
+	teleport_failed = { de = "Teleport fehlgeschlagen, versuch es nochmal.", en = "Teleport failed, try again." },
 	-- Thanksgiving
 	turkey_collected = {
 		de = "🦃 Truthahn eingesammelt! Back ihn im Ofen.",

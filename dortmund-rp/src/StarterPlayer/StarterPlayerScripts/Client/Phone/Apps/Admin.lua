@@ -1032,6 +1032,10 @@ Phone.Register({
 		if Store.Rank() >= OWNER then
 			table.insert(tabs, "admin_fulllog")
 		end
+		-- testing server: no menu, a click joins it (on the testing server: back to the game)
+		if isGA and Config.TestPlaceId ~= 0 then
+			table.insert(tabs, if Config.Testing then "admin_test_back" else "admin_test")
+		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"
 
 		local bar = New("ScrollingFrame", {
@@ -1050,7 +1054,22 @@ Phone.Register({
 			Make.Scroll({ Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -40), Parent = container })
 
 		for i, key in tabs do
-			Make.Button(Store.T(key), if key == current then Color3.fromRGB(57, 160, 20) else T.card, function()
+			local isTest = key == "admin_test" or key == "admin_test_back"
+			local color = if key == current
+				then Color3.fromRGB(57, 160, 20)
+				elseif isTest then Color3.fromRGB(150, 60, 200)
+				else T.card
+			Make.Button(Store.T(key), color, function()
+				if isTest then
+					Notify.Show(Store.T(if Config.Testing then "test_leaving" else "test_joining"), false, 4)
+					task.spawn(function()
+						local r = Net.Request("TestServer.Join")
+						if not r.ok then
+							Notify.Error(r.err)
+						end
+					end)
+					return
+				end
 				Phone.Replace("admin", key)
 			end, {
 				LayoutOrder = i,

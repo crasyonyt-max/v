@@ -5,9 +5,9 @@
 -- switching servers: remembered in the player's data). After the time is up the
 -- result stays on screen for a little while.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local HttpService = game:GetService("HttpService")
-local MessagingService = game:GetService("MessagingService")
+local MessagingService = require(script.Parent.Sandbox).MessagingService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

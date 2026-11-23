@@ -8,7 +8,7 @@
 --   * the front door only lets the allowed players through (opened on their own
 --     screen, closed for everybody else); others can ring the bell
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")

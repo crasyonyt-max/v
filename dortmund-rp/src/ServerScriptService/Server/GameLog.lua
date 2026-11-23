@@ -7,7 +7,7 @@
 -- Storage: "meta_<day>" = number of chunks, "log_<day>_<n>" = up to CHUNK entries.
 -- Each server collects entries and writes them every FLUSH seconds (atomic appends).
 
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

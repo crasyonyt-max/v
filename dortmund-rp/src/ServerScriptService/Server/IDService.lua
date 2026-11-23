@@ -8,7 +8,7 @@
 --     W4 bans the player for good; kicks and bans add the "previously" ones.
 
 local Players = game:GetService("Players")
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Certificates = require(ReplicatedStorage.Shared.Certificates)
@@ -140,6 +140,14 @@ function IDService.AddCert(userId: number, code: string, by: string): boolean
 end
 
 local function banForWarnings(actor: Player, userId: number)
+	if Config.Testing then
+		-- testing server: nothing global, only a kick
+		local target = game:GetService("Players"):GetPlayerByUserId(userId)
+		if target then
+			target:Kick("🧪 Testserver – 4 Verwarnungen / 4 warnings")
+		end
+		return
+	end
 	local ok, err = pcall(function()
 		Players:BanAsync({
 			UserIds = { userId },
