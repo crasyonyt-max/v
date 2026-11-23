@@ -712,13 +712,7 @@ local function aaTab(root: ScrollingFrame)
 	local evButton: TextButton
 	local function evText()
 		local e = DropEvents.List[evIndex]
-		return string.format(
-			"%s %s · x%s · %d%%  🔄",
-			e.icon,
-			e.name,
-			tostring(e.mult),
-			math.floor(e.chance * 100 + 0.5)
-		)
+		return string.format("%s %s · x%s · %s%%  🔄", e.icon, e.name, tostring(e.mult), DropEvents.ChanceText(e))
 	end
 	evButton = Make.Button(evText(), T.panel, function()
 		evIndex = evIndex % #DropEvents.List + 1

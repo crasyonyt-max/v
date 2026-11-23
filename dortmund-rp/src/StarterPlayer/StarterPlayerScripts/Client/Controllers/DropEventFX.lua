@@ -109,11 +109,7 @@ local function set(payload: any)
 	if current ~= e then
 		current = e
 		start(e)
-		Notify.Show(
-			Store.T("drop_event_start", e.icon, e.name, tostring(math.floor(e.chance * 100 + 0.5)), tostring(e.mult)),
-			false,
-			6
-		)
+		Notify.Show(Store.T("drop_event_start", e.icon, e.name, DropEvents.ChanceText(e), tostring(e.mult)), false, 6)
 	end
 end
 
@@ -152,10 +148,10 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	local left = math.max(0, math.floor(ends - Workspace:GetServerTimeNow()))
 	banner.Text = string.format(
-		"%s %s  ·  %d%% x%s  ·  %s %d:%02d",
+		"%s %s  ·  %s%% x%s  ·  %s %d:%02d",
 		e.icon,
 		e.name,
-		math.floor(e.chance * 100 + 0.5),
+		DropEvents.ChanceText(e),
 		tostring(e.mult),
 		Store.T("drop_event_ends"),
 		left // 60,

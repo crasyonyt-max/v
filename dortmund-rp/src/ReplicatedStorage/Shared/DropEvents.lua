@@ -102,6 +102,15 @@ DropEvents.List = {
 	},
 } :: { DropEvent }
 
+-- the chance as text, without rounding small ones to 0: 0.05 -> "5", 0.0005 -> "0,05"
+function DropEvents.ChanceText(e: DropEvent): string
+	local pct = e.chance * 100
+	local text = if pct >= 1 and pct == math.floor(pct)
+		then tostring(math.floor(pct))
+		else (string.format("%.3f", pct):gsub("0+$", ""):gsub("%.$", ""))
+	return (text:gsub("%.", ","))
+end
+
 DropEvents.ById = {} :: { [string]: DropEvent }
 for _, e in DropEvents.List do
 	DropEvents.ById[e.id] = e
