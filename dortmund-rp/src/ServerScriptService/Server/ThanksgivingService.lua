@@ -102,6 +102,50 @@ local function spawnTurkey(pos: Vector3)
 		end
 	end
 	t:PivotTo(CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+	-- marker like an AA pickup: light beam into the sky + a sign seen from anywhere
+	t.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+	local color = Color3.fromRGB(235, 140, 40)
+	local beam = Instance.new("Part")
+	beam.Name = "Beam"
+	beam.Size = Vector3.new(0.6, 120, 0.6)
+	beam.CFrame = CFrame.new(pos + Vector3.new(0, 62, 0))
+	beam.Anchored = false
+	beam.Massless = true
+	beam.CanCollide = false
+	beam.CanQuery = false
+	beam.CanTouch = false
+	beam.Transparency = 0.5
+	beam.Color = color
+	beam.Material = Enum.Material.Neon
+	local bw = Instance.new("WeldConstraint")
+	bw.Part0 = body
+	bw.Part1 = beam
+	bw.Parent = beam
+	beam.Parent = t
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Range = 16
+	light.Brightness = 2
+	light.Parent = body
+	local board = Instance.new("BillboardGui")
+	board.Name = "Marker"
+	board.Size = UDim2.fromOffset(150, 40)
+	board.StudsOffsetWorldSpace = Vector3.new(0, 5, 0)
+	board.AlwaysOnTop = true
+	board.MaxDistance = 1e6
+	board.Parent = body
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+	label.BackgroundTransparency = 0.25
+	label.TextColor3 = Color3.fromRGB(255, 190, 90)
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.Text = "🦃 Truthahn"
+	label.Parent = board
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = label
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "Collect"
 	prompt.ActionText = "Einsammeln"
