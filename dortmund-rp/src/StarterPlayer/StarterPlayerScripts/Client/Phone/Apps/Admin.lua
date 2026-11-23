@@ -1033,7 +1033,7 @@ Phone.Register({
 			table.insert(tabs, "admin_fulllog")
 		end
 		-- testing server: no menu, a click joins it (on the testing server: back to the game)
-		if isGA and Config.TestPlaceId ~= 0 then
+		if isGA then
 			table.insert(tabs, if Config.Testing then "admin_test_back" else "admin_test")
 		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"

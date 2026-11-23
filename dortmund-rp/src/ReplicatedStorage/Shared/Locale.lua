@@ -235,7 +235,6 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "Käufe mit Robux gehen nur im richtigen Spiel.",
 		en = "Robux purchases only work in the real game.",
 	},
-	test_not_set = { de = "Der Testserver ist noch nicht eingerichtet.", en = "The test server isn't set up yet." },
 	teleport_failed = { de = "Teleport fehlgeschlagen, versuch es nochmal.", en = "Teleport failed, try again." },
 	-- Thanksgiving
 	turkey_collected = {

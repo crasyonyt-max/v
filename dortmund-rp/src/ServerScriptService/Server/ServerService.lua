@@ -294,7 +294,7 @@ local function identify()
 		end
 	end
 	info.code = "" -- normal servers have no code (only private servers do)
-	info.name = "Emergency Dortmund"
+	info.name = if Config.Testing then "🧪 Testserver" else "Emergency Dortmund"
 	if game.PrivateServerId ~= "" then
 		-- a Roblox VIP server: private, not listed
 		info.kind = "private"

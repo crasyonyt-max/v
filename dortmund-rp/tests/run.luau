@@ -1773,6 +1773,14 @@ test("testing server: saves and messages stay in the server", function()
 	cache["ServerScriptService/Server/Sandbox"] = nil
 	local Sandbox = requirePath(Server.Sandbox)
 	eq(Sandbox.Active, false, "main game: real services")
+	local Config = requirePath(RS.Shared.Config)
+	eq(Config.Testing, false, "not the testing server")
+	eq(Config.On("test"), false, "test-only switch is off in the game")
+	eq(Config.On(true), true)
+	Config.Testing = true
+	eq(Config.On("test"), true, "test-only switch is on on the testing server")
+	eq(Config.On(false), false)
+	Config.Testing = false
 	local ds = Sandbox._local.DataStoreService:GetDataStore("x")
 	eq(ds:GetAsync("p1").bank, 100, "reads the real save")
 	ds:UpdateAsync("p1", function(old)

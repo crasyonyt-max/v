@@ -18,12 +18,21 @@ Config.V10 = true
 -- (group assets) and code stay in the game, switched off. true = real-body cars again.
 Config.RealCars = false
 
--- Admin testing server: a second place in the experience that gets new updates first.
--- 0 = not set up yet (the Admin app hides the "Testserver" tab). In that place every
--- save and cross-server message stays inside the server (ServerScriptService Sandbox).
-Config.MainPlaceId = 82852214034070
-Config.TestPlaceId = 0
-Config.Testing = Config.TestPlaceId ~= 0 and game.PlaceId == Config.TestPlaceId
+-- Admin testing server: one reserved server of this game (Admin app → "🧪 Testserver").
+-- Config.Testing is true only there: the server finds out when it starts (Sandbox) and
+-- tells the clients with the workspace attribute "TestServer". There every save and
+-- cross-server message stays inside the server.
+-- New updates are built behind a switch set to "test" (= only on the testing server)
+-- until the owner's OK; then the switch becomes true (= everywhere). Check: Config.On(x).
+Config.Testing = false
+pcall(function()
+	if game:GetService("RunService"):IsClient() then
+		Config.Testing = workspace:GetAttribute("TestServer") == true
+	end
+end)
+function Config.On(switch: any): boolean
+	return switch == true or (switch == "test" and Config.Testing == true)
+end
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

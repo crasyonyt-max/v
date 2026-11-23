@@ -1,7 +1,8 @@
 --!strict
 -- DataStoreService / MessagingService for the game's services. In the main game they
--- are the real ones. In the admin testing server (Config.Testing) nothing leaves the
--- server: DataStores read the real saves but every write stays in this server's memory
+-- are the real ones. The admin testing server is one reserved server of this game; its
+-- PrivateServerId is saved (TestServerService) and checked here when the server starts.
+-- There (Config.Testing) nothing leaves the server: DataStores read the real saves but every write stays in this server's memory
 -- (gone when it closes), and messages only reach this server's own subscribers.
 -- So a ban there only kicks, an event only runs there, money there is not saved.
 
@@ -11,7 +12,25 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local Sandbox = {}
 
-Sandbox.Active = Config.Testing == true
+Sandbox.STORE = Config.DataStoreName .. "_TestServer" -- key "server" = { id, code }
+
+-- is this server the testing server? (a reserved server whose id is the saved one)
+local function detect(): boolean
+	local ok, result = pcall(function()
+		if game.PrivateServerId == "" or game.PrivateServerOwnerId ~= 0 then
+			return false
+		end
+		local rec = game:GetService("DataStoreService"):GetDataStore(Sandbox.STORE):GetAsync("server")
+		return typeof(rec) == "table" and rec.id == game.PrivateServerId
+	end)
+	return ok and result == true
+end
+
+Sandbox.Active = detect()
+if Sandbox.Active then
+	Config.Testing = true
+	workspace:SetAttribute("TestServer", true) -- for the clients
+end
 
 local DELETED = newproxy(false) -- marks a key removed in this server
 

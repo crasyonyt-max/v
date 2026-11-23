@@ -39,6 +39,9 @@ for _, player in Players:GetPlayers() do
 	end
 end
 
+-- first: finds out whether this is the admin testing server (Config.Testing)
+require(Server.Sandbox)
+
 local services = {
 	require(Server.GameLog),
 	require(Server.WorldService),
