@@ -165,6 +165,15 @@ Furniture.List = {
 		color = BLACK,
 	},
 	{
+		id = "oven",
+		name = "UGNEN",
+		kind = "Backofen",
+		price = 1200,
+		category = "Küche",
+		size = Vector3.new(2.8, 3.6, 2.6),
+		color = Color3.fromRGB(225, 225, 228),
+	},
+	{
 		id = "dining_table",
 		name = "MATBORD",
 		kind = "Esstisch",
@@ -459,6 +468,60 @@ local builders: { [string]: (Model, Item) -> () } = {
 				Transparency = 0.4,
 			}
 		)
+	end,
+	-- Thanksgiving: bake live turkeys in it (FurnitureService adds the prompt)
+	oven = function(m, it)
+		local s = it.size
+		p(m, "Body", s, Vector3.new(0, s.Y / 2, 0), it.color, Enum.Material.Metal)
+		p(m, "Top", Vector3.new(s.X + 0.1, 0.15, s.Z + 0.1), Vector3.new(0, s.Y + 0.07, 0), BLACK, Enum.Material.Glass)
+		p(
+			m,
+			"Window",
+			Vector3.new(s.X - 0.8, 1.4, 0.05),
+			Vector3.new(0, 1.5, -s.Z / 2 - 0.02),
+			BLACK,
+			Enum.Material.Glass,
+			{
+				Transparency = 0.35,
+			}
+		)
+		p(
+			m,
+			"Handle",
+			Vector3.new(s.X - 0.6, 0.15, 0.15),
+			Vector3.new(0, 2.5, -s.Z / 2 - 0.15),
+			GREY,
+			Enum.Material.Metal
+		)
+		p(m, "Panel", Vector3.new(s.X, 0.6, 0.05), Vector3.new(0, s.Y - 0.35, -s.Z / 2 - 0.02), BLACK)
+		for i = -1, 1 do
+			p(
+				m,
+				"Knob",
+				Vector3.new(0.25, 0.25, 0.12),
+				Vector3.new(i * 0.7, s.Y - 0.35, -s.Z / 2 - 0.1),
+				GREY,
+				Enum.Material.Metal
+			)
+		end
+		-- inside: the light that comes on while baking
+		local glow = p(
+			m,
+			"Glow",
+			Vector3.new(s.X - 0.9, 0.1, s.Z - 0.6),
+			Vector3.new(0, 2.3, 0.1),
+			Color3.fromRGB(255, 150, 60),
+			Enum.Material.Neon,
+			{
+				Transparency = 1,
+			}
+		)
+		local light = Instance.new("PointLight")
+		light.Name = "BakeLight"
+		light.Color = Color3.fromRGB(255, 150, 60)
+		light.Range = 8
+		light.Enabled = false
+		light.Parent = glow
 	end,
 	rug = function(m, it)
 		p(m, "Rug", it.size, Vector3.new(0, 0.05, 0), it.color, Enum.Material.Fabric, { CanCollide = false })

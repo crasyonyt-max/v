@@ -22,6 +22,7 @@ local HouseService = require(script.Parent.HouseService)
 local Interaction = require(script.Parent.InteractionService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
+local ThanksgivingService = require(script.Parent.ThanksgivingService)
 
 local FurnitureService = {}
 
@@ -62,6 +63,9 @@ local function render(ownerId: number)
 		if m then
 			Furniture.Place(m, plot.cf * CFrame.new(e.x, e.y, e.z) * CFrame.Angles(0, math.rad(e.r), 0))
 			m:SetAttribute("Index", i)
+			if e.id == "oven" then
+				ThanksgivingService.EquipOven(m) -- bake Thanksgiving turkeys
+			end
 			m.Parent = f
 		end
 	end

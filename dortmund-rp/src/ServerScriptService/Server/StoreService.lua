@@ -90,6 +90,10 @@ consume = function(player: Player, tool: Tool, itemId: string)
 	if not data or not it or (tool.Parent ~= player.Character and tool.Parent ~= backpack) then
 		return
 	end
+	if it.noEat then
+		Remotes.Push(player, "Notify", { key = "turkey_no_eat" })
+		return
+	end
 	local now = os.clock()
 	if eating[player] and now - eating[player] < 1.5 then
 		return

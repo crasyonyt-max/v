@@ -880,7 +880,7 @@ end)
 -- v0.2: dropper events, traffic, droppers ---------------------------------------------
 test("dropper events: each drop has the event's chance", function()
 	local DropEvents = requirePath(RS.Shared.DropEvents)
-	eq(#DropEvents.List, 7, "7 events")
+	eq(#DropEvents.List, 8, "7 events + Thanksgiving")
 	eq(DropEvents.ById.germany.mult, 5)
 	eq(DropEvents.ById.germany.chance, 0.05)
 	eq(DropEvents.ById.tacos.mult, 1.4)
@@ -1747,6 +1747,43 @@ test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full
 	eq(data.orders[1].waiting, true)
 	table.remove(data.inventory)
 	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
+end)
+
+test("Thanksgiving: event, turkeys, oven", function()
+	local DropEvents = requirePath(RS.Shared.DropEvents)
+	local TG = requirePath(RS.Shared.Thanksgiving)
+	local Items = requirePath(RS.Shared.Items)
+	local Furniture = requirePath(RS.Shared.Furniture)
+	local Imagine = requirePath(RS.Shared.Imagine)
+	local e = DropEvents.ById[TG.EVENT]
+	assert(e, "event in the AA list")
+	eq(e.mult, 10, "10x")
+	eq(e.chance, 0.0005, "0.05 %")
+	eq(TG.SPAWN_MIN, 1)
+	eq(TG.SPAWN_MAX, 10)
+	eq(TG.SPAWN_EVERY, 120, "every 2 minutes")
+	assert(Items.ById[TG.ALIVE] and Items.ById[TG.ALIVE].noEat, "live turkey can't be eaten")
+	assert(Items.ById[TG.BAKED] and Items.ById[TG.BAKED].hunger > 0, "roast can be eaten")
+	for _, p in Imagine.List do
+		assert(p.id ~= TG.ALIVE and p.id ~= TG.BAKED, "turkeys can't be ordered")
+	end
+	local oven = Furniture.Build(TG.OVEN)
+	assert(oven and oven:FindFirstChild("Glow"), "oven with an inside light")
+	for _, baked in { false, true } do
+		local t = TG.BuildTurkey(baked)
+		assert(t.PrimaryPart and t.PrimaryPart.Name == "Body", "turkey model")
+		for _, d in t:GetDescendants() do
+			if d:IsA("BasePart") then
+				local c = d.Color
+				assert(
+					not (c.R > 0.6 and c.G < 0.1 and c.B < 0.1 and d.Name ~= "Wattle" and d.Name ~= "Feather"),
+					"no blood: " .. d.Name
+				)
+			end
+		end
+	end
+	local src = fs.readFile("src/ServerScriptService/Server/AdminService.lua")
+	assert(src:find("Check.Number(args.mult, 2, 100)", 1, true), "boosts up to 100x")
 end)
 
 test("V1.0: real-body cars, crime rules, weapons", function()

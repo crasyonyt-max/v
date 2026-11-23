@@ -30,6 +30,9 @@ Imagine.Categories = { "Essen & Trinken", "Möbel", "Elektronik" }
 
 Imagine.List = {} :: { Product }
 for _, it in Items.List do
+	if it.event then
+		continue -- event items (Thanksgiving turkeys) can't be ordered
+	end
 	table.insert(Imagine.List, {
 		key = "item:" .. it.id,
 		kind = "item",

@@ -11,6 +11,8 @@ export type Item = {
 	color: Color3,
 	size: Vector3, -- handle size of the tool you hold
 	shape: string?, -- "Block" | "Cylinder" | "Ball"
+	noEat: boolean?, -- can't be eaten (e.g. a live turkey)
+	event: boolean?, -- event item: never a random reward
 }
 
 local Items = {}
@@ -203,6 +205,30 @@ Items.List = {
 		thirst = 30,
 		color = Color3.fromRGB(245, 245, 245),
 		size = Vector3.new(0.4, 0.9, 0.4),
+	}),
+	-- Thanksgiving event (Shared/Thanksgiving): not sold in stores
+	item({
+		id = "turkey",
+		name = "Truthahn (lebendig)",
+		price = 0,
+		hunger = 0,
+		thirst = 0,
+		color = Color3.fromRGB(110, 70, 40),
+		size = Vector3.new(1.4, 1.4, 1.6),
+		shape = "Ball",
+		noEat = true,
+		event = true,
+	}),
+	item({
+		id = "turkey_baked",
+		name = "Truthahnbraten",
+		price = 0,
+		hunger = 90,
+		thirst = -5,
+		color = Color3.fromRGB(200, 125, 45),
+		size = Vector3.new(1.5, 1, 1.7),
+		shape = "Ball",
+		event = true,
 	}),
 } :: { Item }
 

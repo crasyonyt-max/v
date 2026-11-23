@@ -74,6 +74,7 @@ local services = {
 	require(Server.GarageService),
 	require(Server.DropEventService),
 	require(Server.DropperService),
+	require(Server.ThanksgivingService),
 }
 for _, service in services do
 	service.Start()

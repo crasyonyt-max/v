@@ -90,6 +90,16 @@ DropEvents.List = {
 		colors = { Color3.fromRGB(255, 60, 40), Color3.fromRGB(255, 140, 100), Color3.fromRGB(60, 160, 255) },
 		tint = Color3.fromRGB(255, 220, 210),
 	},
+	{
+		id = "thanksgiving",
+		icon = "🦃",
+		name = "Thanksgiving Event",
+		mult = 10,
+		chance = 0.0005, -- 0.05 %; turkeys spawn too (Shared/Thanksgiving)
+		rain = "🦃",
+		colors = { Color3.fromRGB(200, 90, 20), Color3.fromRGB(240, 170, 40), Color3.fromRGB(120, 60, 20) },
+		tint = Color3.fromRGB(255, 225, 190),
+	},
 } :: { DropEvent }
 
 DropEvents.ById = {} :: { [string]: DropEvent }

@@ -520,7 +520,7 @@ end
 -- AA events (all servers) ------------------------------------------------------------
 handlers.aa_boost = function(actor, args)
 	local kind = typeof(args) == "table" and Remotes.Check.OneOf(args.kind, { "cash", "xp" }) or nil
-	local mult = typeof(args) == "table" and Remotes.Check.Number(args.mult, 2, 10) or nil
+	local mult = typeof(args) == "table" and Remotes.Check.Number(args.mult, 2, 100) or nil
 	local minutes = typeof(args) == "table" and Remotes.Check.Int(args.minutes, 1, 1440) or nil
 	if not kind or not mult or not minutes then
 		return false, "bad_request"

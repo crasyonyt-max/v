@@ -221,6 +221,20 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🚗 V1.0: Die alten Autos sind weg – du hast %s zurückbekommen. Neue Autos gibt's im Autohaus!",
 		en = "🚗 V1.0: the old cars are gone – you got %s back. New cars are at the Autohaus!",
 	},
+	-- Thanksgiving
+	turkey_collected = {
+		de = "🦃 Truthahn eingesammelt! Back ihn im Ofen.",
+		en = "🦃 Turkey collected! Bake it in an oven.",
+	},
+	turkey_bag_full = { de = "Deine Tasche ist voll.", en = "Your bag is full." },
+	turkey_no_eat = {
+		de = "🦃 Der lebt noch! Back ihn erst im Ofen.",
+		en = "🦃 It's still alive! Bake it in an oven first.",
+	},
+	turkey_need = { de = "Du brauchst einen lebenden Truthahn.", en = "You need a live turkey." },
+	oven_busy = { de = "Der Ofen backt gerade.", en = "The oven is busy." },
+	turkey_baking = { de = "🔥 Der Truthahn backt … (%d s)", en = "🔥 The turkey is baking … (%d s)" },
+	turkey_baked = { de = "🍗 Truthahnbraten fertig! Bonus: %s", en = "🍗 Turkey roast done! Bonus: %s" },
 	cars_refunded_rc = {
 		de = "🚗 Die neuen Autos sind archiviert, die alten sind zurück – du hast %s zurückbekommen.",
 		en = "🚗 The new cars are archived and the old ones are back – you got %s back.",
@@ -306,7 +320,7 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "Jeden Samstag 18:00 (deutsche Zeit): automatisch 2x Cash + 2x XP für 30 Minuten.",
 		en = "Every Saturday 6 PM (German time): automatic 2x cash + 2x XP for 30 minutes.",
 	},
-	aa_multiplier = { de = "Faktor (z. B. 2 = 2x)", en = "Multiplier (e.g. 2 = 2x)" },
+	aa_multiplier = { de = "Faktor (2–100, z. B. 2 = 2x)", en = "Multiplier (2–100, e.g. 2 = 2x)" },
 	aa_start = { de = "Starten (alle Server)", en = "Start (all servers)" },
 	stop = { de = "Stopp", en = "Stop" },
 	duration_min = { de = "Dauer in Minuten", en = "Duration in minutes" },
