@@ -1034,7 +1034,8 @@ Phone.Register({
 		end
 		-- testing server: no menu, a click joins it (on the testing server: back to the game)
 		if isGA then
-			table.insert(tabs, if Config.Testing then "admin_test_back" else "admin_test")
+			-- first, so it's seen without scrolling the bar
+			table.insert(tabs, 1, if Config.Testing then "admin_test_back" else "admin_test")
 		end
 		local current = if typeof(arg) == "string" then arg else "admin_players"
 
@@ -1073,7 +1074,10 @@ Phone.Register({
 				Phone.Replace("admin", key)
 			end, {
 				LayoutOrder = i,
-				Size = UDim2.fromOffset(if key == "admin_aa" then 44 else 70, 30),
+				Size = UDim2.fromOffset(
+					if key == "admin_aa" then 44 elseif key == "admin_test" or key == "admin_test_back" then 96 else 70,
+					30
+				),
 				TextSize = 12,
 				Parent = bar,
 			})
