@@ -33,6 +33,9 @@ end)
 function Config.On(switch: any): boolean
 	return switch == true or (switch == "test" and Config.Testing == true)
 end
+
+-- Parlament (Bundestag-style, on the Klinikum grounds): "test" = only on the testing server
+Config.Parliament = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

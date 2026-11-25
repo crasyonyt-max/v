@@ -5,6 +5,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script.Parent:WaitForChild("Server")
+-- first of all: is this the admin testing server? (Config.Testing; the map and every
+-- service depend on it)
+require(Server.Sandbox)
 local Levels = require(ReplicatedStorage.Shared.Levels)
 
 local Remotes = require(Server.Remotes)
@@ -27,6 +30,7 @@ require(Server.TrainService).Build()
 require(Server.HouseService).Build()
 require(Server.FurnitureService).Build()
 require(Server.PrisonService).Build()
+require(Server.ParliamentBuilder).Build()
 require(Server.GarageService).Build()
 require(Server.PlateService).Build()
 require(Server.CrimeService).Build() -- after all stores: robbery prompts on the tills
@@ -38,9 +42,6 @@ for _, player in Players:GetPlayers() do
 		task.spawn(player.LoadCharacter, player)
 	end
 end
-
--- first: finds out whether this is the admin testing server (Config.Testing)
-require(Server.Sandbox)
 
 local services = {
 	require(Server.GameLog),

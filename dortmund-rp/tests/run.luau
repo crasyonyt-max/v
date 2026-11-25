@@ -2139,6 +2139,44 @@ test("mall, underground garages and plate service", function()
 	local furn = plot.built.model:FindFirstChild("Furniture")
 	assert(furn and #furn:GetChildren() == 1, "placed sofa shown")
 	Config.V04 = false
+	-- Parlament: off in the game ("test"), built when switched on
+	local Parliament = requirePath(Server.ParliamentBuilder)
+	eq(Parliament.Build(), nil, "only on the testing server")
+	Config.Parliament = true
+	local parl = Parliament.Build()
+	Config.Parliament = "test"
+	assert(parl and parl.Parent == ws, "parliament built")
+	local inside, outside = parl:FindFirstChild("Inside"), parl:FindFirstChild("Outside")
+	local function flagsIn(root)
+		local set = {}
+		for _, d in root:GetDescendants() do
+			if d:IsA("Model") and d.Name:sub(1, 5) == "Flag_" then
+				set[d.Name:sub(6)] = (set[d.Name:sub(6)] or 0) + 1
+			end
+		end
+		return set
+	end
+	local fin = flagsIn(inside)
+	for _, id in { "NL", "DK", "DE", "BE", "FR", "EU" } do
+		eq(fin[id], 1, id .. " flag inside")
+	end
+	for id in flagsIn(outside) do
+		assert(id == "DE" or id == "EU", "outside only Germany + EU, not " .. id)
+	end
+	assert((parl:GetAttribute("Seats") or 0) > 150, "seats in the plenary hall")
+	-- the entrance is open: nothing solid in the doorway (local 0, 10..40, -150)
+	for _, d in parl:GetDescendants() do
+		if d:IsA("BasePart") and d.CanCollide and d.Name ~= "Floor" and d.Name ~= "Plinth" and d.Name ~= "Podium" then
+			local rel = parl:FindFirstChild("Outside").Lawn.CFrame:PointToObjectSpace(d.CFrame.Position)
+			local hs = d.Size / 2
+			local blocks = math.abs(rel.X) < 12 + hs.X
+				and rel.Y - hs.Y < 30
+				and rel.Y + hs.Y > 14
+				and math.abs(rel.Z + 150) < 4 + hs.Z
+			assert(not blocks, "doorway blocked by " .. d.Name)
+		end
+	end
+	parl:Destroy()
 	-- V1.0 prison
 	local Prison = requirePath(Server.PrisonService)
 	Config.V10 = true
