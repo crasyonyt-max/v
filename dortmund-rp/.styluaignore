@@ -11,3 +11,8 @@ src/ServerScriptService/Server/Cars
 src/ReplicatedStorage/Shared/TrainData.lua
 src/ReplicatedStorage/Shared/BusStopData.lua
 src/ServerStorage/ToolboxBodies.lua
+src/ServerStorage/CityDataXL/
+src/ServerStorage/CityMetaXL.lua
+src/ReplicatedStorage/Shared/LocationsXL.lua
+src/ReplicatedStorage/Shared/TrafficDataXL.lua
+src/ReplicatedStorage/Shared/BusStopDataXL.lua

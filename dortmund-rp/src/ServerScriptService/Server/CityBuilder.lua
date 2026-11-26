@@ -9,7 +9,10 @@ local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
-local Meta = require(ServerStorage.CityMeta)
+local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+-- the testing server builds the bigger map (Config.BigMap)
+local XL = Config.On(Config.BigMap) and ServerStorage:FindFirstChild("CityDataXL") ~= nil
+local Meta = require(if XL then ServerStorage:WaitForChild("CityMetaXL") else ServerStorage.CityMeta)
 
 local CityBuilder = {}
 
@@ -440,7 +443,7 @@ function CityBuilder.Build(bounds: { number }): Folder
 
 	local rng = Random.new(51517)
 	local lamps: { Vector3 } = {}
-	local chunks = ServerStorage:WaitForChild("CityData"):GetChildren()
+	local chunks = ServerStorage:WaitForChild(if XL then "CityDataXL" else "CityData"):GetChildren()
 	table.sort(chunks, function(a, b)
 		return a.Name < b.Name
 	end)

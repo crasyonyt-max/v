@@ -1749,6 +1749,43 @@ test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full
 	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
 end)
 
+test("bigger map (XL): only on the testing server, same sites, more city", function()
+	local Config = requirePath(RS.Shared.Config)
+	local function fresh(name)
+		cache["ReplicatedStorage/Shared/" .. name] = nil
+		return requirePath(pathProxy({ "ReplicatedStorage", "Shared", name }))
+	end
+	local base = fresh("Locations")
+	local baseStops, baseLights = #fresh("BusStopData"), #fresh("TrafficData").lights
+	eq(base.Bounds[1], -3285.4, "the game keeps its map")
+	Config.Testing = true
+	local xl = fresh("Locations")
+	local xlStops, xlLights = #fresh("BusStopData"), #fresh("TrafficData").lights
+	local img = fresh("MapImage")
+	Config.Testing = false
+	fresh("Locations")
+	fresh("BusStopData")
+	fresh("TrafficData")
+	fresh("MapImage")
+	assert(xl ~= base and xl.Bounds[1] < base.Bounds[1], "testing server: bigger map")
+	local area = function(b)
+		return (b[3] - b[1]) * (b[4] - b[2])
+	end
+	local grow = area(xl.Bounds) / area(base.Bounds)
+	assert(grow > 1.05 and grow < 1.2, ("5-20 %% bigger, got %.1f %%"):format((grow - 1) * 100))
+	for k, site in base.Sites do
+		local o = xl.Sites[k]
+		assert(o and o.x == site.x and o.z == site.z and o.yaw == site.yaw, k .. " stays where it is")
+	end
+	for k, j in base.Jobs do
+		eq(xl.Jobs[k].marker[1], j.marker[1], k .. " station marker")
+	end
+	assert(#xl.Stores > #base.Stores, "more markets")
+	assert(xlStops > baseStops and xlLights > baseLights, "more bus stops and traffic lights")
+	eq(img.minX, xl.Bounds[1], "AA map image matches the bigger map")
+	assert(img.image ~= "rbxassetid://95046841102055", "own map image")
+end)
+
 test("testing server: saves and messages stay in the server", function()
 	local real = { p1 = { bank = 100 } }
 	local wrote = false

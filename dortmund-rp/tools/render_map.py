@@ -3,7 +3,7 @@
 
 Output: build/map.png. Pixel (0,0) = Locations.Bounds minX/minZ (north = -Z is up).
 """
-import json, re, sys
+import json, os, re, sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 
@@ -19,7 +19,9 @@ def lua_table(text):
     body = re.sub(r",\s*([\]}])", r"\1", body)
     return json.loads(body)
 
-loc = (ROOT / "src/ReplicatedStorage/Shared/Locations.lua").read_text()
+XL = os.environ.get("ED_MAP") == "xl"  # the bigger test map
+SUF = "XL" if XL else ""
+loc = (ROOT / f"src/ReplicatedStorage/Shared/Locations{SUF}.lua").read_text()
 minx, minz, maxx, maxz = map(float, re.search(r"Locations.Bounds = \{([^}]*)\}", loc).group(1).split(","))
 span = max(maxx - minx, maxz - minz)
 s = SIZE / span
@@ -29,7 +31,7 @@ def px(x, z):
 img = Image.new("RGB", (SIZE, SIZE), (38, 44, 40))
 d = ImageDraw.Draw(img)
 AREA = {1: (60, 92, 58), 2: (60, 92, 58), 3: (70, 70, 74), 4: (52, 84, 120), 5: (52, 84, 120)}
-chunks = sorted((ROOT / "src/ServerStorage/CityData").glob("Chunk_*.lua"))
+chunks = sorted((ROOT / f"src/ServerStorage/CityData{SUF}").glob("Chunk_*.lua"))
 data = [lua_table(c.read_text()) for c in chunks]
 for ch in data:
     for a in ch.get("a", []):
@@ -61,7 +63,7 @@ for r in sorted(roads, key=lambda r: -r[0]):
     pts = [px(r[i], r[i + 1]) for i in range(4, len(r) - 1, 2)]
     col = (250, 200, 90) if t <= 2 else (235, 235, 235) if t <= 10 else (190, 190, 190)
     d.line(pts, fill=col, width=max(1, round(w * s)))
-out = ROOT / "build/map.png"
+out = ROOT / f"build/map{SUF}.png"
 out.parent.mkdir(exist_ok=True)
 img.save(out)
 print(out, img.size, "span", span, "bounds", minx, minz)
