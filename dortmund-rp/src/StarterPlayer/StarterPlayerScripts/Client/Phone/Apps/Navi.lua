@@ -135,6 +135,11 @@ Phone.Register({
 				Color3.fromRGB(57, 160, 20)
 			)
 		end
+		if Config.On(Config.Parliament) then
+			-- in front of the stairs of the main entrance
+			local p = Config.ParliamentSite
+			entry("🏛️ Parlament", Vector3.new(p.x, 0, p.z - 215), Color3.fromRGB(0, 51, 153))
+		end
 		if Config.V04 then
 			local myHouse = Players.LocalPlayer:GetAttribute("MyHouse")
 			if typeof(myHouse) == "Vector3" then

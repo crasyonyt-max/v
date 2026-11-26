@@ -20,7 +20,7 @@ local CityBuilder = require(script.Parent.CityBuilder)
 local ParliamentBuilder = {}
 
 -- site (world): centre, half extents of the cleared area; front (-Z) faces north
-ParliamentBuilder.Site = { x = -610, z = 3905, halfX = 270, halfZ = 325 }
+ParliamentBuilder.Site = { x = Config.ParliamentSite.x, z = Config.ParliamentSite.z, halfX = 270, halfZ = 325 }
 
 local STONE = Color3.fromRGB(205, 192, 165) -- sandstone
 local STONE_DARK = Color3.fromRGB(176, 163, 138)
