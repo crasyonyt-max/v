@@ -402,7 +402,7 @@ end
 CityBuilder._triPrism = triPrism -- exposed for tests
 
 -- Main -----------------------------------------------------------------------------
-function CityBuilder.Build(bounds: { number }): Folder
+function CityBuilder.Build(bounds: { number }, extra: { { number } }?): Folder
 	local city = Instance.new("Folder")
 	city.Name = "City"
 	city.Parent = Workspace
@@ -425,20 +425,34 @@ function CityBuilder.Build(bounds: { number }): Folder
 		lights = folder("StreetLights"),
 	}
 
-	-- ground plate (max part size is 2048)
-	local minX, minZ, maxX, maxZ = bounds[1] - 400, bounds[2] - 400, bounds[3] + 400, bounds[4] + 400
-	local TILE = 2000
-	local x = minX
-	while x < maxX do
-		local z = minZ
-		while z < maxZ do
-			local sx, sz = math.min(TILE, maxX - x), math.min(TILE, maxZ - z)
-			local g = newPart("Part", folders.ground, Color3.fromRGB(132, 128, 120), Enum.Material.Concrete)
-			g.Size = Vector3.new(sx, 2, sz)
-			g.Position = Vector3.new(x + sx / 2, Y_GROUND - 1, z + sz / 2)
-			z += TILE
+	-- ground plate (max part size is 2048); also under extra areas (XL: the port annex)
+	local function plate(minX: number, minZ: number, maxX: number, maxZ: number)
+		local TILE = 2000
+		local x = minX
+		while x < maxX do
+			local z = minZ
+			while z < maxZ do
+				local sx, sz = math.min(TILE, maxX - x), math.min(TILE, maxZ - z)
+				local g = newPart("Part", folders.ground, Color3.fromRGB(132, 128, 120), Enum.Material.Concrete)
+				g.Size = Vector3.new(sx, 2, sz)
+				g.Position = Vector3.new(x + sx / 2, Y_GROUND - 1, z + sz / 2)
+				z += TILE
+			end
+			x += TILE
 		end
-		x += TILE
+	end
+	plate(bounds[1] - 400, bounds[2] - 400, bounds[3] + 400, bounds[4] + 400)
+	for _, a in (extra or {}) :: { { number } } do
+		-- only the part that the main plate doesn't cover yet
+		local x0, z0, x1, z1 = a[1] - 150, a[2] - 150, a[3] + 150, a[4] + 150
+		local mz0 = bounds[2] - 400
+		if z0 < mz0 then
+			plate(x0, z0, x1, math.min(z1, mz0))
+		end
+		local mx0 = bounds[1] - 400
+		if x0 < mx0 and z1 > mz0 then
+			plate(x0, math.max(z0, mz0), math.min(x1, mx0), z1)
+		end
 	end
 
 	local rng = Random.new(51517)

@@ -2249,6 +2249,28 @@ test("mall, underground garages and plate service", function()
 		end
 	end
 	parl:Destroy()
+	-- port construction site (bigger map): a closed fence with signs and a gate
+	local Port = requirePath(Server.PortBuilder)
+	eq(Port.Build(), nil, "no port on the normal map")
+	local Loc = requirePath(RS.Shared.Locations)
+	Loc.Port = { -7120.1, -5491.5, -2840.1, -2688.5 }
+	Config.BigMap = true
+	local port = Port.Build()
+	Config.BigMap = "test"
+	Loc.Port = nil
+	assert(port and port.Parent == ws, "port built")
+	local fenceLen = 0
+	for _, d in port.Bauzaun:GetChildren() do
+		if d.Name == "FenceMesh" then
+			fenceLen += d.Size.X
+			assert(d.CanCollide, "the fence blocks")
+		end
+	end
+	local perimeter = 2 * ((-2840.1 + 7120.1) + (-2688.5 + 5491.5))
+	assert(math.abs(fenceLen - perimeter) < 1, ("closed all around: %.0f of %.0f"):format(fenceLen, perimeter))
+	assert((port:GetAttribute("Signs") or 0) >= 20, "UNDER CONSTRUCTION signs")
+	assert(port.Bauzaun:FindFirstChild("GateSign"), "locked gate with a sign")
+	port:Destroy()
 	-- V1.0 prison
 	local Prison = requirePath(Server.PrisonService)
 	Config.V10 = true

@@ -35,6 +35,11 @@ WEST, EAST, SOUTH, NORTH = 7.446, 7.486, 51.4995, 51.5225
 if XL:
     # 50 % more area, on every side (tiles 20+ from osm_fetch.py --extra)
     WEST, EAST, SOUTH, NORTH = 7.4415, 7.4905, 51.4969, 51.5251
+# XL: the Stadthafen (port) as an annex north-west of the map; inside the FENCE it is a
+# closed construction site (no shops, stops, lights or buildings; the water stays)
+ANNEX = (7.4300, 51.5240, 7.4482, 51.5322) if XL else None  # west, south, east, north
+FENCE = (7.4305, 51.5247, 7.4478, 51.5318) if XL else None
+KEEP_IN_FENCE = {"Altes Hafenamt"}
 LAT0, LON0 = 51.51789, 7.45928
 M_PER_STUD = 0.28
 CHUNK = 1500  # studs per data chunk
@@ -65,8 +70,22 @@ def project(lat, lon):
     return ((lon - LON0) * KX, -(lat - LAT0) * KZ)
 
 
+def in_rect(r, lat, lon):
+    return r is not None and r[0] <= lon <= r[2] and r[1] <= lat <= r[3]
+
+
+def inside_geometry(lat, lon):
+    """map + port annex: buildings, roads, water, trees"""
+    return (WEST <= lon <= EAST and SOUTH <= lat <= NORTH) or in_rect(ANNEX, lat, lon)
+
+
+def in_fence(lat, lon):
+    return in_rect(FENCE, lat, lon)
+
+
 def inside_area(lat, lon):
-    return WEST <= lon <= EAST and SOUTH <= lat <= NORTH
+    """where shops, stations, stops and lights may be (never in the fenced port)"""
+    return inside_geometry(lat, lon) and not in_fence(lat, lon)
 
 
 # ---------------------------------------------------------------- geometry helpers
@@ -269,8 +288,10 @@ def main():
         if t.get("layer", "0").startswith("-") or t.get("location") == "underground":
             continue
         c = centre_ll(i)
-        if not c or not inside_area(*c):
+        if not c or not inside_geometry(*c):
             continue
+        if in_fence(*c) and t.get("name") not in KEEP_IN_FENCE:
+            continue  # the port is a construction site
         pts = way_pts(i)[:-1]
         if len(pts) < 3:
             continue
@@ -283,7 +304,7 @@ def main():
                 nd, _ = ways[ref]
                 if len(nd) >= 4 and nd[0] == nd[-1]:
                     c = centre_ll(ref)
-                    if c and inside_area(*c):
+                    if c and inside_geometry(*c) and (not in_fence(*c) or t.get("name") in KEEP_IN_FENCE):
                         polys.append((way_pts(ref)[:-1], t, False, ref))
 
     # outlines that have building:part pieces inside are drawn by their parts only
@@ -716,7 +737,7 @@ def main():
         if t.get("tunnel") in ("yes", "building_passage") or t.get("layer", "0").startswith("-"):
             continue
         c = centre_ll(i)
-        if not c or not inside_area(*c):
+        if not c or not inside_geometry(*c):
             continue
         rail = t.get("railway")
         if rail in ("rail", "light_rail", "tram") and t.get("tunnel") != "yes":
@@ -763,7 +784,7 @@ def main():
         if not kind:
             continue
         c = centre_ll(i)
-        if not c or not inside_area(*c):
+        if not c or not inside_geometry(*c):
             continue
         pts = simplify(way_pts(i)[:-1], 0.5 / M_PER_STUD, True)
         if len(pts) < 3 or abs(poly_area(pts)) < 15 / M_PER_STUD**2:
@@ -938,7 +959,14 @@ def main():
         + "\n".join(f"\t{k} = {{ x = {r1(v[0])}, z = {r1(v[1])}, yaw = {round(v[2], 2)}, width = {r1(v[3])}, depth = {r1(v[4])} }}," for k, v in sites.items())
         + "\n}\n\n"
         f"Locations.Bounds = {{ {r1(project(SOUTH, WEST)[0])}, {r1(project(NORTH, WEST)[1])}, {r1(project(SOUTH, EAST)[0])}, {r1(project(SOUTH, WEST)[1])} }}\n\n"
-        "return Locations\n",
+        + (
+            ""
+            if not XL
+            else "-- extra ground outside Bounds (the port annex) and the fenced port construction site\n"
+            f"Locations.Annex = {{ {{ {r1(project(ANNEX[1], ANNEX[0])[0])}, {r1(project(ANNEX[3], ANNEX[0])[1])}, {r1(project(ANNEX[1], ANNEX[2])[0])}, {r1(project(ANNEX[1], ANNEX[0])[1])} }} }}\n"
+            f"Locations.Port = {{ {r1(project(FENCE[1], FENCE[0])[0])}, {r1(project(FENCE[3], FENCE[0])[1])}, {r1(project(FENCE[1], FENCE[2])[0])}, {r1(project(FENCE[1], FENCE[0])[1])} }}\n\n"
+        )
+        + "return Locations\n",
         encoding="utf-8",
     )
 

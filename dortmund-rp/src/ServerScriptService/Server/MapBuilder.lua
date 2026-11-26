@@ -58,7 +58,7 @@ local function marker(kind: string, x: number, z: number, color: Color3, attrs: 
 end
 
 function MapBuilder.Build()
-	CityBuilder.Build(Locations.Bounds)
+	CityBuilder.Build(Locations.Bounds, (Locations :: any).Annex)
 
 	map = Instance.new("Folder")
 	map.Name = "Map"

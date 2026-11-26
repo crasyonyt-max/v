@@ -73,4 +73,8 @@ Locations.Sites = {
 
 Locations.Bounds = { -4398.7, -2846.4, 7723.7, 8286.6 }
 
+-- extra ground outside Bounds (the port annex) and the fenced port construction site
+Locations.Annex = { { -7243.8, -5649.4, -2741.2, -2412.1 } }
+Locations.Port = { -7120.1, -5491.5, -2840.1, -2688.5 }
+
 return Locations

@@ -31,6 +31,7 @@ require(Server.HouseService).Build()
 require(Server.FurnitureService).Build()
 require(Server.PrisonService).Build()
 require(Server.ParliamentBuilder).Build()
+require(Server.PortBuilder).Build() -- bigger map: the port construction site
 require(Server.GarageService).Build()
 require(Server.PlateService).Build()
 require(Server.CrimeService).Build() -- after all stores: robbery prompts on the tills

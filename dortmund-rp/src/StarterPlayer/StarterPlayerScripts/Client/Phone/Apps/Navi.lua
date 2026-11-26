@@ -135,6 +135,15 @@ Phone.Register({
 				Color3.fromRGB(57, 160, 20)
 			)
 		end
+		local port = (Locations :: any).Port
+		if port then
+			-- the locked gate of the port construction site
+			entry(
+				"🚧 Hafen (Baustelle)",
+				Vector3.new(math.clamp(-3950, port[1] + 40, port[3] - 40), 0, port[4] + 20),
+				Color3.fromRGB(245, 190, 20)
+			)
+		end
 		if Config.On(Config.Parliament) then
 			-- in front of the stairs of the main entrance
 			local p = Config.ParliamentSite
