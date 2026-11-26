@@ -38,8 +38,8 @@ end
 Config.Parliament = "test"
 Config.ParliamentSite = { x = -610, z = 3905 } -- centre; the entrance stairs face north (-Z)
 
--- Bigger map (about 17 % more city to the west, east and north, with its markets,
--- bus stops and traffic lights): "test" = only on the testing server.
+-- Bigger map (50 % more city on every side, with its markets, gas stations, bus stops
+-- and traffic lights): "test" = only on the testing server.
 -- Data: CityDataXL / CityMetaXL / LocationsXL / BusStopDataXL / TrafficDataXL.
 Config.BigMap = "test"
 -- crime

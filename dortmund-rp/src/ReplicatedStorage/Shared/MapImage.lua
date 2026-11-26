@@ -5,10 +5,10 @@ local Config = require(script.Parent.Config)
 if Config.On(Config.BigMap) then
 	-- testing server: the bigger map (ED_MAP=xl python3 tools/render_map.py)
 	return {
-		image = "rbxassetid://135722998590235",
-		minX = -4027.6,
-		minZ = -2214.7,
-		span = 11132.8,
+		image = "rbxassetid://115359648537537",
+		minX = -4398.7,
+		minZ = -2846.4,
+		span = 12122.4,
 	}
 end
 return {

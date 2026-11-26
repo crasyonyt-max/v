@@ -5,7 +5,7 @@ local Locations = {}
 Locations.Spawn = { -567.0, 544.4 }
 
 Locations.Jobs = {
-	Police = { title = "Polizeiwache", marker = { 299.8, 7088.6 }, garage = { 299.8, 7088.6 }, angle = -97.8 },
+	Police = { title = "Polizeiwache", marker = { 299.8, 7088.6 }, garage = { 299.8, 7088.6 }, angle = -97.9 },
 	Fire = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = 70.8 },
 	Rettungsdienst = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = 70.8 },
 	Notarzt = { title = "Feuer- und Rettungswache 1", marker = { 554.2, -1062.9 }, garage = { 554.2, -1062.9 }, angle = -9.4 },
@@ -27,10 +27,13 @@ Locations.Fuel = {
 	{ 3927.9, 3982.4 },
 	{ 3633.0, 3437.2 },
 	{ -1437.1, -338.1 },
+	{ 6937.4, -2194.4 },
+	{ 3060.6, 7348.2 },
 }
 
 -- Enterable stores: centre, width (door side), depth, yaw (door faces local -Z), building top
 Locations.Stores = {
+	{ kind = "Kiosk", name = "Kiosk Neuer Graben", x = -4121.2, z = 4836.4, width = 45.2, depth = 52.0, yaw = 90.66, top = 58.2 },
 	{ kind = "Kiosk", name = "Kiosk", x = -334.6, z = 6437.8, width = 49.3, depth = 92.5, yaw = 92.19, top = 58.2 },
 	{ kind = "Baeckerei", name = "Bäckerei Vinckeplatz", x = -1050.5, z = 5925.4, width = 59.2, depth = 77.1, yaw = 30.34, top = 58.2 },
 	{ kind = "Kiosk", name = "Kiosk Kreuzstraße", x = -2256.0, z = 6055.4, width = 46.9, depth = 64.1, yaw = 94.26, top = 67.1 },
@@ -39,11 +42,17 @@ Locations.Stores = {
 	{ kind = "Baeckerei", name = "Bäckerei Saarlandstraße", x = 1419.7, z = 5157.6, width = 35.0, depth = 72.9, yaw = 9.65, top = 60.7 },
 	{ kind = "Baeckerei", name = "Bäckerei Chemnitzer Straße", x = 1203.1, z = 5817.5, width = 52.1, depth = 69.4, yaw = -81.31, top = 57.1 },
 	{ kind = "Rewo", name = "Rewo Landgrafenstraße", x = 474.8, z = 5948.4, width = 54.4, depth = 144.5, yaw = -82.28, top = 58.2 },
+	{ kind = "Kiosk", name = "Kiosk Landgrafenstraße", x = 871.4, z = 6027.7, width = 57.3, depth = 67.3, yaw = -81.79, top = 55.7 },
 	{ kind = "Rewo", name = "Rewo Saarlandstraße", x = 1451.3, z = 5151.7, width = 30.5, depth = 73.3, yaw = 10.51, top = 60.7 },
 	{ kind = "Baeckerei", name = "Bäckerei Märkische Straße", x = 5521.1, z = 6702.7, width = 35.6, depth = 79.0, yaw = -139.77, top = 67.1 },
+	{ kind = "Kiosk", name = "Kiosk Kurze Straße", x = -3453.5, z = 3456.6, width = 49.4, depth = 38.1, yaw = 179.67, top = 58.2 },
 	{ kind = "Baeckerei", name = "Bäckerei Rittershausstraße", x = -2186.9, z = 4135.5, width = 69.1, depth = 70.5, yaw = -8.54, top = 42.9 },
+	{ kind = "Baeckerei", name = "Bäckerei Beurhausstraße", x = -227.2, z = 3409.9, width = 34.0, depth = 54.6, yaw = -177.85, top = 58.2 },
+	{ kind = "Baeckerei", name = "Bäckerei Wißstraße", x = 1208.5, z = 2334.0, width = 42.9, depth = 50.0, yaw = 153.6, top = 71.4 },
+	{ kind = "Baeckerei", name = "Bäckerei Hohe Straße", x = 398.0, z = 4254.9, width = 56.9, depth = 51.1, yaw = 74.15, top = 60.7 },
 	{ kind = "Rewo", name = "Rewo Kaiserstraße", x = 4939.6, z = 1692.9, width = 60.6, depth = 44.0, yaw = 171.65, top = 58.2 },
 	{ kind = "Lindl", name = "Lindl Münsterstraße", x = 1398.0, z = -1549.2, width = 54.3, depth = 61.3, yaw = 104.09, top = 69.6 },
+	{ kind = "Lindl", name = "Lindl Märkische Straße", x = 7448.7, z = 8249.9, width = 143.0, depth = 46.5, yaw = -34.65, top = 57.1 },
 	{ kind = "Alda", name = "Alda Märkische Straße", x = 4244.4, z = 5065.8, width = 75.1, depth = 186.7, yaw = 136.75, top = 15.0 },
 }
 
@@ -62,6 +71,6 @@ Locations.Sites = {
 	ADMC = { x = 2427.5, z = 7019.3, yaw = 3.93, width = 207.1, depth = 157.1 },
 }
 
-Locations.Bounds = { -4027.6, -2214.7, 7105.2, 7260.1 }
+Locations.Bounds = { -4398.7, -2846.4, 7723.7, 8286.6 }
 
 return Locations

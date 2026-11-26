@@ -1772,7 +1772,8 @@ test("bigger map (XL): only on the testing server, same sites, more city", funct
 		return (b[3] - b[1]) * (b[4] - b[2])
 	end
 	local grow = area(xl.Bounds) / area(base.Bounds)
-	assert(grow > 1.05 and grow < 1.2, ("5-20 %% bigger, got %.1f %%"):format((grow - 1) * 100))
+	assert(grow > 1.45 and grow < 1.55, ("50 %% bigger, got %.1f %%"):format((grow - 1) * 100))
+	assert(xl.Bounds[4] > base.Bounds[4], "also further south")
 	for k, site in base.Sites do
 		local o = xl.Sites[k]
 		assert(o and o.x == site.x and o.z == site.z and o.yaw == site.yaw, k .. " stays where it is")

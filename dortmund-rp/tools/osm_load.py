@@ -1,4 +1,5 @@
 """Shared OSM loader: merges tiles, returns nodes/ways/relations with tags."""
+import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -6,7 +7,10 @@ DATA = Path(__file__).resolve().parent.parent / "data" / "osm"
 
 def load():
     nodes, ways, rels = {}, {}, {}
+    xl = os.environ.get("ED_MAP") == "xl"
     for f in sorted(DATA.glob("tile_*.osm")):
+        if not xl and int(f.stem[5:]) >= 20:
+            continue  # tiles 20+ only belong to the bigger map (osm_fetch.py --extra)
         for el in ET.parse(f).getroot():
             tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
             i = int(el.get("id", 0))

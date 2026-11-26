@@ -33,8 +33,8 @@ LOC_FILE = ROOT / "src" / "ReplicatedStorage" / "Shared" / ("Locations" + SUFFIX
 # Play area (lon/lat) and projection origin (Dortmund Hbf)
 WEST, EAST, SOUTH, NORTH = 7.446, 7.486, 51.4995, 51.5225
 if XL:
-    # about 17 % more area: west, east and north (no OSM data further south yet)
-    WEST, EAST, NORTH = 7.443, 7.488, 51.5235
+    # 50 % more area, on every side (tiles 20+ from osm_fetch.py --extra)
+    WEST, EAST, SOUTH, NORTH = 7.4415, 7.4905, 51.4969, 51.5251
 LAT0, LON0 = 51.51789, 7.45928
 M_PER_STUD = 0.28
 CHUNK = 1500  # studs per data chunk
@@ -341,7 +341,7 @@ def main():
     stores, store_ways = [], set()
     per_kind = {"Rewo": 3, "Lindl": 2, "Alda": 2, "Baeckerei": 3, "Kiosk": 2}
     if XL:  # more city, more markets
-        per_kind = {"Rewo": 5, "Lindl": 3, "Alda": 3, "Baeckerei": 5, "Kiosk": 4}
+        per_kind = {"Rewo": 7, "Lindl": 4, "Alda": 4, "Baeckerei": 8, "Kiosk": 7}
     for kind, (sx0, sz0), t in store_points:
         if per_kind.get(kind, 0) <= 0:
             continue
