@@ -340,29 +340,7 @@ function CrimeService.Start()
 		return Remotes.Ok()
 	end, { rate = 4 })
 
-	-- black market: a pistol for civilians (kept)
-	Remotes.Handle("Weapon.Buy", function(player)
-		local data = DataService.Get(player)
-		if not data then
-			return Remotes.Fail("error")
-		end
-		if not Interaction.IsNear(player, "Shop", 20, "UI", "Blackmarket") then
-			return Remotes.Fail("too_far")
-		end
-		if not CrimeService.IsCivil(player) then
-			return Remotes.Fail("crime_not_civil")
-		end
-		if data.weapon == "pistol" then
-			return Remotes.Fail("already_owned")
-		end
-		if not Economy.TrySpend(player, Config.BlackMarketPistol, "Schwarzmarkt") then
-			return Remotes.Fail("no_money")
-		end
-		data.weapon = "pistol"
-		player:SetAttribute("Weapon", "pistol")
-		GameLog.Add("crime", player, "bought a pistol")
-		return Remotes.Ok()
-	end, { rate = 3 })
+	-- black market purchases: WeaponService ("Weapon.Buy")
 end
 
 return CrimeService

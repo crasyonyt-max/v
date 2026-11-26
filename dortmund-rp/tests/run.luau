@@ -2007,6 +2007,7 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 		XPService = any,
 		DataService = any,
 		InteractionService = any,
+		State = any,
 		PrisonService = {
 			Cells = {},
 			Inside = function()
@@ -2058,6 +2059,39 @@ test("V1.0: real-body cars, crime rules, weapons", function()
 	assert(Crime.Wanted[robber].untilT - os.time() >= Config.CriminalSeconds - 1, "new crime -> 5:00 again")
 	-- weapons: police only hurt wanted people, everyone else commits a crime
 	eq(Weapon.MayHurt(cop, other), false, "police can't shoot innocent people")
+	-- weapons 2: buying rules, grenade damage, models with a muzzle
+	local W = requirePath(RS.Shared.Weapons)
+	local save = { weapons = {}, grenades = 0 }
+	eq(Weapon.CanBuy(save, "ak47", false), "bad_request", "AK-47 only where Guns2 is on")
+	eq(Weapon.CanBuy(save, "ak47", true), nil, "AK-47 on the testing server")
+	eq(Weapon.CanBuy(save, "service_pistol", true), "bad_request", "the police pistol is not for sale")
+	save.weapons.sniper = true
+	eq(Weapon.CanBuy(save, "sniper", true), "already_owned")
+	save.grenades = W.ById.grenade.maxCount
+	eq(Weapon.CanBuy(save, "grenade", true), "weapon_grenades_full", "grenade limit")
+	eq(Weapon.CanBuy({ weapon = "pistol" }, "pistol", true), "already_owned", "the V1.0 pistol counts")
+	local g = W.ById.grenade
+	eq(Weapon.BlastDamage(g, 0), g.damage, "full damage in the middle")
+	assert(Weapon.BlastDamage(g, g.radius / 2) < g.damage, "less further away")
+	eq(Weapon.BlastDamage(g, g.radius + 1), 0, "nothing outside the radius")
+	assert(
+		W.ById.ak47.auto and W.ById.sniper.scope and W.ById.sniper.damage > W.ById.ak47.damage,
+		"AK auto, sniper strong"
+	)
+	for _, id in { "pistol", "service_pistol", "ak47", "sniper", "grenade" } do
+		local m = W.BuildModel(id)
+		assert(m and m.PrimaryPart and m.PrimaryPart.Name == "Handle", id .. " model with a handle")
+		local muzzle = nil
+		for _, d in m:GetDescendants() do
+			if d:IsA("Attachment") and d.Name == "Muzzle" then
+				muzzle = d
+			end
+		end
+		if id ~= "grenade" then
+			assert(muzzle, id .. " has a muzzle")
+			assert(muzzle.Position.Z + muzzle.Parent.CFrame.Position.Z < -0.5, id .. ": muzzle in front of the hand")
+		end
+	end
 	eq(Weapon.MayHurt(cop, robber), true, "police can shoot criminals")
 	eq(Weapon.MayHurt(other, cop), true, "civilians can (it is a crime)")
 	eq(Weapon.MayHurt(other, other), false, "not yourself")

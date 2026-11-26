@@ -42,6 +42,10 @@ Config.ParliamentSite = { x = -610, z = 3905 } -- centre; the entrance stairs fa
 -- and traffic lights): "test" = only on the testing server.
 -- Data: CityDataXL / CityMetaXL / LocationsXL / BusStopDataXL / TrafficDataXL.
 Config.BigMap = "test"
+
+-- Weapons 2: real gun models in the hand (shots from the muzzle), AK-47, sniper rifle,
+-- grenades at the black market: "test" = only on the testing server.
+Config.Guns2 = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

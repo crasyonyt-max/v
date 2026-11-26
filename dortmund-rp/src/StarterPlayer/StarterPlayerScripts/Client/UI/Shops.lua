@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Weapons = require(ReplicatedStorage.Shared.Weapons)
 local Furniture = require(ReplicatedStorage.Shared.Furniture)
 local Houses = require(ReplicatedStorage.Shared.Houses)
 local Laptops = require(ReplicatedStorage.Shared.Laptops)
@@ -639,27 +640,55 @@ renderers.Swedea = function()
 	end)
 end
 
--- V1.0 black market: a pistol for civilians -------------------------------------------
+-- V1.0 black market: weapons for civilians (Config.Guns2: also AK-47, sniper, grenades)
 renderers.Blackmarket = function()
 	title.Text = "🕶 ???"
 	Make.Clear(tabBar)
 	Make.Label(Store.T("blackmarket_info"), 12, T.sub, T.font, { Parent = body })
 	local g = grid()
-	local owned = Store.Get().weapon == "pistol" or Players.LocalPlayer:GetAttribute("Weapon") == "pistol"
-	itemCard(
-		g,
-		1,
-		Color3.fromRGB(30, 30, 34),
-		Store.T("blackmarket_pistol"),
-		Locale.Euro(Config.BlackMarketPistol),
-		if owned then Store.T("owned") else Store.T("buy"),
-		if owned then T.panel else T.bad,
-		if owned
-			then nil
-			else function()
-				result(Net.Request("Weapon.Buy"))
+	local me = Players.LocalPlayer
+	local have = {}
+	for id in string.gmatch(tostring(me:GetAttribute("Weapons") or ""), "[^,]+") do
+		have[id] = true
+	end
+	if Store.Get().weapon == "pistol" then
+		have.pistol = true
+	end
+	local guns2 = Config.On(Config.Guns2)
+	local order = 0
+	for _, w in Weapons.List do
+		if w.price and Weapons.Enabled(w.id, guns2) then
+			order += 1
+			local name, done
+			if w.grenade then
+				local n = tonumber(me:GetAttribute("Grenades")) or 0
+				name = Store.T("blackmarket_grenade", n, w.maxCount or 1)
+				done = n >= (w.maxCount or 1)
+			else
+				name = Store.T("blackmarket_" .. w.id)
+				done = have[w.id] == true
 			end
-	)
+			local id = w.id
+			itemCard(
+				g,
+				order,
+				Color3.fromRGB(30, 30, 34),
+				name,
+				Locale.Euro(w.price :: number),
+				if done then Store.T("owned") else Store.T("buy"),
+				if done then T.panel else T.bad,
+				if done
+					then nil
+					else function()
+						local r = Net.Request("Weapon.Buy", id)
+						result(r)
+						if r.ok then
+							task.delay(0.3, Shops.Refresh)
+						end
+					end
+			)
+		end
+	end
 end
 
 function Shops.Refresh()

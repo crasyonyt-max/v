@@ -549,6 +549,10 @@ local S: { [string]: { de: string, en: string } } = {
 		en = "Psst … buying is no crime. Shooting is.",
 	},
 	blackmarket_pistol = { de = "🔫 Pistole", en = "🔫 Pistol" },
+	blackmarket_ak47 = { de = "🔫 AK-47 (Dauerfeuer)", en = "🔫 AK-47 (automatic)" },
+	blackmarket_sniper = { de = "🎯 Scharfschützengewehr (Zielfernrohr)", en = "🎯 Sniper rifle (scope)" },
+	blackmarket_grenade = { de = "💣 Granate (%d/%d)", en = "💣 Grenade (%d/%d)" },
+	weapon_grenades_full = { de = "Du kannst nicht mehr Granaten tragen.", en = "You can't carry more grenades." },
 	my_house = { de = "Mein Haus", en = "My house" },
 	house_makler_info = {
 		de = "Ein Haus pro Spieler. Es steht auf jedem Server im Wohngebiet am Park für dich bereit.",
