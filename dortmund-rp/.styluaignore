@@ -16,3 +16,5 @@ src/ServerStorage/CityMetaXL.lua
 src/ReplicatedStorage/Shared/LocationsXL.lua
 src/ReplicatedStorage/Shared/TrafficDataXL.lua
 src/ReplicatedStorage/Shared/BusStopDataXL.lua
+src/ReplicatedStorage/Shared/BusLineData.lua
+src/ReplicatedStorage/Shared/BusLineDataXL.lua

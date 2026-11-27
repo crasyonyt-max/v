@@ -368,6 +368,68 @@ renderers.Plates = function()
 	end
 end
 
+-- ADMC paint shop (Config.AdmcPaint): repaint your own cars here
+renderers.Paint = function()
+	title.Text = "🎨 " .. Store.T("paint_shop")
+	Make.Clear(tabBar)
+	local s = Store.Get()
+	local uids = {}
+	for uid, entry in s.vehicles or {} do
+		local v = Vehicles.ById[entry.id]
+		if v and (not v.car or v.repaintable) then
+			table.insert(uids, uid)
+		end
+	end
+	table.sort(uids)
+	if #uids == 0 then
+		Make.Label(Store.T("paint_no_cars"), 13, T.sub, T.font, { Parent = body })
+		return
+	end
+	for i, uid in uids do
+		local entry = s.vehicles[uid]
+		local v = Vehicles.ById[entry.id]
+		local card = Make.Card({ LayoutOrder = i, Parent = body })
+		local c = entry.color or { 200, 200, 200 }
+		Make.Label(
+			(if v and v.car then "🚗 " else "🏍️ ")
+				.. (if v then v.name else entry.id)
+				.. "  ·  "
+				.. Store.T("color"),
+			14,
+			T.text,
+			T.bold,
+			{ Parent = card }
+		)
+		New("Frame", {
+			Size = UDim2.new(1, 0, 0, 6),
+			BackgroundColor3 = Color3.fromRGB(c[1], c[2], c[3]),
+			Parent = card,
+		}, { Make.Corner(3) })
+		local swatches = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), Parent = card })
+		New("UIGridLayout", {
+			CellSize = UDim2.new(1 / 8, -4, 0, 28),
+			CellPadding = UDim2.fromOffset(4, 4),
+			Parent = swatches,
+		})
+		for index, rgb in Vehicles.Palette do
+			local sw = New("TextButton", {
+				Text = "",
+				BackgroundColor3 = Color3.fromRGB(rgb[1], rgb[2], rgb[3]),
+				Parent = swatches,
+			}, { Make.Corner(6), Make.Stroke(Color3.new(1, 1, 1), 1, 0.6) })
+			sw.Activated:Connect(function()
+				task.spawn(function()
+					local r = Net.Request("Vehicle.SetColor", uid, index)
+					result(r)
+					if r.ok then
+						task.delay(0.4, Shops.Refresh)
+					end
+				end)
+			end)
+		end
+	end
+end
+
 renderers.Store = function(kind: any)
 	local store = Items.Stores[kind]
 	if not store then

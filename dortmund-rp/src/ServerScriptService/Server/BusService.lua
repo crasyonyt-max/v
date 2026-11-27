@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService = game:GetService("TextService")
 
 local BusStopService = require(script.Parent.BusStopService)
+local BusLineData = require(ReplicatedStorage.Shared.BusLineData) :: any
 local Config = require(ReplicatedStorage.Shared.Config)
 local Economy = require(script.Parent.EconomyService)
 local GameLog = require(script.Parent.GameLog)
@@ -195,6 +196,23 @@ local function onBoard(model: Model, seat: Seat, passenger: Player, owner: Playe
 	GameLog.Add("money", passenger, ("bus ticket %d € -> %s"):format(FARE, driver.Name))
 end
 
+BusService.LINE_BONUS = 250 -- € for driving a line to its end
+
+-- where a line is joined: its stop nearest to `pos` (1-based position in the line)
+function BusService.StartIndex(line: any, pos: Vector3): number
+	local best, bestD = 1, math.huge
+	for k, idx in line.stops do
+		local st = BusStopService.Stops[idx]
+		if st then
+			local d = ((st.pos - pos) * Vector3.new(1, 0, 1)).Magnitude
+			if d < bestD then
+				best, bestD = k, d
+			end
+		end
+	end
+	return best
+end
+
 -- Bus driver on duty opens the doors at a stop: paid once per stop (not twice in a row,
 -- and the same stop again only after STOP_AGAIN seconds).
 local function serveStop(model: Model)
@@ -210,6 +228,32 @@ local function serveStop(model: Model)
 	if not stop or model:GetAttribute("LastStop") == stop.index then
 		return
 	end
+	-- bus lines: only the next stop of the chosen line counts (Leerfahrt / dark: none)
+	local bonus = 0
+	if Config.On(Config.BusLines) then
+		local line = BusLineData[tonumber(model:GetAttribute("BusRoute")) or 0]
+		local k = tonumber(model:GetAttribute("BusNext")) or 0
+		if not line or not line.stops[k] then
+			return
+		end
+		if line.stops[k] ~= stop.index then
+			local want = BusStopService.Stops[line.stops[k]]
+			Remotes.Push(driver, "Notify", { key = "bus_wrong_stop", args = { want and want.name or "?" } })
+			return
+		end
+		local nextK = k + 1
+		if line.stops[nextK] then
+			model:SetAttribute("BusNext", nextK)
+		else
+			-- end of the line: the display goes to Leerfahrt
+			model:SetAttribute("BusNext", nil)
+			model:SetAttribute("BusRoute", nil)
+			model:SetAttribute("BusLine", "")
+			model:SetAttribute("BusDest", "Leerfahrt")
+			bonus = BusService.LINE_BONUS
+			Remotes.Push(driver, "Notify", { key = "bus_line_done", args = { line.ref, bonus } })
+		end
+	end
 	local mine = served[driver] or {}
 	served[driver] = mine
 	local now = os.clock()
@@ -219,7 +263,7 @@ local function serveStop(model: Model)
 	mine[stop.index] = now
 	model:SetAttribute("LastStop", stop.index)
 	model:SetAttribute("StopsServed", (tonumber(model:GetAttribute("StopsServed")) or 0) + 1)
-	local paid = Economy.Earn(driver, STOP_PAY, "Haltestelle " .. stop.name)
+	local paid = Economy.Earn(driver, STOP_PAY + bonus, "Haltestelle " .. stop.name)
 	pcall(XPService.Earn, driver, "Bus", STOP_XP, "Haltestelle")
 	Remotes.Push(driver, "Notify", { key = "bus_stop_served", args = { stop.name, paid } })
 end
@@ -584,6 +628,39 @@ function BusService.Start()
 		model:SetAttribute("BusLine", cleanLine:upper())
 		model:SetAttribute("BusDest", cleanDest)
 		GameLog.Add("vehicle", player, ("bus line %s -> %s"):format(cleanLine, cleanDest))
+		return Remotes.Ok()
+	end, { rate = 4, needsData = false })
+
+	-- driver (bus lines): a real line, "empty" (Leerfahrt) or "off" (dark display)
+	Remotes.Handle("Bus.Route", function(player, mode: any, id: any)
+		if not Config.On(Config.BusLines) then
+			return Remotes.Fail("bad_request")
+		end
+		local model, isDriver = busOf(player)
+		if not model or not isDriver then
+			return Remotes.Fail("not_driving")
+		end
+		if mode == "line" then
+			local i = Remotes.Check.Int(id, 1, #BusLineData)
+			local line = i and BusLineData[i]
+			if not line then
+				return Remotes.Fail("bad_request")
+			end
+			local chassis = model.PrimaryPart
+			model:SetAttribute("BusRoute", i)
+			model:SetAttribute("BusNext", if chassis then BusService.StartIndex(line, chassis.Position) else 1)
+			model:SetAttribute("BusLine", line.ref)
+			model:SetAttribute("BusDest", line.to)
+			model:SetAttribute("LastStop", nil)
+			GameLog.Add("vehicle", player, ("bus line %s -> %s"):format(line.ref, line.to))
+		elseif mode == "empty" or mode == "off" then
+			model:SetAttribute("BusRoute", nil)
+			model:SetAttribute("BusNext", nil)
+			model:SetAttribute("BusLine", "")
+			model:SetAttribute("BusDest", if mode == "empty" then "Leerfahrt" else "")
+		else
+			return Remotes.Fail("bad_request")
+		end
 		return Remotes.Ok()
 	end, { rate = 4, needsData = false })
 

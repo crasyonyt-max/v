@@ -2,13 +2,18 @@
 -- Bus HUD. Driver: a panel above the dashboard (line + destination, doors,
 -- stop request, tickets sold) and the line pop-up; keys J / K = door 1 / 2.
 -- Passenger: line + destination and a big 🛑 HALT button (key H).
+-- Config.BusLines (testing server first): 🚏 opens a list of the real lines, "Leerfahrt"
+-- and "display off"; on a line, a checkpoint (like the Maps app) shows the next stop.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local BusLineData = require(ReplicatedStorage.Shared.BusLineData) :: any
 local BusStopData = require(ReplicatedStorage.Shared.BusStopData)
+local Config = require(ReplicatedStorage.Shared.Config)
 local Make = require(script.Parent.Parent.UI.Make)
+local Waypoint = require(script.Parent.Parent.UI.Waypoint)
 local Notify = require(script.Parent.Parent.UI.Notify)
 local Net = require(script.Parent.Parent.Net)
 local Store = require(script.Parent.Parent.Store)
@@ -105,6 +110,71 @@ Make.Button(Store.T("cancel"), T.panel, function()
 	popup.Visible = false
 end, { LayoutOrder = 5, Parent = popup })
 
+-- driver (bus lines): choose a line / Leerfahrt / display off
+local linesOn = Config.On(Config.BusLines)
+local chooser = New("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.45),
+	Size = UDim2.fromOffset(340, 420),
+	BackgroundColor3 = T.bg,
+	Visible = false,
+	Parent = gui,
+}, { Make.Corner(14), Make.Stroke(Color3.fromRGB(11, 110, 138), 2) })
+Make.Label(Store.T("bus_line_title"), 17, T.text, T.black, {
+	Position = UDim2.fromOffset(14, 10),
+	Size = UDim2.new(1, -28, 0, 24),
+	Parent = chooser,
+})
+local chooserList = Make.Scroll({
+	Position = UDim2.fromOffset(10, 40),
+	Size = UDim2.new(1, -20, 1, -90),
+	Parent = chooser,
+})
+Make.Button(Store.T("cancel"), T.panel, function()
+	chooser.Visible = false
+end, {
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -10),
+	Size = UDim2.new(1, -20, 0, 36),
+	Parent = chooser,
+})
+local function choose(mode: string, id: number?)
+	chooser.Visible = false
+	task.spawn(function()
+		local r = Net.Request("Bus.Route", mode, id)
+		if not r.ok then
+			Notify.Error(r.err)
+		end
+	end)
+end
+do
+	local order = 0
+	local function add(text: string, color: Color3, fn: () -> ())
+		order += 1
+		Make.Button(text, color, fn, {
+			LayoutOrder = order,
+			Size = UDim2.new(1, -6, 0, 38),
+			TextSize = 14,
+			Parent = chooserList,
+		})
+	end
+	add(Store.T("bus_route_off"), Color3.fromRGB(20, 20, 22), function()
+		choose("off")
+	end)
+	add(Store.T("bus_route_empty"), Color3.fromRGB(90, 90, 96), function()
+		choose("empty")
+	end)
+	for i, line in BusLineData do
+		add(
+			("%s → %s  ·  %s"):format(line.ref, line.to, Store.T("bus_route_stops", #line.stops)),
+			if tostring(line.ref):sub(1, 1) == "N" then Color3.fromRGB(30, 40, 90) else Color3.fromRGB(11, 110, 138),
+			function()
+				choose("line", i)
+			end
+		)
+	end
+end
+
 -- state ------------------------------------------------------------------------------
 local bus: Model? = nil
 local isDriver = false
@@ -149,6 +219,15 @@ local function refresh()
 	end
 end
 
+-- the next stop of the line (BusStopData entry) or nil
+local checkpoint: number? = nil
+local function nextStop(m: Model): ({ any }?, number?)
+	local line = BusLineData[tonumber(m:GetAttribute("BusRoute")) or 0]
+	local k = tonumber(m:GetAttribute("BusNext")) or 0
+	local idx = line and line.stops[k]
+	return (if idx then BusStopData[idx] :: any else nil), idx
+end
+
 local function leave()
 	for _, c in conns do
 		c:Disconnect()
@@ -157,7 +236,12 @@ local function leave()
 	bus = nil
 	gui.Enabled = false
 	popup.Visible = false
+	chooser.Visible = false
 	stopButton.Visible = false
+	if checkpoint then
+		checkpoint = nil
+		Waypoint.Clear()
+	end
 end
 
 local function enter(model: Model, driver: boolean)
@@ -181,18 +265,45 @@ local function enter(model: Model, driver: boolean)
 		end)
 	)
 	refresh()
-	-- nearest stop (map data), updated twice a second
+	-- next stop: on a line the checkpoint, otherwise the nearest stop (twice a second)
 	task.spawn(function()
 		while bus == model and model.Parent do
 			local pos = model:GetPivot().Position
-			local best, bestD = nil, 700
-			for _, st in BusStopData do
+			local st, idx = nil, nil
+			if linesOn then
+				st, idx = nextStop(model)
+			end
+			if st then
 				local d = math.sqrt((st[2] - pos.X) ^ 2 + (st[3] - pos.Z) ^ 2)
-				if d < bestD then
-					best, bestD = st, d
+				stopLabel.Text = Store.T("bus_next_checkpoint", st[1], math.floor(d * 0.28))
+				if isDriver and checkpoint ~= idx then
+					checkpoint = idx
+					Waypoint.Set(Vector3.new(st[2], pos.Y, st[3]), "🚏 " .. st[1], Color3.fromRGB(0, 130, 70))
+				end
+			else
+				if checkpoint then
+					checkpoint = nil
+					Waypoint.Clear()
+				end
+				if
+					linesOn
+					and isDriver
+					and tostring(model:GetAttribute("BusDest") or "") == ""
+					and model:GetAttribute("BusRoute") == nil
+					and not model:GetAttribute("FreeRide")
+				then
+					stopLabel.Text = Store.T("bus_no_line")
+				else
+					local best, bestD = nil, 700
+					for _, s2 in BusStopData do
+						local d = math.sqrt((s2[2] - pos.X) ^ 2 + (s2[3] - pos.Z) ^ 2)
+						if d < bestD then
+							best, bestD = s2, d
+						end
+					end
+					stopLabel.Text = if best then Store.T("bus_next_stop", best[1], math.floor(bestD * 0.28)) else ""
 				end
 			end
-			stopLabel.Text = if best then Store.T("bus_next_stop", best[1], math.floor(bestD * 0.28)) else ""
 			task.wait(0.5)
 		end
 	end)
@@ -224,6 +335,10 @@ end
 
 function BusController.OpenLine()
 	if not bus or not isDriver then
+		return
+	end
+	if linesOn then
+		chooser.Visible = not chooser.Visible
 		return
 	end
 	lineBox.Text = tostring(bus:GetAttribute("BusLine") or "")

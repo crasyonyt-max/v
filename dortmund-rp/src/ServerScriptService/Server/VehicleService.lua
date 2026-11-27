@@ -1073,6 +1073,9 @@ function VehicleService.Start()
 		if def and def.car and not def.repaintable then
 			return Remotes.Fail("livery_locked")
 		end
+		if Config.On(Config.AdmcPaint) and not Interaction.IsNear(player, "Shop", 25, "UI", "Paint") then
+			return Remotes.Fail("paint_only_admc")
+		end
 		if not Economy.TrySpend(player, PAINT_FEE, "Lackierung") then
 			return Remotes.Fail("no_money")
 		end

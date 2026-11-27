@@ -1787,6 +1787,27 @@ test("bigger map (XL): only on the testing server, same sites, more city", funct
 	assert(img.image ~= "rbxassetid://95046841102055", "own map image")
 end)
 
+test("bus lines: real routes over our stops, for both maps", function()
+	for _, suffix in { "", "XL" } do
+		local stops = requirePath(pathProxy({ "ReplicatedStorage", "Shared", "BusStopData" .. suffix }))
+		local lines = requirePath(pathProxy({ "ReplicatedStorage", "Shared", "BusLineData" .. suffix }))
+		assert(#lines >= 20, "lots of lines " .. suffix)
+		for _, line in lines do
+			assert(line.ref ~= "" and line.to ~= "", "line has a number and a destination")
+			assert(#line.stops >= 3, line.ref .. ": at least 3 stops")
+			for k, idx in line.stops do
+				assert(stops[idx], ("%s: stop %d exists"):format(line.ref, idx))
+				assert(k == 1 or line.stops[k - 1] ~= idx, line.ref .. ": no stop twice in a row")
+			end
+		end
+	end
+	local lines = requirePath(RS.Shared.BusLineData)
+	local Config = requirePath(RS.Shared.Config)
+	eq(Config.On(Config.BusLines), false, "bus lines only on the testing server")
+	eq(Config.On(Config.AdmcPaint), false, "ADMC paint shop only on the testing server")
+	local _ = lines
+end)
+
 test("map edge: dunes rise outward, an invisible wall closes the map", function()
 	local Edge = requirePath(Server.MapEdge)
 	local city = { -4398.7, -2846.4, 7723.7, 8286.6 }

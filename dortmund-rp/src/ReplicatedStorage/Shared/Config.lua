@@ -50,6 +50,14 @@ Config.Guns2 = "test"
 -- The end of the map: sand dunes instead of the bare baseplate, and an invisible wall
 -- behind them (nobody gets out or looks behind the map): "test" = testing server only.
 Config.Dunes = "test"
+
+-- Bus lines: the driver picks a real line (OSM routes, Shared/BusLineData), "Leerfahrt"
+-- or a dark display; on a line, checkpoints lead from stop to stop (like the Maps app)
+-- and only the next stop of the line pays. "test" = testing server only.
+Config.BusLines = "test"
+-- Repainting cars only at the ADMC paint shop (next to the plate service), not from
+-- the Garage app: "test" = testing server only.
+Config.AdmcPaint = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

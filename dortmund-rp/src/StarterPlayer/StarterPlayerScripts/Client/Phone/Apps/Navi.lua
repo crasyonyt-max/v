@@ -101,6 +101,13 @@ Phone.Register({
 				pos = spot.Position,
 				color = Color3.fromRGB(250, 205, 0),
 			})
+			if Config.On(Config.AdmcPaint) then
+				table.insert(shops, {
+					title = "🎨 Lackiererei (ADMC)",
+					pos = (spot * CFrame.new(18, 0, 0)).Position,
+					color = Color3.fromRGB(250, 205, 0),
+				})
+			end
 		end
 		table.insert(shops, {
 			title = "🚗 Autohaus",

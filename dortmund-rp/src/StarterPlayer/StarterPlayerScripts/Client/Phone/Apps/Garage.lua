@@ -3,6 +3,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local Vehicles = require(ReplicatedStorage.Shared.Vehicles)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
 local Notify = require(script.Parent.Parent.Parent.UI.Notify)
@@ -100,6 +101,10 @@ Phone.Register({
 
 				if expanded == uid then
 					Make.Label("🔢 " .. Store.T("plate_change_where"), 12, T.sub, T.font, { Parent = card })
+					if Config.On(Config.AdmcPaint) then
+						Make.Label(Store.T("paint_where"), 12, T.sub, T.font, { Parent = card })
+						continue
+					end
 					Make.Label(Store.T("color"), 12, T.sub, T.bold, { Parent = card })
 					local swatches =
 						New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), Parent = card })
