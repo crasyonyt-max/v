@@ -59,6 +59,8 @@ end
 
 function MapBuilder.Build()
 	CityBuilder.Build(Locations.Bounds, (Locations :: any).Annex)
+	-- the end of the map: dunes + an invisible wall instead of the bare baseplate
+	require(script.Parent.MapEdge).Build(Locations.Bounds, (Locations :: any).Annex)
 
 	map = Instance.new("Folder")
 	map.Name = "Map"

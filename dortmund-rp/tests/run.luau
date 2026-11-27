@@ -1787,6 +1787,45 @@ test("bigger map (XL): only on the testing server, same sites, more city", funct
 	assert(img.image ~= "rbxassetid://95046841102055", "own map image")
 end)
 
+test("map edge: dunes rise outward, an invisible wall closes the map", function()
+	local Edge = requirePath(Server.MapEdge)
+	local city = { -4398.7, -2846.4, 7723.7, 8286.6 }
+	local port = { -7243.8, -5649.4, -2741.2, -2412.1 }
+	local rects = { city, port }
+	eq(Edge.Outside(rects, 0, 0), 0, "inside the city")
+	eq(Edge.Outside(rects, -5000, -3000), 0, "inside the port annex")
+	assert(math.abs(Edge.Outside(rects, 7823.7, 0) - 100) < 1e-6, "100 studs east of the city")
+	assert(Edge.DuneHeight(30, 0, 0) < 8, "low at the city edge")
+	assert(Edge.DuneHeight(440, 0, 0) > 50, "high further out (hides the rest)")
+	local segs = Edge.WallSegments(rects)
+	-- the wall outline is closed: every corner point is used by exactly two segment ends
+	local ends: { [string]: number } = {}
+	local total = 0
+	for _, sg in segs do
+		for _, p in sg do
+			local k = ("%d,%d"):format(math.floor(p.X + 0.5), math.floor(p.Y + 0.5))
+			ends[k] = (ends[k] or 0) + 1
+		end
+		total += (sg[2] - sg[1]).Magnitude
+	end
+	for k, n in ends do
+		assert(n % 2 == 0, "open wall end at " .. k)
+	end
+	assert(total > 2 * ((city[3] - city[1]) + (city[4] - city[2])), "the wall goes around everything")
+	-- nothing of the city or the port is outside the wall's reach
+	eq(Edge.Build(city, { port }), nil, "only where switched on")
+	local Config = requirePath(RS.Shared.Config)
+	Config.Dunes = true
+	local folder = Edge.Build(city, { port })
+	Config.Dunes = "test"
+	assert(folder and (folder:GetAttribute("Walls") or 0) > 0, "walls built")
+	for _, w in folder:GetChildren() do
+		eq(w.Transparency, 1, "invisible")
+		assert(w.CanCollide, "solid")
+	end
+	folder:Destroy()
+end)
+
 test("testing server: saves and messages stay in the server", function()
 	local real = { p1 = { bank = 100 } }
 	local wrote = false

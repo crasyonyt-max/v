@@ -46,6 +46,10 @@ Config.BigMap = "test"
 -- Weapons 2: real gun models in the hand (shots from the muzzle), AK-47, sniper rifle,
 -- grenades at the black market: "test" = only on the testing server.
 Config.Guns2 = "test"
+
+-- The end of the map: sand dunes instead of the bare baseplate, and an invisible wall
+-- behind them (nobody gets out or looks behind the map): "test" = testing server only.
+Config.Dunes = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120
