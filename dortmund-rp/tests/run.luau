@@ -1812,6 +1812,23 @@ test("map edge: dunes rise outward, an invisible wall closes the map", function(
 		assert(n % 2 == 0, "open wall end at " .. k)
 	end
 	assert(total > 2 * ((city[3] - city[1]) + (city[4] - city[2])), "the wall goes around everything")
+	-- the sand never covers the city or the port (roads, grass, buildings stay free)
+	local plan = Edge.Plan(rects)
+	assert(#plan.floor > 100 and #plan.balls > 100, "dunes planned")
+	for _, f in plan.floor do
+		local h = f[3] / 2
+		for _, r in rects do
+			local overlap = f[1] + h > r[1] + 0.01
+				and f[1] - h < r[3] - 0.01
+				and f[2] + h > r[2] + 0.01
+				and f[2] - h < r[4] - 0.01
+			assert(not overlap, ("sand square at %d, %d reaches into the map"):format(f[1], f[2]))
+		end
+	end
+	for _, b in plan.balls do
+		local foot = math.sqrt(math.max(0, 2 * b[4] * b[3] - b[3] * b[3]))
+		assert(foot < Edge.Outside(rects, b[1], b[2]), "a dune's foot reaches into the map")
+	end
 	-- nothing of the city or the port is outside the wall's reach
 	eq(Edge.Build(city, { port }), nil, "only where switched on")
 	local Config = requirePath(RS.Shared.Config)

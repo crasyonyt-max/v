@@ -101,6 +101,63 @@ function MapEdge.WallSegments(rects: { Rect }): { { Vector2 } }
 	return segs
 end
 
+-- What the dunes are made of (pure, so it can be tested):
+--   floor = { {x, z, size} } sand squares, never reaching into the playable area
+--   balls = { {x, z, top, radius} } dune tops, their foot never reaching it either
+function MapEdge.Plan(rects: { Rect }): { floor: { { number } }, balls: { { number } } }
+	local C, M = MapEdge.CELL, MapEdge.MARGIN
+	local floor, balls = {}, {}
+	local seen: { [string]: boolean } = {}
+	local function outsideSquare(cx: number, cz: number, size: number): boolean
+		local h = size / 2
+		-- a square is clear of every rect when it lies fully on one side of it
+		for _, r in rects do
+			if cx + h > r[1] and cx - h < r[3] and cz + h > r[2] and cz - h < r[4] then
+				return false
+			end
+		end
+		return true
+	end
+	for _, r in rects do
+		local x = r[1] - M
+		while x < r[3] + M do
+			local z = r[2] - M
+			while z < r[4] + M do
+				local cx, cz = x + C / 2, z + C / 2
+				local key = ("%d,%d"):format(math.floor(cx / C), math.floor(cz / C))
+				local d = MapEdge.Outside(rects, cx, cz)
+				if not seen[key] and d > 0 and d <= M then
+					seen[key] = true
+					if outsideSquare(cx, cz, C + 2) then
+						table.insert(floor, { cx, cz, C + 2 })
+					else
+						-- next to the city: small squares, only those fully outside it
+						local q = C / 4
+						for i = 0, 3 do
+							for j = 0, 3 do
+								local sx, sz = x + (i + 0.5) * q, z + (j + 0.5) * q
+								if outsideSquare(sx, sz, q) then
+									table.insert(floor, { sx, sz, q })
+								end
+							end
+						end
+					end
+					local h = MapEdge.DuneHeight(d, cx, cz)
+					local rad = C * 0.75 + h * 0.6
+					-- the dune's foot (its circle at ground level) stays out of the city
+					local foot = math.sqrt(math.max(0, 2 * rad * h - h * h))
+					if foot < d - 4 then
+						table.insert(balls, { cx, cz, h, rad })
+					end
+				end
+				z += C
+			end
+			x += C
+		end
+	end
+	return { floor = floor, balls = balls }
+end
+
 function MapEdge.Build(bounds: Rect, extra: { Rect }?): Folder?
 	if not Config.On(Config.Dunes) then
 		return nil
@@ -140,40 +197,43 @@ function MapEdge.Build(bounds: Rect, extra: { Rect }?): Folder?
 	end
 	folder:SetAttribute("Walls", walls)
 
+	-- city pieces that reach far out (long rail lines, canals, roads past the edge):
+	-- whatever lies beyond the dune crest goes, the rest just runs into the sand
+	local city = Workspace:FindFirstChild("City")
+	local cut = 0
+	for _, p in (if city then city:GetDescendants() else {}) do
+		if p:IsA("BasePart") and p.Parent and p.Parent.Name ~= "Ground" then
+			local pos = p.CFrame.Position
+			if MapEdge.Outside(rects, pos.X, pos.Z) > MapEdge.MARGIN - 60 then
+				p:Destroy()
+				cut += 1
+			end
+		end
+	end
+	folder:SetAttribute("CutOff", cut)
+
 	-- the dunes (terrain): a sand floor on the whole belt and round dune tops on it
 	local terrain = Workspace:FindFirstChildOfClass("Terrain")
 	if terrain then
 		local ok, err = pcall(function()
-			local C, M = MapEdge.CELL, MapEdge.MARGIN
+			local plan = MapEdge.Plan(rects)
 			local n = 0
-			for _, r in rects do
-				local x = r[1] - M
-				while x < r[3] + M do
-					local z = r[2] - M
-					while z < r[4] + M do
-						local cx, cz = x + C / 2, z + C / 2
-						local d = MapEdge.Outside(rects, cx, cz)
-						if d > 0 and d <= M then
-							-- (top a little above the baseplate, so the sand covers it)
-							terrain:FillBlock(
-								CFrame.new(cx, -1.2, cz),
-								Vector3.new(C + 2, 3, C + 2),
-								Enum.Material.Sand
-							)
-							local h = MapEdge.DuneHeight(d, cx, cz)
-							local rad = C * 0.75 + h * 0.6
-							terrain:FillBall(Vector3.new(cx, h - rad, cz), rad, Enum.Material.Sand)
-							n += 1
-							if n % 300 == 0 then
-								task.wait()
-							end
-						end
-						z += C
-					end
-					x += C
+			for _, f in plan.floor do
+				-- (top a little above the baseplate, so the sand covers it)
+				terrain:FillBlock(CFrame.new(f[1], -1.2, f[2]), Vector3.new(f[3], 3, f[3]), Enum.Material.Sand)
+				n += 1
+				if n % 400 == 0 then
+					task.wait()
 				end
 			end
-			folder:SetAttribute("Dunes", n)
+			for _, b in plan.balls do
+				terrain:FillBall(Vector3.new(b[1], b[3] - b[4], b[2]), b[4], Enum.Material.Sand)
+				n += 1
+				if n % 400 == 0 then
+					task.wait()
+				end
+			end
+			folder:SetAttribute("Dunes", #plan.balls)
 		end)
 		if not ok then
 			warn("[MapEdge] dunes failed: " .. tostring(err))
