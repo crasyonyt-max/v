@@ -58,6 +58,13 @@ Config.BusLines = "test"
 -- Repainting cars only at the ADMC paint shop (next to the plate service), not from
 -- the Garage app: "test" = testing server only.
 Config.AdmcPaint = "test"
+
+-- Update 2 ("test" = testing server only): fires, patients, breakdowns and towing, taxi
+-- job, police traffic stops and fines, daily reward + tasks, job ranks, tuning,
+-- contacts + voice calls, night bonus + night buses, snow and slippery roads,
+-- NPC traffic and pedestrians.
+Config.Update2 = "test"
+Config.TaxiNumber = "22456" -- "TAXI" on a phone keypad: call a taxi
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

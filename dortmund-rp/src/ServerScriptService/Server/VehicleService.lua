@@ -31,6 +31,14 @@ local BusService = require(script.Parent.BusService)
 
 local VehicleService = {}
 
+-- Update 2: daily tasks (lazy: CareerService needs this module too)
+local function progress(player: Player, key: string, n: number?)
+	local ok, Career = pcall(require, script.Parent.CareerService)
+	if ok then
+		Career.Progress(player, key, n)
+	end
+end
+
 local PLATE_FEE = 4000 -- changing a plate (the first one is free)
 local PAINT_FEE = 500
 local SELL_BACK = 0.5 -- the dealer buys cars back at 50 %
@@ -1156,6 +1164,16 @@ function VehicleService.Start()
 						-- a full tank lasts roughly 25 minutes at average speed
 						fuel = math.max(0, fuel - (0.05 + 0.08 * math.min(ratio, 1.5)))
 						model:SetAttribute("Fuel", fuel)
+						-- daily task "drive N km": metres per second from the owner (1 stud = 0.28 m)
+						local owner = Players:GetPlayerByUserId(tonumber(model:GetAttribute("OwnerId")) or 0)
+						if owner then
+							local km = (tonumber(owner:GetAttribute("DriveMeters")) or 0) + speed * 0.28
+							if km >= 1000 then
+								km -= 1000
+								progress(owner, "drive")
+							end
+							owner:SetAttribute("DriveMeters", km)
+						end
 					end
 				end
 			end

@@ -368,6 +368,83 @@ renderers.Plates = function()
 	end
 end
 
+-- Update 2: tuning at the Autohaus
+renderers.Tuning = function()
+	title.Text = "🔧 " .. Store.T("tuning_shop")
+	Make.Clear(tabBar)
+	local s = Store.Get()
+	local uids = {}
+	for uid, entry in s.vehicles or {} do
+		local v = Vehicles.ById[entry.id]
+		if v and v.car then
+			table.insert(uids, uid)
+		end
+	end
+	table.sort(uids)
+	if #uids == 0 then
+		Make.Label(Store.T("paint_no_cars"), 13, T.sub, T.font, { Parent = body })
+		return
+	end
+	local function buy(uid: string, kind: string, value: number?)
+		task.spawn(function()
+			local r = Net.Request("Tuning.Buy", uid, kind, value)
+			result(r)
+			if r.ok then
+				task.delay(0.4, Shops.Refresh)
+			end
+		end)
+	end
+	for i, uid in uids do
+		local entry = s.vehicles[uid]
+		local v = Vehicles.ById[entry.id]
+		local tune = entry.tune or {}
+		local card = Make.Card({ LayoutOrder = i, Parent = body })
+		Make.Label("🚗 " .. (if v then v.name else entry.id), 14, T.text, T.bold, { Parent = card })
+		local stage = tune.engine or 0
+		Make.Button(
+			if stage >= 2
+				then "🏁 " .. Store.T("tuning_engine_max")
+				elseif stage == 1 then "🏁 " .. Store.T("tuning_engine", 2, "20.000 €")
+				else "🏁 " .. Store.T("tuning_engine", 1, "8.000 €"),
+			if stage >= 2 then T.panel else Color3.fromRGB(200, 40, 200),
+			function()
+				if stage < 2 then
+					buy(uid, if stage == 1 then "engine2" else "engine1")
+				end
+			end,
+			{ Size = UDim2.new(1, 0, 0, 30), TextSize = 12, Parent = card }
+		)
+		Make.Button(
+			if tune.tint then "🕶 " .. Store.T("tuning_tint_have") else "🕶 " .. Store.T("tuning_tint"),
+			if tune.tint then T.panel else Color3.fromRGB(60, 60, 70),
+			function()
+				if not tune.tint then
+					buy(uid, "tint")
+				end
+			end,
+			{ Size = UDim2.new(1, 0, 0, 30), TextSize = 12, Parent = card }
+		)
+		for _, kind in { "rims", "neon" } do
+			Make.Label(Store.T("tuning_" .. kind), 12, T.sub, T.bold, { Parent = card })
+			local sw = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), Parent = card })
+			New(
+				"UIGridLayout",
+				{ CellSize = UDim2.new(1 / 8, -4, 0, 28), CellPadding = UDim2.fromOffset(4, 4), Parent = sw }
+			)
+			for index, rgb in Vehicles.Palette do
+				local b = New("TextButton", {
+					Text = if tune[kind] == index then "✓" else "",
+					BackgroundColor3 = Color3.fromRGB(rgb[1], rgb[2], rgb[3]),
+					Parent = sw,
+				}, { Make.Corner(6), Make.Stroke(Color3.new(1, 1, 1), 1, 0.6) })
+				b.Activated:Connect(function()
+					buy(uid, kind, index)
+				end)
+			end
+		end
+	end
+end
+
 -- ADMC paint shop (Config.AdmcPaint): repaint your own cars here
 renderers.Paint = function()
 	title.Text = "🎨 " .. Store.T("paint_shop")

@@ -331,6 +331,21 @@ for _, row in ipairs(CIVILIAN_STARTERS) do
 	end
 end
 
+-- Update 2 (testing server first): the taxi fleet
+if okConfig and SharedConfig.On(SharedConfig.Update2) and not V10 then
+	table.insert(VehicleConfig.Jobs, "Taxi")
+	table.insert(JOB_FLEETS, {
+		Job = "Taxi",
+		Preset = "TAXI",
+		Vehicles = {
+			{ "Skora Octava Taxi", 0, IsStarter = true, Model = "Skora Octava" },
+			{ "Mercator E-Klasse Taxi", 1500, Model = "Mercator E-Klasse" },
+			{ "Tesra Model Tri Taxi", 3000, Model = "Tesra Model Tri" },
+			{ "Volkswerk Transporta Großraumtaxi", 5000, Model = "Volkswerk Transporta" },
+		},
+	})
+end
+
 for _, fleet in ipairs(if V10 then {} else JOB_FLEETS) do
 	for _, row in ipairs(fleet.Vehicles) do
 		local overrides = {}

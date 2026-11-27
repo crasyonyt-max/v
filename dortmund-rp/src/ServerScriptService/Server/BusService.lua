@@ -22,6 +22,14 @@ local XPService = require(script.Parent.XPService)
 
 local BusService = {}
 
+-- Update 2: daily tasks (lazy: CareerService needs this module too)
+local function progress(player: Player, key: string, n: number?)
+	local ok, Career = pcall(require, script.Parent.CareerService)
+	if ok then
+		Career.Progress(player, key, n)
+	end
+end
+
 local FARE = Config.BusFare or 5
 local TICKET_XP = 10
 local STOP_PAY = 40 -- € for the driver per stop served (doors opened at a stop)
@@ -263,6 +271,7 @@ local function serveStop(model: Model)
 	mine[stop.index] = now
 	model:SetAttribute("LastStop", stop.index)
 	model:SetAttribute("StopsServed", (tonumber(model:GetAttribute("StopsServed")) or 0) + 1)
+	progress(driver, "bus_stop")
 	local paid = Economy.Earn(driver, STOP_PAY + bonus, "Haltestelle " .. stop.name)
 	pcall(XPService.Earn, driver, "Bus", STOP_XP, "Haltestelle")
 	Remotes.Push(driver, "Notify", { key = "bus_stop_served", args = { stop.name, paid } })
@@ -645,6 +654,11 @@ function BusService.Start()
 			local line = i and BusLineData[i]
 			if not line then
 				return Remotes.Fail("bad_request")
+			end
+			-- Update 2: night lines (NE…) only run at night (22:00 - 6:00)
+			local clock = game:GetService("Lighting").ClockTime
+			if Config.On(Config.Update2) and string.sub(line.ref, 1, 1) == "N" and not (clock >= 22 or clock < 6) then
+				return Remotes.Fail("bus_night_only")
 			end
 			local chassis = model.PrimaryPart
 			model:SetAttribute("BusRoute", i)

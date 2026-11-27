@@ -166,7 +166,8 @@ do
 	end)
 	for i, line in BusLineData do
 		add(
-			("%s → %s  ·  %s"):format(line.ref, line.to, Store.T("bus_route_stops", #line.stops)),
+			(if tostring(line.ref):sub(1, 1) == "N" then "🌙 " else "")
+				.. ("%s → %s  ·  %s"):format(line.ref, line.to, Store.T("bus_route_stops", #line.stops)),
 			if tostring(line.ref):sub(1, 1) == "N" then Color3.fromRGB(30, 40, 90) else Color3.fromRGB(11, 110, 138),
 			function()
 				choose("line", i)

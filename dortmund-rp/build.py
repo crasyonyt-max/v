@@ -27,7 +27,7 @@ SPECIAL_CLASSES = {
 }
 
 # Services always present in the place (even when src/ has nothing for them).
-EXTRA_SERVICES = ["Workspace", "Lighting", "Players", "StarterGui", "Teams", "SoundService"]
+EXTRA_SERVICES = ["Workspace", "Lighting", "Players", "StarterGui", "Teams", "SoundService", "VoiceChatService"]
 
 _ref = 0
 
@@ -89,6 +89,10 @@ SERVICE_PROPS = {
     '<int name="StreamingTargetRadius">1400</int>'
     '<int name="StreamingMinRadius">256</int>'
     '<token name="StreamOutBehavior">2</token>',
+    # voice through the Audio API (Update 2: phone voice calls wire microphones to the
+    # other callers' speakers); normal proximity voice keeps working the same way
+    "VoiceChatService": '<bool name="EnableDefaultVoice">true</bool>'
+    '<token name="UseAudioApi">2</token>',
 }
 
 

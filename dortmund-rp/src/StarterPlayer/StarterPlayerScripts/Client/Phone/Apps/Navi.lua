@@ -9,6 +9,8 @@ local Items = require(ReplicatedStorage.Shared.Items)
 local Jobs = require(ReplicatedStorage.Shared.Jobs)
 local Locations = require(ReplicatedStorage.Shared.Locations)
 local Make = require(script.Parent.Parent.Parent.UI.Make)
+local Net = require(script.Parent.Parent.Parent.Net)
+local Notify = require(script.Parent.Parent.Parent.UI.Notify)
 local Waypoint = require(script.Parent.Parent.Parent.UI.Waypoint)
 local Store = require(script.Parent.Parent.Parent.Store)
 local Phone = require(script.Parent.Parent.Phone)
@@ -141,6 +143,19 @@ Phone.Register({
 				front.Position,
 				Color3.fromRGB(57, 160, 20)
 			)
+		end
+		if Config.On(Config.Update2) then
+			-- Update 2: call a taxi to where you are
+			Make.Button("🚕 " .. Store.T("taxi_call"), Color3.fromRGB(240, 220, 120), function()
+				task.spawn(function()
+					local r = Net.Request("Call.Make", Config.TaxiNumber, "Taxi bitte")
+					if r.ok then
+						Notify.Show(Store.T("taxi_called"))
+					else
+						Notify.Error(r.err)
+					end
+				end)
+			end, { LayoutOrder = 0, Parent = root, TextColor3 = Color3.new(0, 0, 0) })
 		end
 		local port = (Locations :: any).Port
 		if port then

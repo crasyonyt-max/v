@@ -1,5 +1,7 @@
 --!strict
 -- ChatsApp: conversations by phone number. 23646 = Admin-Team (pinned).
+-- Update 2 (testing server first): names from Kontakte, 📞 voice call and "save contact"
+-- in a chat, 👥 group voice calls (only here, everyone needs voice chat).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -13,6 +15,25 @@ local Phone = require(script.Parent.Parent.Phone)
 local New, T = Make.New, Make.Theme
 
 local CHAT_GREEN = Color3.fromRGB(0, 160, 110)
+local update2 = Config.On(Config.Update2)
+
+-- the saved contact name for a number (Update 2), else nil
+local function contactName(peer: string): string?
+	if not update2 then
+		return nil
+	end
+	local c = Store.Get().contacts
+	return c and c[peer]
+end
+
+local function call(numbers: { string }, group: boolean?)
+	local ok, Update2 = pcall(function()
+		return require(script.Parent.Parent.Parent.Controllers.Update2Controller) :: any
+	end)
+	if ok then
+		Update2.Call(numbers, group)
+	end
+end
 
 local function conversations(state: { [string]: any })
 	local byPeer: { [string]: { peer: string, name: string, last: any } } = {}
@@ -82,7 +103,40 @@ local function listView(container: Frame)
 			)
 		end
 		for i, c in list do
-			row(10 + i, c.name .. "  ·  " .. c.peer, (if c.last.out then "✓ " else "") .. c.last.text, c.peer, false)
+			local title = if contactName(c.peer) then "👤 " .. contactName(c.peer) else c.name .. "  ·  " .. c.peer
+			row(10 + i, title, (if c.last.out then "✓ " else "") .. c.last.text, c.peer, false)
+		end
+		-- 👥 group voice call: pick contacts, call them all at once
+		if update2 then
+			local picked: { [string]: boolean } = {}
+			local contacts = state.contacts or {}
+			local any = false
+			for _ in contacts do
+				any = true
+			end
+			if any then
+				Make.Label("👥 " .. Store.T("group_call"), 13, T.sub, T.bold, { LayoutOrder = 900, Parent = root })
+				local order = 900
+				for number, name in contacts do
+					order += 1
+					local b: TextButton
+					b = Make.Button("⬜ " .. name, T.card, function()
+						picked[number] = not picked[number]
+						b.Text = (if picked[number] then "✅ " else "⬜ ") .. name
+					end, { LayoutOrder = order, Parent = root })
+				end
+				Make.Button("📞 " .. Store.T("group_call_start"), Color3.fromRGB(0, 140, 70), function()
+					local numbers = {}
+					for number, on in picked do
+						if on then
+							table.insert(numbers, number)
+						end
+					end
+					if #numbers > 0 then
+						call(numbers, true)
+					end
+				end, { LayoutOrder = 999, Parent = root })
+			end
 		end
 	end
 	render(Store.Get())
@@ -91,11 +145,49 @@ end
 
 local function chatView(container: Frame, peer: string)
 	local isAdmin = peer == Config.AdminChatNumber
-	local header = Make.Label(if isAdmin then "🛡️ " .. Store.T("admin_team") else peer, 13, T.sub, T.bold, {
-		Size = UDim2.new(1, 0, 0, 18),
-		Parent = container,
-	})
+	local name = contactName(peer)
+	local header = Make.Label(
+		if isAdmin
+			then "🛡️ " .. Store.T("admin_team")
+			elseif name then "👤 " .. name .. "  ·  " .. peer
+			else peer,
+		13,
+		T.sub,
+		T.bold,
+		{
+			Size = UDim2.new(1, if update2 and not isAdmin then -96 else 0, 0, 18),
+			Parent = container,
+		}
+	)
 	local _ = header
+	if update2 and not isAdmin then
+		-- 📞 call this person, ＋ save them as a contact (synced with Kontakte)
+		Make.Button("📞", Color3.fromRGB(0, 140, 70), function()
+			call({ peer })
+		end, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -48, 0, -2),
+			Size = UDim2.fromOffset(44, 22),
+			Parent = container,
+		})
+		if not name then
+			Make.Button("＋👤", Color3.fromRGB(70, 110, 220), function()
+				task.spawn(function()
+					local r = Net.Request("Contacts.Save", peer, peer)
+					if r.ok then
+						Notify.Show(Store.T("contact_saved"))
+					else
+						Notify.Error(r.err)
+					end
+				end)
+			end, {
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, 0, 0, -2),
+				Size = UDim2.fromOffset(44, 22),
+				Parent = container,
+			})
+		end
+	end
 	local log = Make.Scroll({ Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 1, -66), Parent = container })
 	local input = Make.TextBox(Store.T("type_message"), {
 		AnchorPoint = Vector2.new(0, 1),

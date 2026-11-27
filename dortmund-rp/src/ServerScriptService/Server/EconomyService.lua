@@ -70,16 +70,22 @@ end
 local function paychecks()
 	while true do
 		task.wait(Config.PaycheckInterval)
+		-- Update 2: rank + night bonus, loan payments (CareerService; lazy, it needs Economy)
+		local okCareer, Career = pcall(require, script.Parent.CareerService)
 		for _, player in Players:GetPlayers() do
 			local data = DataService.Get(player)
 			if data then
 				local job = Jobs.ById[data.job] or Jobs.ById.Unemployed
+				local factor = if okCareer then Career.PayFactor(player) else 1
 				local paid = Economy.Earn(
 					player,
-					job.paycheck,
+					job.paycheck * factor,
 					if job.id == "Unemployed" then "Bürgergeld" else "Gehalt " .. job.de
 				)
 				Remotes.Push(player, "Notify", { key = "paycheck", args = { paid } })
+				if okCareer then
+					Career.AfterPaycheck(player, paid)
+				end
 			end
 		end
 	end

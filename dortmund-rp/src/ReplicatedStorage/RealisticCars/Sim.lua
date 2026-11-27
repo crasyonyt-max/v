@@ -66,6 +66,7 @@ function Sim.new(body, cfg, mounts)
 	self.body = body
 	self.cfg = cfg
 	self.tire = Tire.prepare(table.clone(cfg.tires))
+	self.baseGrip = self.tire.grip -- Dortmund RP: wet / snowy roads lower it (RoadGrip)
 
 	local tr = cfg.transmission
 	local driven = { FL = false, FR = false, RL = false, RR = false }
@@ -171,6 +172,9 @@ function Sim:setParked(parked)
 end
 
 function Sim:step(dt)
+	if self.baseGrip then
+		self.tire.grip = self.baseGrip * ((workspace:GetAttribute("RoadGrip") :: number?) or 1)
+	end
 	dt = clamp(dt, 1 / 240, 1 / 30)
 	local cfg, body, inp = self.cfg, self.body, self.input
 	local e, tr, s = cfg.engine, cfg.transmission, cfg.suspension

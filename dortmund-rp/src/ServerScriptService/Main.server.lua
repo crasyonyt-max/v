@@ -81,6 +81,12 @@ local services = {
 	require(Server.DropperService),
 	require(Server.ThanksgivingService),
 	require(Server.TestServerService),
+	-- Update 2 (testing server first)
+	require(Server.CareerService),
+	require(Server.Incidents),
+	require(Server.TrafficLaw),
+	require(Server.TuningService),
+	require(Server.VoiceCallService),
 }
 for _, service in services do
 	service.Start()

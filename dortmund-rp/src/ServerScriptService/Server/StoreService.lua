@@ -14,6 +14,14 @@ local State = require(script.Parent.State)
 
 local StoreService = {}
 
+-- Update 2: daily tasks (lazy: CareerService needs this module too)
+local function progress(player: Player, key: string, n: number?)
+	local ok, Career = pcall(require, script.Parent.CareerService)
+	if ok then
+		Career.Progress(player, key, n)
+	end
+end
+
 local HUNGER_MINUTES = 60 -- full -> empty
 local THIRST_MINUTES = 40
 local TICK = 6
@@ -105,6 +113,7 @@ consume = function(player: Player, tool: Tool, itemId: string)
 	end
 	eating[player] = now
 	table.remove(data.inventory, index)
+	progress(player, "food")
 	data.hunger = clamp(data.hunger + it.hunger)
 	data.thirst = clamp(data.thirst + it.thirst)
 	setAttrs(player, data)

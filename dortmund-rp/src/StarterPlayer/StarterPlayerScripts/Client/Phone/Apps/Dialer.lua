@@ -99,6 +99,16 @@ Phone.Register({
 				Phone.Replace("chatsapp", number)
 				return
 			end
+			if Config.On(Config.Update2) then
+				-- Update 2: a voice call (both need voice chat)
+				local ok, Update2 = pcall(function()
+					return require(script.Parent.Parent.Parent.Controllers.Update2Controller) :: any
+				end)
+				if ok then
+					Update2.Call({ number })
+				end
+				return
+			end
 			Notify.Show(Store.T("calls_soon"))
 			Phone.Replace("chatsapp", number)
 		end, { LayoutOrder = 5, TextSize = 22, Size = UDim2.new(0.5, 0, 0, 44), Parent = root })

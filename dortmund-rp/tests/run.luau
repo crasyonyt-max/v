@@ -1787,6 +1787,53 @@ test("bigger map (XL): only on the testing server, same sites, more city", funct
 	assert(img.image ~= "rbxassetid://95046841102055", "own map image")
 end)
 
+test("Update 2: ranks, daily tasks, taxi job, no licence, no loans, texts", function()
+	local Config = requirePath(RS.Shared.Config)
+	eq(Config.On(Config.Update2), false, "Update 2 only on the testing server")
+	-- ranks
+	local Ranks = requirePath(RS.Shared.Ranks)
+	local r1, n1 = Ranks.For("Police", 0)
+	eq(r1, 1)
+	eq(n1, "Polizeimeisteranwärter")
+	local r6, n6 = Ranks.For("Police", 999999)
+	eq(r6, 6)
+	eq(n6, "Polizeihauptkommissar")
+	eq(select(2, Ranks.For("DXL", 1500)), "Mitarbeiter", "general ranks for other jobs")
+	eq(Ranks.NextXP(1500), 3000)
+	eq(Ranks.NextXP(999999), nil)
+	-- taxi job only with Update 2
+	local function jobsFresh()
+		cache["ReplicatedStorage/Shared/Jobs"] = nil
+		return requirePath(RS.Shared.Jobs)
+	end
+	eq(jobsFresh().ById.Taxi, nil, "no taxi job in the game")
+	Config.Testing = true
+	assert(jobsFresh().ById.Taxi, "taxi job on the testing server")
+	Config.Testing = false
+	jobsFresh()
+	-- texts for every daily task, every licence question has a valid answer
+	local careerSrc = fs.readFile("src/ServerScriptService/Server/CareerService.lua")
+	local taskKeys = {}
+	for key in careerSrc:gmatch('{ key = "([%w_]+)", n = %d+') do
+		table.insert(taskKeys, key)
+	end
+	assert(#taskKeys >= 10, "daily task pool")
+	-- no driving licence (it would keep players out)
+	assert(
+		not fs.readFile("src/ServerScriptService/Server/TrafficLaw.lua"):find("License", 1, true),
+		"no driving licence"
+	)
+	local loc = fs.readFile("src/ReplicatedStorage/Shared/Locale.lua")
+	for _, key in taskKeys do
+		assert(loc:find("task_" .. key .. " = ", 1, true), "text for task " .. key)
+	end
+	for _, key in { "app_contacts", "app_daily", "voice_need_theirs", "police_stop_sign", "police_check_result" } do
+		assert(loc:find(key .. " = ", 1, true), "text " .. key)
+	end
+	-- no loans anywhere
+	assert(not fs.readFile("src/ServerScriptService/Server/CareerService.lua"):find("Loan", 1, true), "loans removed")
+end)
+
 test("bus lines: real routes over our stops, for both maps", function()
 	for _, suffix in { "", "XL" } do
 		local stops = requirePath(pathProxy({ "ReplicatedStorage", "Shared", "BusStopData" .. suffix }))

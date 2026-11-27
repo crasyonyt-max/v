@@ -21,7 +21,11 @@ local PRESETS = {
 	Cloudy = { density = 0.35, haze = 1.4, cover = 0.75, cloudDensity = 0.7 },
 	Rain = { density = 0.45, haze = 2.4, cover = 0.92, cloudDensity = 0.9 },
 	Fog = { density = 0.75, haze = 3.5, cover = 0.6, cloudDensity = 0.6 },
+	Snow = { density = 0.55, haze = 2.2, cover = 0.95, cloudDensity = 0.85 }, -- Update 2
 }
+
+-- Update 2: wet / snowy roads are slippery (RealisticCars tyres read "RoadGrip")
+WorldService.Grip = { Rain = 0.85, Snow = 0.65 }
 
 function WorldService.SetWeather(kind: string, manual: boolean?)
 	local preset = PRESETS[kind]
@@ -32,6 +36,7 @@ function WorldService.SetWeather(kind: string, manual: boolean?)
 		lockedUntil = os.clock() + 20 * 60 -- admin choice holds for 20 minutes
 	end
 	Workspace:SetAttribute("Weather", kind)
+	Workspace:SetAttribute("RoadGrip", if Config.On(Config.Update2) then WorldService.Grip[kind] or 1 else 1)
 	local info = TweenInfo.new(20)
 	TweenService:Create(atmosphere, info, { Density = preset.density, Haze = preset.haze }):Play()
 	if clouds then
@@ -103,6 +108,16 @@ function WorldService.Start()
 					elseif roll < 0.8 then "Cloudy"
 					elseif roll < 0.95 then "Rain"
 					else "Fog"
+				-- Update 2: in winter (Nov - Feb) a part of the rain falls as snow
+				local month = tonumber(os.date("!%m")) or 1
+				if
+					Config.On(Config.Update2)
+					and kind == "Rain"
+					and (month >= 11 or month <= 2)
+					and rng:NextNumber() < 0.6
+				then
+					kind = "Snow"
+				end
 				WorldService.SetWeather(kind)
 			end
 		end

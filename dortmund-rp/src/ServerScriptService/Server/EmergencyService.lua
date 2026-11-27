@@ -17,6 +17,14 @@ local XPService = require(script.Parent.XPService)
 
 local Emergency = {}
 
+-- Update 2: daily tasks (lazy: CareerService needs this module too)
+local function progress(player: Player, key: string, n: number?)
+	local ok, Career = pcall(require, script.Parent.CareerService)
+	if ok then
+		Career.Progress(player, key, n)
+	end
+end
+
 type Call = {
 	id: string,
 	number: string,
@@ -64,6 +72,49 @@ local function broadcast(call: Call, kind: string)
 			Remotes.Push(player, kind, public(call))
 		end
 	end
+end
+
+-- Update 2: calls the game makes itself (fires, patients, breakdowns, taxi requests).
+-- Returns the call id; Emergency.Close(id) ends it (e.g. when the fire is out).
+function Emergency.System(
+	number: string,
+	jobs: { string },
+	text: string,
+	position: Vector3,
+	callerName: string?
+): string
+	local call: Call = {
+		id = HttpService:GenerateGUID(false),
+		number = number,
+		jobs = jobs,
+		callerId = 0,
+		callerName = callerName or "Leitstelle",
+		text = text,
+		position = position,
+		created = os.time(),
+		responders = {},
+	}
+	calls[call.id] = call
+	broadcast(call, "CallNew")
+	return call.id
+end
+
+function Emergency.Close(id: string?)
+	local call = id and calls[id]
+	if call then
+		calls[call.id] = nil
+		broadcast(call, "CallClosed")
+	end
+end
+
+-- who accepted a call (user ids)
+function Emergency.Responders(id: string?): { number }
+	local out = {}
+	local call = id and calls[id]
+	for userId in (if call then call.responders else {}) do
+		table.insert(out, userId)
+	end
+	return out
 end
 
 function Emergency.Start()
@@ -167,6 +218,7 @@ function Emergency.Start()
 		-- Reward only real responses (travelled there, still in the job).
 		if r.startDistance >= Config.CallMinTravel and JobService.Get(player) == r.job then
 			XPService.Earn(player, r.job, Config.CallXP, "Einsatz")
+			progress(player, "call")
 			Economy.Earn(player, Config.CallBonus, "Einsatzprämie")
 		else
 			Remotes.Push(player, "Notify", { key = "call_no_reward" })

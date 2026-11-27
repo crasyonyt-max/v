@@ -149,6 +149,21 @@ rain.EmissionDirection = Enum.NormalId.Bottom
 rain.Rate = 0
 rain.Shape = Enum.ParticleEmitterShape.Box
 rain.Parent = rainPart
+-- Update 2: snow (slow, big white flakes)
+local snow = Instance.new("ParticleEmitter")
+snow.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+snow.LightEmission = 0.4
+snow.Transparency = NumberSequence.new(0.1)
+snow.Size = NumberSequence.new(0.35)
+snow.Lifetime = NumberRange.new(5)
+snow.Speed = NumberRange.new(8, 12)
+snow.SpreadAngle = Vector2.new(25, 25)
+snow.RotSpeed = NumberRange.new(-60, 60)
+snow.EmissionDirection = Enum.NormalId.Bottom
+snow.Rate = 0
+snow.Shape = Enum.ParticleEmitterShape.Box
+snow.Parent = rainPart
 
 RunService.Heartbeat:Connect(function()
 	local camera = Workspace.CurrentCamera
@@ -167,6 +182,7 @@ task.spawn(function()
 		if tick % 20 == 0 then
 			updateStreetLights()
 			rain.Rate = if Workspace:GetAttribute("Weather") == "Rain" then 1500 else 0
+			snow.Rate = if Workspace:GetAttribute("Weather") == "Snow" then 600 else 0
 		end
 	end
 end)

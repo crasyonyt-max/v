@@ -12,6 +12,10 @@ export type Job = {
 
 local Jobs = {}
 
+local okCfg, Config = pcall(function()
+	return require(script.Parent:WaitForChild("Config")) :: any
+end)
+
 Jobs.List = {
 	{
 		id = "Unemployed",
@@ -86,6 +90,18 @@ Jobs.List = {
 		emergency = false,
 	},
 } :: { Job }
+
+-- Update 2 (testing server first): taxi drivers
+if okCfg and Config.On(Config.Update2) then
+	table.insert(Jobs.List, {
+		id = "Taxi",
+		de = "Taxifahrer",
+		en = "Taxi Driver",
+		paycheck = 450,
+		color = Color3.fromRGB(240, 220, 120),
+		emergency = false,
+	})
+end
 
 Jobs.ById = {} :: { [string]: Job }
 for _, job in Jobs.List do

@@ -89,6 +89,12 @@ function MapBuilder.Build()
 	require(script.Parent.TowerBuilder).Build()
 	for _, job in Jobs.List do
 		local loc = (Locations.Jobs :: any)[job.id]
+		if job.id == "Taxi" and not loc then
+			-- Update 2: the taxi stand next to the bus station at the main station
+			local bus = (Locations.Jobs :: any).Bus
+			loc = bus
+				and { title = "Taxistand Hauptbahnhof", marker = bus.marker, garage = bus.garage, angle = bus.angle }
+		end
 		if loc and not StationBuilder.Jobs[job.id] then
 			local key = string.format("%d,%d", loc.marker[1] // 10, loc.marker[2] // 10)
 			local n = used[key] or 0

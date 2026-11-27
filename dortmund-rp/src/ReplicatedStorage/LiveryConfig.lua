@@ -86,6 +86,12 @@ LiveryConfig.Presets = {
 		LetteringColor = hex("#111111"),
 		LightType = "orange",
 	},
+	TAXI = {
+		Colors = { Body = hex("#F2EBC9"), Accent = hex("#F2EBC9"), Stripe = hex("#111111") },
+		Lettering = "TAXI",
+		LetteringColor = hex("#111111"),
+		LightType = "none",
+	},
 	DXL = {
 		Colors = { Body = hex("#F2C200"), Accent = hex("#1B2A6B") },
 		Lettering = "DXL",

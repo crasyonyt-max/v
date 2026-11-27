@@ -30,6 +30,14 @@ local XPService = require(script.Parent.XPService)
 
 local CrimeService = {}
 
+-- Update 2: daily tasks (lazy: CareerService needs this module too)
+local function progress(player: Player, key: string, n: number?)
+	local ok, Career = pcall(require, script.Parent.CareerService)
+	if ok then
+		Career.Progress(player, key, n)
+	end
+end
+
 type Wanted = { untilT: number, stolen: number }
 local wanted: { [Player]: Wanted } = {}
 local jailed: { [Player]: number } = {} -- release time
@@ -114,6 +122,9 @@ function CrimeService.Jail(p: Player, officer: Player?)
 		if lost > 0 then
 			Economy.TrySpend(p, lost, "Beute beschlagnahmt")
 		end
+	end
+	if officer then
+		progress(officer, "arrest")
 	end
 	wanted[p] = nil
 	jailed[p] = now() + Config.JailSeconds

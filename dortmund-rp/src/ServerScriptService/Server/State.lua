@@ -104,6 +104,7 @@ function State.Snapshot(player: Player): { [string]: any }?
 		phone = data.phone,
 		laptops = data.laptops, -- v0.4
 		laptop = data.laptop,
+		contacts = data.contacts, -- Update 2
 		weapon = data.weapon, -- V1.0
 		wallpaper = data.wallpaper,
 		language = data.language,
