@@ -983,6 +983,95 @@ function idTab(root: ScrollingFrame)
 	loadPage()
 end
 
+-- Applications (Config.Applications): read, accept / decline, with or without reason
+local function appsTab(root: ScrollingFrame)
+	local function render()
+		Make.Clear(root)
+		Make.Label(Store.T("apply_loading"), 12, T.sub, T.font, { Parent = root })
+		task.spawn(function()
+			local r = Net.Request("Apply.List")
+			if not root.Parent then
+				return
+			end
+			Make.Clear(root)
+			if not r.ok then
+				Notify.Error(r.err)
+				return
+			end
+			if #r.list == 0 then
+				Make.Label(Store.T("apply_none_admin"), 13, T.sub, T.font, { Parent = root })
+			end
+			for i, a in r.list do
+				local card = Make.Card({ LayoutOrder = i, Parent = root })
+				local roleName = if a.role == "admin" then "🛡️ Admin" else "🎬 Official Content Creator"
+				Make.Label(("%s · %s"):format(roleName, a.name), 14, T.text, T.bold, { Parent = card })
+				Make.Label(
+					("%s · %s"):format(os.date("%d.%m.%Y %H:%M", a.t) :: string, Store.T("apply_status_" .. a.status))
+						.. (if a.by then " · " .. a.by else "")
+						.. (if a.reason then "\n" .. Store.T("apply_reason", a.reason) else ""),
+					12,
+					if a.status == "accepted"
+						then Color3.fromRGB(80, 220, 120)
+						elseif a.status == "declined" then Color3.fromRGB(240, 90, 90)
+						else Color3.fromRGB(255, 200, 80),
+					T.font,
+					{ Parent = card }
+				)
+				Make.Label(a.text, 13, T.text, T.font, { TextWrapped = true, Parent = card })
+				if a.status == "open" then
+					local reason =
+						Make.TextBox(Store.T("apply_reason_box"), { Size = UDim2.new(1, 0, 0, 34), Parent = card })
+					local function decide(accept: boolean, withReason: boolean)
+						local why = if withReason then reason.Text else nil
+						if withReason and (why == nil or why == "") then
+							Notify.Error("apply_need_reason")
+							return
+						end
+						task.spawn(function()
+							local res = Net.Request("Apply.Decide", a.id, accept, why)
+							if res.ok then
+								Notify.Show(Store.T("done"))
+								render()
+							else
+								Notify.Error(res.err)
+							end
+						end)
+					end
+					Make.Row({
+						Make.Button("✅ " .. Store.T("apply_accept"), Color3.fromRGB(40, 160, 70), function()
+							decide(true, false)
+						end, { Size = UDim2.new(0.5, -3, 1, 0), TextSize = 12 }),
+						Make.Button(
+							"✅💬 " .. Store.T("apply_accept_reason"),
+							Color3.fromRGB(30, 120, 60),
+							function()
+								decide(true, true)
+							end,
+							{ Size = UDim2.new(0.5, -3, 1, 0), TextSize = 12 }
+						),
+					}, 32).Parent =
+						card
+					Make.Row({
+						Make.Button("❌ " .. Store.T("apply_decline"), T.bad, function()
+							decide(false, false)
+						end, { Size = UDim2.new(0.5, -3, 1, 0), TextSize = 12 }),
+						Make.Button(
+							"❌💬 " .. Store.T("apply_decline_reason"),
+							Color3.fromRGB(150, 30, 30),
+							function()
+								decide(false, true)
+							end,
+							{ Size = UDim2.new(0.5, -3, 1, 0), TextSize = 12 }
+						),
+					}, 32).Parent =
+						card
+				end
+			end
+		end)
+	end
+	render()
+end
+
 local function logsTab(root: ScrollingFrame)
 	local r = Net.Request("Admin.Logs")
 	if not r.ok then
@@ -1025,6 +1114,10 @@ Phone.Register({
 		end
 		if Store.Rank() >= OWNER then
 			table.insert(tabs, "admin_fulllog")
+		end
+		-- applications: Owner, Co-Owners and AA (testing server first)
+		if Config.On(Config.Applications) and (Store.Rank() >= 5 or Store.Get().aa == true) then
+			table.insert(tabs, "admin_apps")
 		end
 		-- testing server: no menu, a click joins it (on the testing server: back to the game)
 		if isGA then
@@ -1097,6 +1190,8 @@ Phone.Register({
 			logsTab(root)
 		elseif current == "admin_id" then
 			idTab(root)
+		elseif current == "admin_apps" then
+			appsTab(root)
 		end
 		return nil
 	end,

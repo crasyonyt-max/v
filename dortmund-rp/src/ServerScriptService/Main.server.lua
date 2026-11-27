@@ -87,6 +87,7 @@ local services = {
 	require(Server.TrafficLaw),
 	require(Server.TuningService),
 	require(Server.VoiceCallService),
+	require(Server.ApplicationService),
 }
 for _, service in services do
 	service.Start()

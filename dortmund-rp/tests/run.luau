@@ -874,6 +874,34 @@ test("real city + map", function()
 	end
 	eq(built, #Locations.Stores, "every store has a checkout")
 	assert(markers >= #Locations.Stores, "every store has a cashier prompt")
+	test("applications + flashy events: testing server only", function()
+		local Config = require("../src/ReplicatedStorage/Shared/Config")
+		eq(Config.Applications, "test", "applications only on the testing server")
+		eq(Config.FlashyEvents, "test", "flashy events only on the testing server")
+		-- the sentence counter (same pattern on server and client)
+		local function count(text: string): number
+			local n = 0
+			for chunk in string.gmatch(text, "[^%.!%?]+[%.!%?]+") do
+				if string.find(chunk, "%a") then
+					n += 1
+				end
+			end
+			return n
+		end
+		eq(count("Hi. I am 16! Why? ... 123."), 3, "sentences counted, dots-only/number-only skipped")
+		local server = fs.readFile("src/ServerScriptService/Server/ApplicationService.lua")
+		local client = fs.readFile("src/StarterPlayer/StarterPlayerScripts/Client/Phone/Apps/Applications.lua")
+			assert(
+			string.find(server, "MIN_SENTENCES = 7", 1, true) and string.find(server, "MAX_SENTENCES = 12", 1, true),
+			"7-12"
+		)
+		assert(string.find(client, "[^%.!%?]+[%.!%?]+", 1, true), "client counts like the server")
+		local admin = fs.readFile("src/StarterPlayer/StarterPlayerScripts/Client/Phone/Apps/Admin.lua")
+		assert(string.find(admin, '"Apply.Decide"', 1, true), "admin app decides applications")
+		local fx = fs.readFile("src/StarterPlayer/StarterPlayerScripts/Client/Controllers/DropEventFX.lua")
+		assert(string.find(fx, "Config.On(Config.FlashyEvents)", 1, true), "flashy effects behind the switch")
+	end)
+
 	print(string.format("  stores: %d walk-in shops", built))
 end)
 

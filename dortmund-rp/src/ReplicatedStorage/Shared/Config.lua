@@ -64,6 +64,12 @@ Config.AdmcPaint = "test"
 -- contacts + voice calls, night bonus + night buses, snow and slippery roads.
 Config.Update2 = "test"
 Config.TaxiNumber = "22456" -- "TAXI" on a phone keypad: call a taxi
+
+-- Applications app (Admin / Official Content Creator) + review in the Admin app,
+-- and flashier dropper events (fireworks, confetti, searchlights, start show):
+-- "test" = testing server only.
+Config.Applications = "test"
+Config.FlashyEvents = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120
