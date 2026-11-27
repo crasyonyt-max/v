@@ -121,6 +121,7 @@ Config.GameAdmins = {
 	10396317047, -- game owner
 	8912131297, -- deniney26548
 	3482982410, -- 0312benni
+	4510604984, -- kinKerimBOOS
 }
 
 -- Special Game Admin phone. Only Game Admins can own / equip it.
