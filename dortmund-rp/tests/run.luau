@@ -834,7 +834,7 @@ test("real city + map", function()
 		local k = m:GetAttribute("Interaction")
 		kinds[k] = (kinds[k] or 0) + 1
 	end
-	eq(kinds.JobStart, 8, "job start markers (one per job)")
+	eq(kinds.JobStart, 9, "job start markers (one per job, taxi included)")
 	eq(kinds.AptDoor, 32, "32 apartment doors in the tower")
 	eq(kinds.Elevator, 17, "elevator on every floor + lobby")
 	local TowerBuilder = requirePath(Server.TowerBuilder)
@@ -846,7 +846,7 @@ test("real city + map", function()
 	eq(#(StationBuilder.Bays.ADMC or {}), 4, "ADMC bays")
 	eq(#(StationBuilder.Bays.DXL or {}), 5, "DXL bays")
 	eq(#(StationBuilder.Bays.LKW or {}), 4, "LKW bays")
-	eq(kinds.JobGarage, 8, "job garages")
+	eq(kinds.JobGarage, 9, "job garages (taxi included)")
 	assert((kinds.Refuel or 0) >= 3, "petrol stations")
 	local uis = {}
 	for _, m in tagged.Interaction do
@@ -874,10 +874,10 @@ test("real city + map", function()
 	end
 	eq(built, #Locations.Stores, "every store has a checkout")
 	assert(markers >= #Locations.Stores, "every store has a cashier prompt")
-	test("applications + flashy events: testing server only", function()
+	test("applications + flashy events", function()
 		local Config = require("../src/ReplicatedStorage/Shared/Config")
-		eq(Config.Applications, "test", "applications only on the testing server")
-		eq(Config.FlashyEvents, "test", "flashy events only on the testing server")
+		eq(Config.Applications, true, "applications released")
+		eq(Config.FlashyEvents, true, "flashy events released")
 		-- the sentence counter (same pattern on server and client)
 		local function count(text: string): number
 			local n = 0
@@ -891,7 +891,7 @@ test("real city + map", function()
 		eq(count("Hi. I am 16! Why? ... 123."), 3, "sentences counted, dots-only/number-only skipped")
 		local server = fs.readFile("src/ServerScriptService/Server/ApplicationService.lua")
 		local client = fs.readFile("src/StarterPlayer/StarterPlayerScripts/Client/Phone/Apps/Applications.lua")
-			assert(
+		assert(
 			string.find(server, "MIN_SENTENCES = 7", 1, true) and string.find(server, "MAX_SENTENCES = 12", 1, true),
 			"7-12"
 		)
@@ -1777,8 +1777,9 @@ test("v0.4 imagine: catalog, delivery after the time, waits when the bag is full
 	eq(Orders.Tick(nil, data, 11), 1, "arrives once there is room")
 end)
 
-test("bigger map (XL): only on the testing server, same sites, more city", function()
+test("bigger map (XL): same sites, more city", function()
 	local Config = requirePath(RS.Shared.Config)
+	Config.BigMap = "test" -- compare the old map with the XL one
 	local function fresh(name)
 		cache["ReplicatedStorage/Shared/" .. name] = nil
 		return requirePath(pathProxy({ "ReplicatedStorage", "Shared", name }))
@@ -1791,6 +1792,7 @@ test("bigger map (XL): only on the testing server, same sites, more city", funct
 	local xlStops, xlLights = #fresh("BusStopData"), #fresh("TrafficData").lights
 	local img = fresh("MapImage")
 	Config.Testing = false
+	Config.BigMap = true -- released: the game uses the XL map
 	fresh("Locations")
 	fresh("BusStopData")
 	fresh("TrafficData")
@@ -1817,7 +1819,7 @@ end)
 
 test("Update 2: ranks, daily tasks, taxi job, no licence, no loans, texts", function()
 	local Config = requirePath(RS.Shared.Config)
-	eq(Config.On(Config.Update2), false, "Update 2 only on the testing server")
+	eq(Config.On(Config.Update2), true, "Update 2 released")
 	-- ranks
 	local Ranks = requirePath(RS.Shared.Ranks)
 	local r1, n1 = Ranks.For("Police", 0)
@@ -1834,7 +1836,7 @@ test("Update 2: ranks, daily tasks, taxi job, no licence, no loans, texts", func
 		cache["ReplicatedStorage/Shared/Jobs"] = nil
 		return requirePath(RS.Shared.Jobs)
 	end
-	eq(jobsFresh().ById.Taxi, nil, "no taxi job in the game")
+	assert(jobsFresh().ById.Taxi, "taxi job released")
 	Config.Testing = true
 	assert(jobsFresh().ById.Taxi, "taxi job on the testing server")
 	Config.Testing = false
@@ -1878,8 +1880,8 @@ test("bus lines: real routes over our stops, for both maps", function()
 	end
 	local lines = requirePath(RS.Shared.BusLineData)
 	local Config = requirePath(RS.Shared.Config)
-	eq(Config.On(Config.BusLines), false, "bus lines only on the testing server")
-	eq(Config.On(Config.AdmcPaint), false, "ADMC paint shop only on the testing server")
+	eq(Config.On(Config.BusLines), true, "bus lines released")
+	eq(Config.On(Config.AdmcPaint), true, "ADMC paint shop released")
 	local _ = lines
 end)
 
@@ -1926,11 +1928,11 @@ test("map edge: dunes rise outward, an invisible wall closes the map", function(
 		assert(foot < Edge.Outside(rects, b[1], b[2]), "a dune's foot reaches into the map")
 	end
 	-- nothing of the city or the port is outside the wall's reach
-	eq(Edge.Build(city, { port }), nil, "only where switched on")
 	local Config = requirePath(RS.Shared.Config)
+	Config.Dunes = "test"
+	eq(Edge.Build(city, { port }), nil, "only where switched on")
 	Config.Dunes = true
 	local folder = Edge.Build(city, { port })
-	Config.Dunes = "test"
 	assert(folder and (folder:GetAttribute("Walls") or 0) > 0, "walls built")
 	for _, w in folder:GetChildren() do
 		eq(w.Transparency, 1, "invisible")
@@ -2365,10 +2367,10 @@ test("mall, underground garages and plate service", function()
 	Config.V04 = false
 	-- Parlament: off in the game ("test"), built when switched on
 	local Parliament = requirePath(Server.ParliamentBuilder)
-	eq(Parliament.Build(), nil, "only on the testing server")
+	Config.Parliament = "test"
+	eq(Parliament.Build(), nil, "only where switched on")
 	Config.Parliament = true
 	local parl = Parliament.Build()
-	Config.Parliament = "test"
 	assert(parl and parl.Parent == ws, "parliament built")
 	local inside, outside = parl:FindFirstChild("Inside"), parl:FindFirstChild("Outside")
 	local function flagsIn(root)
@@ -2403,7 +2405,8 @@ test("mall, underground garages and plate service", function()
 	parl:Destroy()
 	-- port construction site (bigger map): a closed fence with signs and a gate
 	local Port = requirePath(Server.PortBuilder)
-	eq(Port.Build(), nil, "no port on the normal map")
+	Config.BigMap = "test"
+	eq(Port.Build(), nil, "no port without the bigger map")
 	local Loc = requirePath(RS.Shared.Locations)
 	Loc.Port = { -7120.1, -5491.5, -2840.1, -2688.5 }
 	Config.BigMap = true

@@ -35,41 +35,41 @@ function Config.On(switch: any): boolean
 end
 
 -- Parlament (Bundestag-style, on the Klinikum grounds): "test" = only on the testing server
-Config.Parliament = "test"
+Config.Parliament = true
 Config.ParliamentSite = { x = -610, z = 3905 } -- centre; the entrance stairs face north (-Z)
 
 -- Bigger map (50 % more city on every side, with its markets, gas stations, bus stops
 -- and traffic lights): "test" = only on the testing server.
 -- Data: CityDataXL / CityMetaXL / LocationsXL / BusStopDataXL / TrafficDataXL.
-Config.BigMap = "test"
+Config.BigMap = true
 
 -- Weapons 2: real gun models in the hand (shots from the muzzle), AK-47, sniper rifle,
 -- grenades at the black market: "test" = only on the testing server.
-Config.Guns2 = "test"
+Config.Guns2 = true
 
 -- The end of the map: sand dunes instead of the bare baseplate, and an invisible wall
 -- behind them (nobody gets out or looks behind the map): "test" = testing server only.
-Config.Dunes = "test"
+Config.Dunes = true
 
 -- Bus lines: the driver picks a real line (OSM routes, Shared/BusLineData), "Leerfahrt"
 -- or a dark display; on a line, checkpoints lead from stop to stop (like the Maps app)
 -- and only the next stop of the line pays. "test" = testing server only.
-Config.BusLines = "test"
+Config.BusLines = true
 -- Repainting cars only at the ADMC paint shop (next to the plate service), not from
 -- the Garage app: "test" = testing server only.
-Config.AdmcPaint = "test"
+Config.AdmcPaint = true
 
 -- Update 2 ("test" = testing server only): fires, patients, breakdowns and towing, taxi
 -- job, police traffic stops and fines, daily reward + tasks, job ranks, tuning,
 -- contacts + voice calls, night bonus + night buses, snow and slippery roads.
-Config.Update2 = "test"
+Config.Update2 = true
 Config.TaxiNumber = "22456" -- "TAXI" on a phone keypad: call a taxi
 
 -- Applications app (Admin / Official Content Creator) + review in the Admin app,
 -- and flashier dropper events (fireworks, confetti, searchlights, start show):
 -- "test" = testing server only.
-Config.Applications = "test"
-Config.FlashyEvents = "test"
+Config.Applications = true
+Config.FlashyEvents = true
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120
