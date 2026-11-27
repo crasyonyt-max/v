@@ -669,19 +669,6 @@ function Incidents.Start()
 	end
 	Config.EmergencyNumbers[Config.TaxiNumber] = { "Taxi" }
 
-	-- the street lines near a player, for the NPC traffic and pedestrians on their device
-	Remotes.Handle("Traffic.Roads", function(player)
-		local r = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not r then
-			return Remotes.Fail("no_character")
-		end
-		local ok, CityBuilder = pcall(require, script.Parent.CityBuilder)
-		if not ok then
-			return Remotes.Fail("error")
-		end
-		return Remotes.Ok({ lines = CityBuilder.DriveLinesNear(r.Position.X, r.Position.Z, 900), at = r.Position })
-	end, { rate = 1, needsData = false })
-
 	deliveryPoint(hospital(), "🏥 Patient übergeben", "Klinikum", function(p)
 		local c = carrying[p]
 		local h = hospital()

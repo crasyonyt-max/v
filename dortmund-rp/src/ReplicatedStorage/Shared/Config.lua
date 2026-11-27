@@ -61,8 +61,7 @@ Config.AdmcPaint = "test"
 
 -- Update 2 ("test" = testing server only): fires, patients, breakdowns and towing, taxi
 -- job, police traffic stops and fines, daily reward + tasks, job ranks, tuning,
--- contacts + voice calls, night bonus + night buses, snow and slippery roads,
--- NPC traffic and pedestrians.
+-- contacts + voice calls, night bonus + night buses, snow and slippery roads.
 Config.Update2 = "test"
 Config.TaxiNumber = "22456" -- "TAXI" on a phone keypad: call a taxi
 -- crime

@@ -35,7 +35,6 @@ require(Client.Controllers.CrimeController)
 require(Client.Controllers.WeaponController)
 require(Client.Controllers.TestBanner)
 require(Client.Controllers.Update2Controller)
-require(Client.Controllers.AmbientTraffic)
 
 HUD.PhoneButton.Activated:Connect(Phone.Toggle)
 Net.On("OpenPC", function(payload)

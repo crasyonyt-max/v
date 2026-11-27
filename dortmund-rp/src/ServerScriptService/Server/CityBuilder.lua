@@ -488,47 +488,6 @@ function CityBuilder.Build(bounds: { number }, extra: { { number } }?): Folder
 	return city
 end
 
--- Update 2: drivable street lines for the NPC traffic on the clients:
--- { { width, x1, z1, x2, z2, ... } } (no service roads, no footways)
-local driveCache: { { number } }? = nil
-function CityBuilder.DriveLines(): { { number } }
-	if driveCache then
-		return driveCache
-	end
-	local out: { { number } } = {}
-	local folder = ServerStorage:FindFirstChild(if XL then "CityDataXL" else "CityData")
-	for _, module in (if folder then folder:GetChildren() else {}) do
-		if module:IsA("ModuleScript") then
-			local data = require(module) :: any
-			for _, row in data.r do
-				if Meta.roadKinds[row[1]] == 1 and Meta.roadTypes[row[1]] ~= "service" and #row >= 8 then
-					local line = { row[2] }
-					for i = 5, #row do
-						table.insert(line, row[i])
-					end
-					table.insert(out, line)
-				end
-			end
-		end
-	end
-	driveCache = out
-	return out
-end
-
--- the street lines that come near a point (for one client)
-function CityBuilder.DriveLinesNear(x: number, z: number, radius: number): { { number } }
-	local out = {}
-	for _, line in CityBuilder.DriveLines() do
-		for i = 2, #line - 1, 2 do
-			if math.abs(line[i] - x) < radius and math.abs(line[i + 1] - z) < radius then
-				table.insert(out, line)
-				break
-			end
-		end
-	end
-	return out
-end
-
 -- Highest walkable surface at (x, z), for placing markers and spawns.
 function CityBuilder.GroundY(x: number, z: number): number
 	local params = RaycastParams.new()
