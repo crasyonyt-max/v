@@ -92,9 +92,7 @@ Config.CoOwners = {
 
 -- SECOND CO-OWNERS: under the Co-Owners, over the Game Admins (Game Admin powers,
 -- can ban Game Admins and everyone below; no AA tab).
-Config.SecondCoOwners = {
-	2851688688, -- pommes5123
-}
+Config.SecondCoOwners = {}
 
 -- Background music, 24/7 on every server, one song after the other (all in sync).
 -- `length` in seconds. The AA music plays instead while it runs; the AA tab can
