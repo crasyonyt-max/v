@@ -55,6 +55,26 @@ Advent.Rewards = {
 	[24] = { cash = 10000, xp = 2500, items = { "lebkuchenherz", "gebrannte_mandeln", "kinderpunsch" } }, -- Heiligabend
 } :: { [number]: Reward }
 
+-- Weihnachtsbaum: bought at the market hut "Weihnachtsbäume", it stands in your flat in
+-- the Dortmund Tower. Tree owners who are online on 24 / 25 December get a car.
+Advent.TREE_PRICE = 1500
+Advent.Gifts = {
+	{ day = 24, key = "g24", vehicle = "GIFT_VOLKSWERK_TURAN_WEIHNACHTEN", name = "Volkswerk Turan" },
+	{ day = 25, key = "g25", vehicle = "GIFT_BMV_3ER_TOURING_WEIHNACHTEN", name = "BMV 3er Touring" },
+}
+
+-- the gifts due now (testing server: all, to try them)
+function Advent.GiftsDue(now: number?, testing: boolean?): { any }
+	local out = {}
+	local _, month, day = Advent.Today(now)
+	for _, g in Advent.Gifts do
+		if testing or (month == Advent.MONTH and day == g.day) then
+			table.insert(out, g)
+		end
+	end
+	return out
+end
+
 -- the outfit pieces the opened doors give
 function Advent.OwnedOutfit(opened: { number }): { [string]: boolean }
 	local set: { [string]: boolean } = {}

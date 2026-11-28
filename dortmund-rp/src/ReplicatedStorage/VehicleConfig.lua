@@ -377,6 +377,18 @@ for _, pack in ipairs(GAMEPASS_PACKS) do
 	end
 end
 
+-- Advent: Christmas gift cars in the "Weihnachten" livery (HO HO HOOO). Never sold:
+-- a Weihnachtsbaum owner who is online on 24 / 25 December gets them (AdventService).
+if not V10 then
+	for _, row in ipairs({
+		{ "Volkswerk Turan Weihnachten", "Volkswerk Turan" },
+		{ "BMV 3er Touring Weihnachten", "BMV 3er Touring" },
+	}) do
+		local livery, err = LiveryConfig.Resolve("WEIHNACHTEN")
+		add({ Name = row[1], Model = row[2], Category = "Gift", Price = 0, Livery = livery, LiveryError = err })
+	end
+end
+
 if not V10 then
 -- Dortmund RP: admin cars wear the orange ADMIN livery with red sirens
 -- (the paint column above is no longer used for them).

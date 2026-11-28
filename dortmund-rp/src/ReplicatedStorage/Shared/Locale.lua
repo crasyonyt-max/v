@@ -340,6 +340,26 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🔒 Dieses Teil bekommst du hinter einem Türchen.",
 		en = "🔒 You get this piece behind a door.",
 	},
+	advent_tree_title = { de = "🎄 Weihnachtsbaum", en = "🎄 Christmas tree" },
+	advent_tree_info = {
+		de = "Kauf einen Baum an der Hütte „Weihnachtsbäume“ auf dem Markt (%s). Er steht dann in deiner Wohnung im Dortmund Tower. Bist du mit Baum am 24.12. online, bekommst du einen Volkswerk Turan, am 25.12. einen BMV 3er Touring – beide im Weihnachts-Look (HO HO HOOO)!",
+		en = "Buy a tree at the “Weihnachtsbäume” hut at the market (%s). It then stands in your flat in the Dortmund Tower. Be online with a tree on 24 Dec for a Volkswerk Turan, on 25 Dec for a BMV 3er Touring – both in the Christmas look (HO HO HOOO)!",
+	},
+	advent_tree_yes = { de = "✅ Du hast einen Baum.", en = "✅ You have a tree." },
+	advent_tree_no = { de = "Noch kein Baum.", en = "No tree yet." },
+	advent_tree_have = { de = "Du hast schon einen Weihnachtsbaum.", en = "You already have a Christmas tree." },
+	advent_tree_bought = {
+		de = "🎄 Weihnachtsbaum gekauft! Er steht jetzt in deiner Wohnung.",
+		en = "🎄 Christmas tree bought! It now stands in your flat.",
+	},
+	advent_tree_bought_noflat = {
+		de = "🎄 Weihnachtsbaum gekauft! Zieh in eine Wohnung im Dortmund Tower, dann steht er dort.",
+		en = "🎄 Christmas tree bought! Move into a flat in the Dortmund Tower and it will stand there.",
+	},
+	advent_gift = {
+		de = "🎁 Frohe Weihnachten! Ein %s steht in deiner Garage. HO HO HOOO!",
+		en = "🎁 Merry Christmas! A %s is in your garage. HO HO HOOO!",
+	},
 	advent_market_go = { de = "📍 Zum Weihnachtsmarkt", en = "📍 To the Christmas market" },
 	-- Update 2
 	app_contacts = { de = "Kontakte", en = "Contacts" },

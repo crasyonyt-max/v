@@ -109,6 +109,8 @@ for _, v in VehicleConfig.List do
 	if v.Category == "Starter" then
 		entry.category = "CarStarter"
 		table.insert(Vehicles.CarStarterIds, v.Id)
+	elseif v.Category == "Gift" then
+		entry.category = "Gift" -- Advent gift cars: never in the dealership
 	elseif v.Category == "Gamepass" then
 		entry.category = "Pack"
 		entry.pack = PACK_OF[v.Gamepass.Pack] or v.Gamepass.Pack

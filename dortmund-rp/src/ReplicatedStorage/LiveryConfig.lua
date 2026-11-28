@@ -92,6 +92,13 @@ LiveryConfig.Presets = {
 		LetteringColor = hex("#111111"),
 		LightType = "none",
 	},
+	-- Advent gift cars (24 / 25 December for tree owners)
+	WEIHNACHTEN = {
+		Colors = { Body = hex("#B3121D"), Accent = hex("#FFFFFF"), Stripe = hex("#1E7A3C") },
+		Lettering = "HO HO HOOO",
+		LetteringColor = hex("#FFFFFF"),
+		LightType = "none",
+	},
 	DXL = {
 		Colors = { Body = hex("#F2C200"), Accent = hex("#1B2A6B") },
 		Lettering = "DXL",

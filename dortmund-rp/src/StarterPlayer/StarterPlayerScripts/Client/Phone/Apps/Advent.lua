@@ -72,8 +72,29 @@ Phone.Register({
 			Waypoint.Set(Vector3.new(site.x, 0, site.z + 246), "Weihnachtsmarkt", GOLD)
 			Phone.Close()
 		end, { Size = UDim2.new(1, 0, 0, 36), Parent = market })
+		-- the Christmas tree (bought at the market) and the gift cars
+		local treeCard = Make.Card({ LayoutOrder = 7, Parent = root })
 		-- the Christmas outfit: pieces from the doors, put on / take off
 		local outfit = Make.Card({ LayoutOrder = 6, Parent = root })
+
+		local function renderTree(state: any)
+			Make.Clear(treeCard)
+			Make.Label(Store.T("advent_tree_title"), 13, GOLD, T.bold, { Parent = treeCard })
+			Make.Label(
+				if state.tree then Store.T("advent_tree_yes") else Store.T("advent_tree_no"),
+				12,
+				if state.tree then Color3.fromRGB(80, 220, 120) else T.sub,
+				T.bold,
+				{ Parent = treeCard }
+			)
+			Make.Label(
+				Store.T("advent_tree_info", tostring(state.treePrice or "")),
+				12,
+				T.text,
+				T.font,
+				{ Parent = treeCard }
+			)
+		end
 
 		local function renderOutfit(state: any)
 			Make.Clear(outfit)
@@ -190,6 +211,7 @@ Phone.Register({
 				end
 			end
 			renderOutfit(state)
+			renderTree(state)
 		end
 
 		task.spawn(function()

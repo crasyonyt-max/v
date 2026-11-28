@@ -1018,6 +1018,58 @@ test("real city + map", function()
 		eq(huts, 16, "16 huts")
 		assert(stores.XmasPunsch == 3 and stores.XmasGrill == 3 and stores.XmasSweets == 3, "9 stalls that sell")
 		assert(market:FindFirstChild("Weihnachtsbaum"), "the big tree")
+		-- parking on both sides, lines on every spot, the way to the entrances stays free
+		local lots, spots = 0, 0
+		for _, d in market:GetChildren() do
+			if d.Name == "Parkplatz" then
+				lots += 1
+				spots += d:GetAttribute("Spots") or 0
+			end
+		end
+		eq(lots, 2, "a parking lot on each side")
+		assert(spots >= 48, "at least 48 parking spots, got " .. spots)
+		-- the tree hut sells trees
+		local treeMarker = nil
+		for _, d in market:GetDescendants() do
+			if d.Name == "Marker_XmasTree" then
+				treeMarker = d
+			end
+		end
+		assert(treeMarker and treeMarker:GetAttribute("Interaction") == "XmasTree", "tree hut")
+		-- the tree in the flat stands clear of the droppers, the collector and the wardrobe
+		local spot = Svc.TreeSpot(88, 35)
+		assert(spot.X < -26.6 - 4 and spot.Z < -4.2 - 3, "away from the dropper line")
+		assert(spot.X > -44 + 2 and spot.Z > -17.5 + 2, "inside the flat")
+		local flatTree = Svc.BuildFlatTree(roblox.CFrame.new(0, 0, 0))
+		for _, d in flatTree:GetDescendants() do
+			if d:IsA("BasePart") then
+				assert(not d.CanCollide, "the flat tree doesn't block")
+				assert(d.CFrame.Position.Y < 12.5, "under the ceiling: " .. d.Name)
+			end
+		end
+		-- gift cars: Turan on the 24th, BMV on the 25th, only on that day
+		local function due(dd)
+			local list = {}
+			for _, g in Advent.GiftsDue(utc(2026, 12, dd, 12)) do
+				table.insert(list, g.key)
+			end
+			return table.concat(list, ",")
+		end
+		eq(due(23), "", "nothing on the 23rd")
+		eq(due(24), "g24", "Turan on the 24th")
+		eq(due(25), "g25", "BMV on the 25th")
+		eq(due(26), "", "nothing after")
+		eq(#Advent.GiftsDue(utc(2026, 11, 28, 12), true), 2, "testing server: both, to try")
+		local Vehicles = requirePath(RS.Shared.Vehicles)
+		for _, g in Advent.Gifts do
+			local v = Vehicles.ById[g.vehicle]
+			assert(v and v.category == "Gift" and v.price == 0, g.vehicle .. " is a gift car")
+		end
+		for _, v in Vehicles.ByCategory("Dealer") do
+			assert(v.category ~= "Gift", "gift cars are not sold")
+		end
+		local Livery = requirePath(RS.LiveryConfig)
+		eq(Livery.Presets.WEIHNACHTEN.Lettering, "HO HO HOOO", "Weihnachten livery")
 		-- nothing of the market reaches into the Parlament building
 		local site = requirePath(Server.ParliamentBuilder).Site
 		for _, d in market:GetDescendants() do

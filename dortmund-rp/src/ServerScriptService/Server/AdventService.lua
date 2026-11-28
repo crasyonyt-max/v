@@ -24,6 +24,7 @@ local ParliamentBuilder = require(script.Parent.ParliamentBuilder)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
 local StoreService = require(script.Parent.StoreService)
+local TowerBuilder = require(script.Parent.TowerBuilder)
 local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 
@@ -54,7 +55,7 @@ local function opened(userId: number): { [string]: number }?
 end
 
 -- "new" = open it now · "opened" = already opened · "error" = try again
-function AdventService.Claim(userId: number, door: number): string
+function AdventService.Claim(userId: number, door: number | string): string
 	local key = tostring(door)
 	if not store then
 		local doors = memory[userId] or {}
@@ -320,7 +321,7 @@ local function sign(part: BasePart, text: string, color: Color3)
 end
 
 -- one wooden hut; cf = ground centre, the counter faces local -Z
-local function hut(parent: Instance, cf: CFrame, title: string, storeKind: string?)
+local function hut(parent: Instance, cf: CFrame, title: string, storeKind: string?): Model
 	local m = Instance.new("Model")
 	m.Name = "Hütte " .. title
 	m.Parent = parent
@@ -500,7 +501,119 @@ local function arch(parent: Instance, cf: CFrame)
 end
 
 -- the market area, in the Parlament's local frame: behind the building (+Z)
-AdventService.Area = { x0 = -240, x1 = 240, z0 = 175, z1 = 318 }
+AdventService.Area = { x0 = -214, x1 = 214, z0 = 175, z1 = 318 }
+-- parking on both sides of the market (between the market and the lawn's edge)
+AdventService.Parking = { inner = 216, outer = 268, z0 = 176, z1 = 316, spot = 10, depth = 18 }
+
+-- a small fir (for the tree hut and the flats); pivot = ground centre
+local function smallTree(parent: Instance, cf: CFrame, h: number): Model
+	local m = Instance.new("Model")
+	m.Name = "Tannenbaum"
+	m.Parent = parent
+	box(
+		m,
+		"Stamm",
+		Vector3.new(0.6, h * 0.2, 0.6) * (h / 10),
+		cf * CFrame.new(0, h * 0.1, 0),
+		WOOD_DARK,
+		Enum.Material.Wood
+	)
+	for t = 0, 3 do
+		local r = (h * 0.32) * (1 - t * 0.22)
+		local tier = box(
+			m,
+			"Zweige",
+			Vector3.new(h * 0.24, r * 2, r * 2),
+			cf * CFrame.new(0, h * 0.2 + t * h * 0.19 + h * 0.12, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Color3.fromRGB(30, 95 + t * 6, 50),
+			Enum.Material.Grass
+		)
+		tier.Shape = Enum.PartType.Cylinder
+		tier.CanCollide = false
+	end
+	return m
+end
+
+local function parkingLot(m: Model, at: (number, number, number?) -> CFrame, side: number, cz: number)
+	local P = AdventService.Parking
+	local lot = Instance.new("Model")
+	lot.Name = "Parkplatz"
+	lot.Parent = m
+	local mid = (P.inner + P.outer) / 2
+	box(
+		lot,
+		"Asphalt",
+		Vector3.new(P.outer - P.inner, 0.3, P.z1 - P.z0),
+		at(side * mid, (P.z0 + P.z1) / 2) * CFrame.new(0, 0.15, 0),
+		Color3.fromRGB(55, 57, 60),
+		Enum.Material.Asphalt
+	)
+	local white = Color3.fromRGB(240, 240, 240)
+	local count = 0
+	for _, row in
+		{ { a = P.outer - P.depth, b = P.outer, inner = false }, { a = P.inner, b = P.inner + P.depth, inner = true } }
+	do
+		local cx = side * (row.a + row.b) / 2
+		local z = P.z0
+		while z + P.spot <= P.z1 + 0.01 do
+			local zc = z + P.spot / 2
+			-- the inner row leaves the way to the market's entrance free
+			if not (row.inner and math.abs(zc - cz) < 16) then
+				count += 1
+				for _, edge in { z, z + P.spot } do
+					local l =
+						box(lot, "Linie", Vector3.new(P.depth, 0.05, 0.4), at(cx, edge) * CFrame.new(0, 0.33, 0), white)
+					l.CanCollide = false
+				end
+				local spot = box(
+					lot,
+					"Stellplatz",
+					Vector3.new(P.depth - 1, 0.05, P.spot - 1),
+					at(cx, zc) * CFrame.new(0, 0.32, 0),
+					Color3.fromRGB(55, 57, 60),
+					Enum.Material.Asphalt
+				)
+				spot.Transparency = 1
+				spot.CanCollide = false
+			end
+			z += P.spot
+		end
+	end
+	-- "P" signs at both ends
+	for _, z in { P.z0 + 2, P.z1 - 2 } do
+		local x = side * (P.outer - P.depth - 8)
+		box(
+			lot,
+			"Pfosten",
+			Vector3.new(0.5, 9, 0.5),
+			at(x, z) * CFrame.new(0, 4.5, 0),
+			Color3.fromRGB(120, 120, 125),
+			Enum.Material.Metal
+		)
+		local s = box(
+			lot,
+			"Schild",
+			Vector3.new(3.6, 3.6, 0.3),
+			at(x, z, if z < cz then 180 else 0) * CFrame.new(0, 9, 0),
+			Color3.fromRGB(20, 80, 170)
+		)
+		for _, face in { Enum.NormalId.Front, Enum.NormalId.Back } do
+			local g = Instance.new("SurfaceGui")
+			g.Face = face
+			g.CanvasSize = Vector2.new(100, 100)
+			g.Parent = s
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.fromScale(1, 1)
+			l.BackgroundTransparency = 1
+			l.Font = Enum.Font.GothamBlack
+			l.TextScaled = true
+			l.TextColor3 = Color3.new(1, 1, 1)
+			l.Text = "P"
+			l.Parent = g
+		end
+	end
+	lot:SetAttribute("Spots", count)
+end
 
 function AdventService.BuildMarket(): Model?
 	local site = ParliamentBuilder.Site
@@ -540,19 +653,40 @@ function AdventService.BuildMarket(): Model?
 		{ "Weihnachtsdeko" },
 		{ "Grillhütte", "XmasGrill" },
 		{ "Kakao & Punsch", "XmasPunsch" },
-		{ "Holzschnitzerei" },
+		{ "Weihnachtsbäume" },
 	}
 	local i = 0
 	for _, row in { { z = A.z0 + 12, yaw = 180 }, { z = A.z1 - 12, yaw = 0 } } do
 		for k = 0, 7 do
 			i += 1
-			local x = -210 + k * 60
+			local x = -189 + k * 54
 			local s = stalls[i]
-			hut(m, at(x, row.z, row.yaw), s[1], s[2])
+			local h = hut(m, at(x, row.z, row.yaw), s[1], s[2])
+			if s[1] == "Weihnachtsbäume" then
+				-- trees for sale beside the hut; buy one at the counter
+				for _, dx in { -17, 17 } do
+					smallTree(h, at(x + dx, row.z, row.yaw), 10)
+				end
+				local marker = box(
+					h,
+					"Marker_XmasTree",
+					Vector3.new(2, 2, 2),
+					at(x, row.z, row.yaw) * CFrame.new(0, 4.5, -7.5),
+					Color3.new(1, 1, 1)
+				)
+				marker.Transparency = 1
+				marker.CanCollide = false
+				marker.CanQuery = false
+				Interaction.Mark(marker, "XmasTree", {
+					ActionText = ("Baum kaufen (%s)"):format(Locale.Euro(Advent.TREE_PRICE)),
+					ObjectText = "Weihnachtsbaum für deine Wohnung",
+					Hold = 0.6,
+				})
+			end
 		end
 	end
 	-- standing tables between the huts
-	for _, x in { -180, -60, 60, 180 } do
+	for _, x in { -162, -54, 54, 162 } do
 		for _, z in { cz - 22, cz + 22 } do
 			box(m, "Stehtisch", Vector3.new(4, 0.5, 4), at(x, z) * CFrame.new(0, 4, 0), WOOD_DARK, Enum.Material.Wood).Shape =
 				Enum.PartType.Cylinder
@@ -560,7 +694,7 @@ function AdventService.BuildMarket(): Model?
 		end
 	end
 	-- light strings over the aisle
-	for _, x in { -180, -120, 120, 180 } do -- between the huts
+	for _, x in { -162, -108, 108, 162 } do -- between the huts
 		for k = 0, 16 do
 			local f = k / 16
 			local z = A.z0 + 20 + f * (A.z1 - A.z0 - 40)
@@ -574,8 +708,149 @@ function AdventService.BuildMarket(): Model?
 	-- entrances west and east
 	arch(m, at(A.x0 + 4, cz, 90))
 	arch(m, at(A.x1 - 4, cz, -90))
+	-- parking on both sides
+	local function at3(x: number, z: number, yaw: number?): CFrame
+		return at(x, z, yaw)
+	end
+	parkingLot(m, at3, -1, cz)
+	parkingLot(m, at3, 1, cz)
 	m.Parent = Workspace
 	return m
+end
+
+-- Weihnachtsbaum + gift cars ----------------------------------------------------------------
+
+local flatTrees: { [Player]: Model } = {}
+local treeFolder: Folder? = nil
+
+function AdventService.HasTree(player: Player): boolean
+	local data = DataService.Get(player)
+	return data ~= nil and data.xmasTree == (Advent.Today())
+end
+
+-- where the tree stands in a flat (local frame of the flat: -Z = door side): the front
+-- left corner, away from the door (+X), the droppers (z -4) and the wardrobe (z 0..8)
+function AdventService.TreeSpot(w: number, d: number): Vector3
+	return Vector3.new(-w / 2 + 6, 0.1, -d / 2 + 6)
+end
+
+function AdventService.BuildFlatTree(cf: CFrame): Model
+	local m = Instance.new("Model")
+	m.Name = "Weihnachtsbaum"
+	local t = smallTree(m, cf, 10)
+	t.Parent = m
+	box(
+		m,
+		"Topf",
+		Vector3.new(2.4, 1.2, 2.4),
+		cf * CFrame.new(0, 0.6, 0),
+		Color3.fromRGB(170, 30, 40),
+		Enum.Material.Fabric
+	)
+	for k = 0, 17 do
+		local f = k / 18
+		local y = 2.6 + f * 6
+		local r = 3.2 * (1 - f * 0.75) + 0.2
+		local a = f * math.pi * 2 * 3
+		bulb(m, cf * CFrame.new(math.cos(a) * r, y, math.sin(a) * r), BULBS[k % #BULBS + 1], 0.4, k == 9)
+	end
+	local star = box(
+		m,
+		"Stern",
+		Vector3.new(1.4, 1.4, 0.3),
+		cf * CFrame.new(0, 10.4, 0) * CFrame.Angles(0, 0, math.rad(45)),
+		Color3.fromRGB(255, 215, 80),
+		Enum.Material.Neon
+	)
+	star.CanCollide = false
+	box(
+		m,
+		"Stern",
+		Vector3.new(1.4, 1.4, 0.3),
+		cf * CFrame.new(0, 10.4, 0),
+		Color3.fromRGB(255, 215, 80),
+		Enum.Material.Neon
+	).CanCollide =
+		false
+	-- presents
+	for i, c in { Color3.fromRGB(30, 90, 170), Color3.fromRGB(230, 190, 40), Color3.fromRGB(40, 140, 70) } do
+		box(m, "Geschenk", Vector3.new(1.2, 1.2, 1.2), cf * CFrame.new(-2 + i * 1.3, 0.6, -2.6), c)
+	end
+	for _, p in m:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.CanCollide = false
+		end
+	end
+	return m
+end
+
+-- the tree in the player's flat (or none): after buying, moving in, joining
+function AdventService.PlaceTree(player: Player)
+	local old = flatTrees[player]
+	if old then
+		old:Destroy()
+		flatTrees[player] = nil
+	end
+	local n = player:GetAttribute("Apartment")
+	if not AdventService.HasTree(player) or typeof(n) ~= "number" then
+		return
+	end
+	for _, u in TowerBuilder.Units do
+		if u.number == n and u.frame and u.w and u.d then
+			if not treeFolder then
+				local f = Instance.new("Folder")
+				f.Name = "Weihnachtsbäume"
+				f.Parent = Workspace
+				treeFolder = f
+			end
+			local spot = AdventService.TreeSpot(u.w :: number, u.d :: number)
+			local m = AdventService.BuildFlatTree((u.frame :: CFrame) * CFrame.new(spot))
+			m.Name = "Weihnachtsbaum " .. player.Name
+			m.Parent = treeFolder
+			flatTrees[player] = m
+			return
+		end
+	end
+end
+
+-- the gift cars: only for tree owners who are online on that day (24th / 25th)
+function AdventService.CheckGifts(player: Player)
+	if not AdventService.HasTree(player) then
+		return
+	end
+	local Vehicles = require(ReplicatedStorage.Shared.Vehicles) :: any
+	for _, g in Advent.GiftsDue(nil, Config.Testing) do
+		if Vehicles.ById[g.vehicle] and DataService.Get(player) then
+			if AdventService.Claim(player.UserId, g.key) == "new" then
+				local VehicleService = require(script.Parent.VehicleService) :: any
+				if VehicleService.GiveVehicle(player, g.vehicle) then
+					GameLog.Add("money", player, "advent gift car " .. g.vehicle)
+					Remotes.Push(player, "Notify", { key = "advent_gift", args = { g.name } })
+				end
+			end
+		end
+	end
+end
+
+function AdventService.BuyTree(player: Player): string?
+	local data = DataService.Get(player)
+	if not data then
+		return "error"
+	end
+	if AdventService.HasTree(player) then
+		return "advent_tree_have"
+	end
+	if not Economy.TrySpend(player, Advent.TREE_PRICE, "Weihnachtsbaum") then
+		return "no_money"
+	end
+	data.xmasTree = (Advent.Today())
+	State.MarkDirty(player)
+	AdventService.PlaceTree(player)
+	Remotes.Push(player, "Notify", {
+		key = if player:GetAttribute("Apartment") then "advent_tree_bought" else "advent_tree_bought_noflat",
+	})
+	AdventService.CheckGifts(player)
+	return nil
 end
 
 -- Start -----------------------------------------------------------------------------------
@@ -610,8 +885,36 @@ function AdventService.Start()
 		while true do
 			task.wait(60) -- 1 December starts while a server runs
 			season()
+			-- 24 / 25 December start while you play
+			for _, p in Players:GetPlayers() do
+				task.spawn(AdventService.CheckGifts, p)
+			end
 		end
 	end)
+
+	-- the tree: bought at the market hut, stands in your flat in the Dortmund Tower
+	Interaction.OnTrigger("XmasTree", function(player)
+		if not Interaction.IsNear(player, "XmasTree", 16) then
+			return
+		end
+		local err = AdventService.BuyTree(player)
+		if err then
+			Remotes.Push(player, "Notify", { key = err, error = true })
+		end
+	end)
+	DataService.Loaded:Connect(function(player)
+		AdventService.PlaceTree(player)
+		task.spawn(AdventService.CheckGifts, player)
+	end)
+	local function watchFlat(p: Player)
+		p:GetAttributeChangedSignal("Apartment"):Connect(function()
+			AdventService.PlaceTree(p)
+		end)
+	end
+	for _, p in Players:GetPlayers() do
+		watchFlat(p)
+	end
+	Players.PlayerAdded:Connect(watchFlat)
 
 	Remotes.Handle("Advent.Get", function(player)
 		local doors = opened(player.UserId)
@@ -620,7 +923,10 @@ function AdventService.Start()
 		end
 		local list = {}
 		for k in doors do
-			table.insert(list, tonumber(k))
+			local n = tonumber(k) -- (gift cars are kept here too: "g24", "g25")
+			if n then
+				table.insert(list, n)
+			end
 		end
 		local _, month, day = Advent.Today()
 		ownedCache[player] = Advent.OwnedOutfit(list)
@@ -631,6 +937,8 @@ function AdventService.Start()
 			end
 		end
 		return Remotes.Ok({
+			tree = AdventService.HasTree(player),
+			treePrice = Locale.Euro(Advent.TREE_PRICE),
 			wearing = worn,
 			opened = list,
 			unlocked = Advent.Unlocked(nil, Config.Testing),
@@ -718,7 +1026,10 @@ function AdventService.Start()
 			local doors = opened(player.UserId)
 			local list = {}
 			for k in doors or {} do
-				table.insert(list, tonumber(k))
+				local n = tonumber(k)
+				if n then
+					table.insert(list, n)
+				end
 			end
 			ownedCache[player] = Advent.OwnedOutfit(list)
 			if player.Character then
@@ -739,6 +1050,11 @@ function AdventService.Start()
 	Players.PlayerAdded:Connect(watch)
 	Players.PlayerRemoving:Connect(function(p)
 		ownedCache[p] = nil
+		local t = flatTrees[p]
+		if t then
+			t:Destroy()
+			flatTrees[p] = nil
+		end
 	end)
 end
 
