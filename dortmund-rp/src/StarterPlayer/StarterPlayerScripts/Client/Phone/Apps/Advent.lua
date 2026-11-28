@@ -35,6 +35,9 @@ local function rewardText(r: any): string
 	for _, name in r.items or {} do
 		table.insert(parts, name)
 	end
+	if r.outfit then
+		table.insert(parts, "👕 " .. tostring(r.outfit))
+	end
 	return table.concat(parts, " · ")
 end
 
@@ -69,6 +72,64 @@ Phone.Register({
 			Waypoint.Set(Vector3.new(site.x, 0, site.z + 246), "Weihnachtsmarkt", GOLD)
 			Phone.Close()
 		end, { Size = UDim2.new(1, 0, 0, 36), Parent = market })
+		-- the Christmas outfit: pieces from the doors, put on / take off
+		local outfit = Make.Card({ LayoutOrder = 6, Parent = root })
+
+		local function renderOutfit(state: any)
+			Make.Clear(outfit)
+			Make.Label(Store.T("advent_outfit"), 13, GOLD, T.bold, { Parent = outfit })
+			local owned = Advent.OwnedOutfit(state.opened)
+			local worn: { [string]: boolean } = {}
+			for _, p in state.wearing or {} do
+				worn[p] = true
+			end
+			local pieces = {}
+			for id, def in Advent.Outfit do
+				table.insert(pieces, { id = id, def = def })
+			end
+			table.sort(pieces, function(a, b)
+				return a.def.order < b.def.order
+			end)
+			for _, p in pieces do
+				local id, def = p.id, p.def
+				local label = def.icon .. " " .. def.name
+				if not owned[id] then
+					Make.Button(label .. "  ·  🔒 " .. Store.T("advent_outfit_door", def.door), T.panel, function()
+						Notify.Error("advent_not_owned")
+					end, { Size = UDim2.new(1, 0, 0, 34), TextSize = 12, Parent = outfit })
+				else
+					local on = worn[id] == true
+					Make.Button(
+						label .. "  ·  " .. Store.T(if on then "advent_take_off" else "advent_put_on"),
+						if on then GREEN else RED,
+						function()
+							task.spawn(function()
+								local r = Net.Request("Advent.Wear", id, not on)
+								if not r.ok then
+									Notify.Error(r.err)
+									return
+								end
+								if not on and Advent.OnHead[id] then
+									for h in Advent.OnHead do
+										worn[h] = nil
+									end
+								end
+								worn[id] = if on then nil else true
+								local list = {}
+								for k in worn do
+									table.insert(list, k)
+								end
+								state.wearing = list
+								if outfit.Parent then
+									renderOutfit(state)
+								end
+							end)
+						end,
+						{ Size = UDim2.new(1, 0, 0, 34), TextSize = 12, Parent = outfit }
+					)
+				end
+			end
+		end
 
 		local function render(state: any)
 			for _, c in grid:GetChildren() do
@@ -104,6 +165,11 @@ Phone.Register({
 							if r.ok then
 								Notify.Show(Store.T("advent_got", door, rewardText(r)), false, 8)
 								table.insert(state.opened, door)
+								if r.outfit then
+									local list = state.wearing or {}
+									table.insert(list, Advent.Rewards[door].outfit)
+									state.wearing = list
+								end
 								if grid.Parent then
 									render(state)
 								end
@@ -123,6 +189,7 @@ Phone.Register({
 					Make.Stroke(GOLD, 2).Parent = b
 				end
 			end
+			renderOutfit(state)
 		end
 
 		task.spawn(function()

@@ -332,6 +332,14 @@ local S: { [string]: { de: string, en: string } } = {
 		de = "🎅 Weihnachtsmarkt hinter dem Parlament: Punsch, Bratwurst, Mandeln und der große Baum!",
 		en = "🎅 Christmas market behind the Parlament: punch, bratwurst, almonds and the big tree!",
 	},
+	advent_outfit = { de = "👕 Weihnachts-Outfit", en = "👕 Christmas outfit" },
+	advent_outfit_door = { de = "Türchen %d", en = "door %d" },
+	advent_put_on = { de = "Anziehen", en = "Put on" },
+	advent_take_off = { de = "Ausziehen", en = "Take off" },
+	advent_not_owned = {
+		de = "🔒 Dieses Teil bekommst du hinter einem Türchen.",
+		en = "🔒 You get this piece behind a door.",
+	},
 	advent_market_go = { de = "📍 Zum Weihnachtsmarkt", en = "📍 To the Christmas market" },
 	-- Update 2
 	app_contacts = { de = "Kontakte", en = "Contacts" },

@@ -15,7 +15,17 @@ Advent.DOORS = 24
 Advent.LAST_DAY = 31 -- missed doors can be opened until then
 Advent.UTC_OFFSET = 3600 -- German winter time (CET)
 
-export type Reward = { cash: number?, xp: number?, items: { string }? }
+export type Reward = { cash: number?, xp: number?, items: { string }?, outfit: string? }
+
+-- Christmas outfit: pieces built from parts on your avatar (everyone sees them).
+-- You get each piece behind its door; wear them in the Advent app.
+Advent.Outfit = {
+	hat = { door = 6, name = "Weihnachtsmütze", icon = "🎅", order = 1 },
+	scarf = { door = 13, name = "Weihnachtsschal", icon = "🧣", order = 2 },
+	antlers = { door = 20, name = "Rentiergeweih + rote Nase", icon = "🦌", order = 3 },
+}
+-- pieces that sit on the head and can't be worn together
+Advent.OnHead = { hat = true, antlers = true }
 
 -- door -> reward (6 = Nikolaus, 24 = Heiligabend: the big one)
 Advent.Rewards = {
@@ -24,26 +34,38 @@ Advent.Rewards = {
 	[3] = { xp = 300 },
 	[4] = { cash = 750 },
 	[5] = { items = { "gebrannte_mandeln", "kakao" }, xp = 150 },
-	[6] = { cash = 2500, items = { "lebkuchenherz" } }, -- Nikolaus
+	[6] = { cash = 2500, items = { "lebkuchenherz" }, outfit = "hat" }, -- Nikolaus
 	[7] = { xp = 400 },
 	[8] = { cash = 900 },
 	[9] = { items = { "bratwurst", "kinderpunsch" } },
 	[10] = { cash = 1000, xp = 200 },
 	[11] = { xp = 500 },
 	[12] = { items = { "reibekuchen", "kakao", "crepe" } },
-	[13] = { cash = 1250 },
+	[13] = { cash = 1250, outfit = "scarf" },
 	[14] = { xp = 600, items = { "schmalzkuchen" } },
 	[15] = { cash = 1500 },
 	[16] = { items = { "gebrannte_mandeln", "lebkuchenherz", "kinderpunsch" } },
 	[17] = { xp = 750 },
 	[18] = { cash = 1750, xp = 250 },
 	[19] = { items = { "bratwurst", "reibekuchen", "kakao" } },
-	[20] = { cash = 2000 },
+	[20] = { cash = 2000, outfit = "antlers" },
 	[21] = { xp = 1000 },
 	[22] = { cash = 2500, items = { "crepe" } },
 	[23] = { xp = 1250, cash = 1000 },
 	[24] = { cash = 10000, xp = 2500, items = { "lebkuchenherz", "gebrannte_mandeln", "kinderpunsch" } }, -- Heiligabend
 } :: { [number]: Reward }
+
+-- the outfit pieces the opened doors give
+function Advent.OwnedOutfit(opened: { number }): { [string]: boolean }
+	local set: { [string]: boolean } = {}
+	for _, d in opened do
+		local r = Advent.Rewards[d]
+		if r and r.outfit then
+			set[r.outfit] = true
+		end
+	end
+	return set
+end
 
 -- the German date now: year, month, day
 function Advent.Today(now: number?): (number, number, number)

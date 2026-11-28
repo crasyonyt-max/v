@@ -6,6 +6,7 @@
 --   * workspace attribute "AdventSeason": the client hangs Christmas lights on the
 --     street lamps, WorldService lets it snow more often
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -14,13 +15,16 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Locale = require(ReplicatedStorage.Shared.Locale)
 local CityBuilder = require(script.Parent.CityBuilder)
+local DataService = require(script.Parent.DataService)
 local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Economy = require(script.Parent.EconomyService)
 local GameLog = require(script.Parent.GameLog)
 local Interaction = require(script.Parent.InteractionService)
 local ParliamentBuilder = require(script.Parent.ParliamentBuilder)
 local Remotes = require(script.Parent.Remotes)
+local State = require(script.Parent.State)
 local StoreService = require(script.Parent.StoreService)
+local WorldService = require(script.Parent.WorldService)
 local XPService = require(script.Parent.XPService)
 
 local AdventService = {}
@@ -99,7 +103,154 @@ function AdventService.Give(player: Player, door: number): { cash: number, xp: n
 		XPService.Add(player, nil, xp, reason)
 	end
 	GameLog.Add("money", player, ("advent door %d: %d € %d XP %d items"):format(door, cash, xp, #items))
-	return { cash = cash, xp = xp, items = items }
+	return { cash = cash, xp = xp, items = items, outfit = r.outfit }
+end
+
+-- Christmas outfit ----------------------------------------------------------------------
+
+local ownedCache: { [Player]: { [string]: boolean } } = {}
+
+local function piecePart(
+	m: Model,
+	size: Vector3,
+	cf: CFrame,
+	color: Color3,
+	shape: Enum.PartType?,
+	material: Enum.Material?
+): BasePart
+	local p = Instance.new("Part")
+	p.Anchored = false
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.CastShadow = false
+	p.Size = size
+	p.CFrame = cf
+	p.Color = color
+	p.Material = material or Enum.Material.Fabric
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = m
+	return p
+end
+
+local RED = Color3.fromRGB(190, 20, 30)
+local WHITE = Color3.fromRGB(250, 250, 250)
+local BROWN = Color3.fromRGB(120, 80, 45)
+local CYL, BALL = Enum.PartType.Cylinder, Enum.PartType.Ball
+local UP = CFrame.Angles(0, 0, math.pi / 2) -- a cylinder standing up
+
+-- builds one piece around the head (front = -Z); all parts welded to the head
+function AdventService.BuildPiece(piece: string, head: BasePart): Model?
+	local s = head.Size
+	local k = math.min(s.X, s.Z) / 1.2 -- 1 = a normal head
+	local top = head.CFrame * CFrame.new(0, s.Y * 0.32, 0)
+	local m = Instance.new("Model")
+	m.Name = "Xmas_" .. piece
+	if piece == "hat" then
+		piecePart(m, Vector3.new(0.32, 1.32, 1.32) * k, top * UP, WHITE, CYL, Enum.Material.Snow)
+		-- the red cone, leaning back, out of shrinking discs
+		local cf = top * CFrame.new(0, 0.2 * k, 0)
+		for i = 0, 5 do
+			local d = (1.18 - i * 0.18) * k
+			cf = cf * CFrame.new(0, 0.2 * k, 0) * CFrame.Angles(math.rad(-9), 0, 0) * CFrame.new(0, 0, 0.04 * k)
+			piecePart(m, Vector3.new(0.26 * k, d, d), cf * UP, RED, CYL)
+		end
+		piecePart(m, Vector3.one * 0.38 * k, cf * CFrame.new(0, 0.25 * k, 0.05 * k), WHITE, BALL, Enum.Material.Snow)
+	elseif piece == "scarf" then
+		local neck = head.CFrame * CFrame.new(0, -s.Y * 0.55, 0)
+		for i = 0, 11 do
+			local a = i / 12 * math.pi * 2
+			piecePart(
+				m,
+				Vector3.new(0.32, 0.3, 0.3) * k,
+				neck * CFrame.Angles(0, a, 0) * CFrame.new(0, 0, -0.52 * k),
+				if i % 2 == 0 then RED else Color3.fromRGB(30, 120, 60)
+			)
+		end
+		-- the hanging end in front
+		for j = 1, 3 do
+			piecePart(
+				m,
+				Vector3.new(0.3, 0.32, 0.12) * k,
+				neck * CFrame.new(0.28 * k, -j * 0.3 * k, -0.6 * k),
+				if j % 2 == 0 then RED else Color3.fromRGB(30, 120, 60)
+			)
+		end
+	elseif piece == "antlers" then
+		for _, side in { -1, 1 } do
+			local base = top * CFrame.new(side * 0.32 * k, 0, 0.05 * k)
+			local main = base * CFrame.Angles(0, 0, -side * math.rad(28)) * CFrame.new(0, 0.45 * k, 0)
+			piecePart(m, Vector3.new(0.9 * k, 0.14 * k, 0.14 * k), main * UP, BROWN, CYL, Enum.Material.Wood)
+			for t = 1, 2 do
+				local tine = main
+					* CFrame.new(0, (t * 0.25 - 0.1) * k, 0)
+					* CFrame.Angles(0, 0, side * math.rad(55))
+					* CFrame.new(0, 0.18 * k, 0)
+				piecePart(m, Vector3.new(0.4 * k, 0.11 * k, 0.11 * k), tine * UP, BROWN, CYL, Enum.Material.Wood)
+			end
+		end
+		-- Rudolph's nose
+		local nose = piecePart(
+			m,
+			Vector3.one * 0.3 * k,
+			head.CFrame * CFrame.new(0, -s.Y * 0.05, -s.Z * 0.52),
+			Color3.fromRGB(255, 30, 30),
+			BALL,
+			Enum.Material.Neon
+		)
+		local glow = Instance.new("PointLight")
+		glow.Color = Color3.fromRGB(255, 40, 40)
+		glow.Range = 6
+		glow.Brightness = 1.5
+		glow.Parent = nose
+	else
+		m:Destroy()
+		return nil
+	end
+	for _, p in m:GetChildren() do
+		if p:IsA("BasePart") then
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = head
+			w.Part1 = p
+			w.Parent = p
+		end
+	end
+	return m
+end
+
+local function wearing(player: Player): { [string]: boolean }
+	local data = DataService.Get(player)
+	local w = data and data.xmasWear
+	return if typeof(w) == "table" then w else {}
+end
+
+function AdventService.ApplyOutfit(player: Player)
+	local char = player.Character
+	local head = char and char:FindFirstChild("Head") :: BasePart?
+	if not char or not head then
+		return
+	end
+	local old = char:FindFirstChild("XmasOutfit")
+	if old then
+		old:Destroy()
+	end
+	local owned = ownedCache[player] or {}
+	local folder = Instance.new("Folder")
+	folder.Name = "XmasOutfit"
+	for piece, on in wearing(player) do
+		if on and owned[piece] and Advent.Outfit[piece] then
+			local m = AdventService.BuildPiece(piece, head)
+			if m then
+				m.Parent = folder
+			end
+		end
+	end
+	folder.Parent = char
 end
 
 -- Weihnachtsmarkt ---------------------------------------------------------------------
@@ -434,9 +585,15 @@ function AdventService.Start()
 		return
 	end
 	local market: Model? = nil
+	local wasSeason = false
 	local function season()
 		local inSeason = Advent.Season(nil, Config.Testing)
 		Workspace:SetAttribute("AdventSeason", inSeason)
+		-- December starts: it snows right away (then on most days, see WorldService)
+		if inSeason and not wasSeason then
+			WorldService.SetWeather("Snow")
+		end
+		wasSeason = inSeason
 		if inSeason and not market and Workspace:FindFirstChild("Parlament") then
 			local ok, m = pcall(AdventService.BuildMarket)
 			market = if ok then m else nil
@@ -466,7 +623,15 @@ function AdventService.Start()
 			table.insert(list, tonumber(k))
 		end
 		local _, month, day = Advent.Today()
+		ownedCache[player] = Advent.OwnedOutfit(list)
+		local worn = {}
+		for piece, on in wearing(player) do
+			if on then
+				table.insert(worn, piece)
+			end
+		end
 		return Remotes.Ok({
+			wearing = worn,
 			opened = list,
 			unlocked = Advent.Unlocked(nil, Config.Testing),
 			today = if month == Advent.MONTH then day else 0,
@@ -488,6 +653,25 @@ function AdventService.Start()
 			return Remotes.Fail("error")
 		end
 		local got = AdventService.Give(player, n)
+		if got.outfit then
+			-- a new outfit piece: put it on right away
+			local owned = ownedCache[player] or {}
+			owned[got.outfit] = true
+			ownedCache[player] = owned
+			local data = DataService.Get(player)
+			if data then
+				local w = if typeof(data.xmasWear) == "table" then data.xmasWear else {}
+				if Advent.OnHead[got.outfit] then
+					for p in Advent.OnHead do
+						w[p] = nil
+					end
+				end
+				w[got.outfit] = true
+				data.xmasWear = w
+				State.MarkDirty(player)
+			end
+			AdventService.ApplyOutfit(player)
+		end
 		local names = {}
 		for _, id in got.items do
 			local it = Items.ById[id]
@@ -499,8 +683,63 @@ function AdventService.Start()
 			cashText = Locale.Euro(got.cash),
 			xp = got.xp,
 			items = names,
+			outfit = got.outfit and Advent.Outfit[got.outfit].name,
 		})
 	end, { rate = 3 })
+
+	-- put an outfit piece on / take it off (hat and antlers are both on the head)
+	Remotes.Handle("Advent.Wear", function(player, piece: any, on: any)
+		if typeof(piece) ~= "string" or not Advent.Outfit[piece] or typeof(on) ~= "boolean" then
+			return Remotes.Fail("bad_request")
+		end
+		if on and not (ownedCache[player] or {})[piece] then
+			return Remotes.Fail("advent_not_owned")
+		end
+		local data = DataService.Get(player)
+		if not data then
+			return Remotes.Fail("error")
+		end
+		local w = if typeof(data.xmasWear) == "table" then data.xmasWear else {}
+		if on and Advent.OnHead[piece] then
+			for p in Advent.OnHead do
+				w[p] = nil
+			end
+		end
+		w[piece] = if on then true else nil
+		data.xmasWear = w
+		State.MarkDirty(player)
+		AdventService.ApplyOutfit(player)
+		return Remotes.Ok()
+	end, { rate = 6 })
+
+	-- the outfit comes back on every spawn
+	local function watch(player: Player)
+		task.spawn(function()
+			local doors = opened(player.UserId)
+			local list = {}
+			for k in doors or {} do
+				table.insert(list, tonumber(k))
+			end
+			ownedCache[player] = Advent.OwnedOutfit(list)
+			if player.Character then
+				AdventService.ApplyOutfit(player)
+			end
+		end)
+		player.CharacterAdded:Connect(function(char)
+			char:WaitForChild("Head", 10)
+			task.wait(1) -- after the avatar's own accessories
+			if player.Parent then
+				AdventService.ApplyOutfit(player)
+			end
+		end)
+	end
+	for _, p in Players:GetPlayers() do
+		watch(p)
+	end
+	Players.PlayerAdded:Connect(watch)
+	Players.PlayerRemoving:Connect(function(p)
+		ownedCache[p] = nil
+	end)
 end
 
 return AdventService

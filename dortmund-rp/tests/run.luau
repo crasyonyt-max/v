@@ -958,7 +958,16 @@ test("real city + map", function()
 				return function() end
 			end,
 		})
-		local stubbed = { "DataService", "EconomyService", "Remotes", "State", "StoreService", "XPService", "GameLog" }
+		local stubbed = {
+			"DataService",
+			"EconomyService",
+			"Remotes",
+			"State",
+			"StoreService",
+			"XPService",
+			"GameLog",
+			"WorldService",
+		}
 		for _, name in stubbed do
 			overrides["ServerScriptService/Server/" .. name] = stub
 		end
@@ -971,6 +980,28 @@ test("real city + map", function()
 		eq(Svc.Claim(77, 4), "new", "the next door")
 		local src = fs.readFile("src/ServerScriptService/Server/AdventService.lua")
 		assert(string.find(src, "UpdateAsync", 1, true), "claimed atomically in the store")
+		assert(string.find(src, 'WorldService.SetWeather("Snow")', 1, true), "December starts with snow")
+		-- outfit: three pieces behind doors 6, 13, 20; built on a head, welded, no collisions
+		local owned = Advent.OwnedOutfit({ 1, 6, 20 })
+		assert(owned.hat and owned.antlers and not owned.scarf, "pieces from the opened doors")
+		for id, def in Advent.Outfit do
+			eq(Advent.Rewards[def.door].outfit, id, id .. " behind door " .. def.door)
+			local head = roblox.Instance.new("Part")
+			head.Size = roblox.Vector3.new(1.2, 1.2, 1.2)
+			head.CFrame = roblox.CFrame.new(0, 5, 0)
+			local m = Svc.BuildPiece(id, head)
+			assert(m and #m:GetChildren() > 2, id .. " built")
+			for _, p in m:GetChildren() do
+				assert(not p.CanCollide and p.Massless and not p.Anchored, id .. " part is loose and light")
+				assert(p:FindFirstChildOfClass("WeldConstraint"), id .. " welded to the head")
+				assert((p.CFrame.Position - head.CFrame.Position).Magnitude < 3, id .. " stays at the head")
+			end
+			m:Destroy()
+		end
+		assert(
+			Advent.OnHead.hat and Advent.OnHead.antlers and not Advent.OnHead.scarf,
+			"hat and antlers exclude each other"
+		)
 		-- the market behind the Parlament
 		Config.Parliament = true
 		local parl = requirePath(Server.ParliamentBuilder).Build()
