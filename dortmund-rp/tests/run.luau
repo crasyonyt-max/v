@@ -902,6 +902,16 @@ test("real city + map", function()
 		assert(string.find(fx, "Config.On(Config.FlashyEvents)", 1, true), "flashy effects behind the switch")
 	end)
 
+	test("daily bonus: once per day, claimed atomically, no cash on the testing server", function()
+		local src = fs.readFile("src/ServerScriptService/Server/CareerService.lua")
+		assert(string.find(src, '_Daily"', 1, true), "own claim store")
+		assert(string.find(src, 'UpdateAsync("u_" .. userId, decide)', 1, true), "claimed atomically")
+		assert(
+			string.find(src, 'if claim ~= "new" or Config.Testing then', 1, true),
+			"pays only a new claim, never on the testing server"
+		)
+	end)
+
 	print(string.format("  stores: %d walk-in shops", built))
 end)
 

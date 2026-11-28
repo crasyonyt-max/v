@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Ranks = require(ReplicatedStorage.Shared.Ranks)
 local DataService = require(script.Parent.DataService)
+local DataStoreService = require(script.Parent.Sandbox).DataStoreService -- local only on the testing server
 local Economy = require(script.Parent.EconomyService)
 local Remotes = require(script.Parent.Remotes)
 local State = require(script.Parent.State)
@@ -42,6 +43,40 @@ CareerService.Tasks = {
 
 local function on(): boolean
 	return Config.On(Config.Update2)
+end
+
+-- The daily bonus is claimed in its own store (atomic), not only in the player's save:
+-- rejoining another server before the old one has saved can never pay it twice.
+local dailyStore: DataStore? = nil
+pcall(function()
+	dailyStore = DataStoreService:GetDataStore(Config.DataStoreName .. "_Daily")
+end)
+
+-- "new" + streak = pay it now · "paid" + streak = already claimed today · "error" = try again later
+function CareerService.ClaimDaily(userId: number, day: number, saved: any): (string, number)
+	local result, streak = "error", 1
+	local function decide(old: any): any
+		local last = if typeof(old) == "table" then old elseif typeof(saved) == "table" then saved else nil
+		local lastDay = last and tonumber(last.day)
+		if lastDay == day then
+			result, streak = "paid", tonumber(last.streak) or 1
+			return nil
+		end
+		streak = if lastDay == day - 1 then math.min((tonumber(last.streak) or 0) + 1, 99) else 1
+		result = "new"
+		return { day = day, streak = streak }
+	end
+	if not dailyStore then
+		decide(nil)
+		return result, streak
+	end
+	local ok = pcall(function()
+		(dailyStore :: DataStore):UpdateAsync("u_" .. userId, decide)
+	end)
+	if not ok then
+		return "error", 1
+	end
+	return result, streak
 end
 
 local function today(): number
@@ -93,15 +128,31 @@ function CareerService.CheckDaily(player: Player, data: { [string]: any }, day: 
 	if typeof(d) == "table" and d.day == now then
 		return
 	end
-	local streak = if typeof(d) == "table" and d.day == now - 1 then math.min((d.streak or 0) + 1, 99) else 1
+	local claim, streak = CareerService.ClaimDaily(player.UserId, now, d)
+	if claim == "error" then
+		return -- the store did not answer: the next check (every minute) tries again
+	end
+	-- the player may have changed meanwhile (the claim waits for the store)
+	if
+		not player.Parent
+		or DataService.Get(player) ~= data
+		or (typeof(data.daily) == "table" and data.daily.day == now)
+	then
+		return
+	end
 	data.daily = {
 		day = now,
 		streak = streak,
 		tasks = pickTasks(tostring(data.job or "Unemployed"), Random.new(player.UserId + now)),
 	}
+	State.MarkDirty(player)
+	-- already claimed today on another server, or the testing server (its money is not real): no cash
+	if claim ~= "new" or Config.Testing then
+		publish(player)
+		return
+	end
 	local reward = CareerService.DAILY_BASE * math.min(streak, 7)
 	local paid = Economy.Earn(player, reward, "Täglicher Bonus (Tag " .. streak .. ")")
-	State.MarkDirty(player)
 	task.delay(4, function()
 		if player.Parent then
 			Remotes.Push(player, "Notify", { key = "daily_reward", args = { streak, paid } })
