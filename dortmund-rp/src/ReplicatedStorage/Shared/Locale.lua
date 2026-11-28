@@ -342,8 +342,8 @@ local S: { [string]: { de: string, en: string } } = {
 	},
 	advent_tree_title = { de = "🎄 Weihnachtsbaum", en = "🎄 Christmas tree" },
 	advent_tree_info = {
-		de = "Kauf einen Baum an der Hütte „Weihnachtsbäume“ auf dem Markt (%s). Er steht dann in deiner Wohnung im Dortmund Tower. Bist du mit Baum am 24.12. online, bekommst du einen Volkswerk Turan, am 25.12. einen BMV 3er Touring – beide im Weihnachts-Look (HO HO HOOO)!",
-		en = "Buy a tree at the “Weihnachtsbäume” hut at the market (%s). It then stands in your flat in the Dortmund Tower. Be online with a tree on 24 Dec for a Volkswerk Turan, on 25 Dec for a BMV 3er Touring – both in the Christmas look (HO HO HOOO)!",
+		de = "Kauf einen Baum an der Hütte „Weihnachtsbäume“ auf dem Markt (%s). Er steht dann in deiner Wohnung im Dortmund Tower. 🎁",
+		en = "Buy a tree at the “Weihnachtsbäume” hut at the market (%s). It then stands in your flat in the Dortmund Tower. 🎁",
 	},
 	advent_tree_yes = { de = "✅ Du hast einen Baum.", en = "✅ You have a tree." },
 	advent_tree_no = { de = "Noch kein Baum.", en = "No tree yet." },
