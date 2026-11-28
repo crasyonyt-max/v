@@ -118,6 +118,10 @@ function WorldService.Start()
 				then
 					kind = "Snow"
 				end
+				-- Advent: in December it snows on most days (not in fog)
+				if Workspace:GetAttribute("AdventSeason") == true and kind ~= "Fog" and rng:NextNumber() < 0.6 then
+					kind = "Snow"
+				end
 				WorldService.SetWeather(kind)
 			end
 		end

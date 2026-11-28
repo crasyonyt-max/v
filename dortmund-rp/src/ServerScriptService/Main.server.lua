@@ -80,6 +80,7 @@ local services = {
 	require(Server.DropEventService),
 	require(Server.DropperService),
 	require(Server.ThanksgivingService),
+	require(Server.AdventService),
 	require(Server.TestServerService),
 	-- Update 2 (testing server first)
 	require(Server.CareerService),

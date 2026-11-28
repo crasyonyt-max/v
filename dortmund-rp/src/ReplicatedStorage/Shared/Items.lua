@@ -206,6 +206,91 @@ Items.List = {
 		color = Color3.fromRGB(245, 245, 245),
 		size = Vector3.new(0.4, 0.9, 0.4),
 	}),
+	-- Weihnachtsmarkt (Shared/Advent): sold at the market huts in December
+	item({
+		id = "kinderpunsch",
+		name = "Kinderpunsch",
+		price = 3.50,
+		hunger = 0,
+		thirst = 35,
+		color = Color3.fromRGB(170, 30, 40),
+		size = Vector3.new(0.45, 0.6, 0.45),
+		shape = "Cylinder",
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "kakao",
+		name = "Heiße Schokolade",
+		price = 3.00,
+		hunger = 5,
+		thirst = 30,
+		color = Color3.fromRGB(100, 60, 35),
+		size = Vector3.new(0.45, 0.6, 0.45),
+		shape = "Cylinder",
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "bratwurst",
+		name = "Rostbratwurst im Brötchen",
+		price = 4.00,
+		hunger = 40,
+		thirst = -4,
+		color = Color3.fromRGB(160, 85, 45),
+		size = Vector3.new(0.3, 0.3, 1.0),
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "reibekuchen",
+		name = "Reibekuchen mit Apfelmus",
+		price = 4.50,
+		hunger = 38,
+		thirst = 0,
+		color = Color3.fromRGB(205, 150, 70),
+		size = Vector3.new(0.9, 0.2, 0.9),
+		shape = "Cylinder",
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "crepe",
+		name = "Crêpe mit Nougat",
+		price = 4.00,
+		hunger = 25,
+		thirst = 0,
+		color = Color3.fromRGB(230, 190, 120),
+		size = Vector3.new(0.8, 0.2, 0.8),
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "gebrannte_mandeln",
+		name = "Gebrannte Mandeln",
+		price = 4.00,
+		hunger = 18,
+		thirst = -3,
+		color = Color3.fromRGB(150, 80, 35),
+		size = Vector3.new(0.5, 0.7, 0.5),
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "schmalzkuchen",
+		name = "Schmalzkuchen",
+		price = 3.50,
+		hunger = 22,
+		thirst = -2,
+		color = Color3.fromRGB(235, 210, 160),
+		size = Vector3.new(0.6, 0.5, 0.6),
+		shape = "Ball",
+		event = true, -- only at the Weihnachtsmarkt
+	}),
+	item({
+		id = "lebkuchenherz",
+		name = "Lebkuchenherz",
+		price = 5.00,
+		hunger = 20,
+		thirst = 0,
+		color = Color3.fromRGB(140, 70, 30),
+		size = Vector3.new(0.9, 0.9, 0.15),
+		event = true, -- only at the Weihnachtsmarkt
+	}),
 	-- Thanksgiving event (Shared/Thanksgiving): not sold in stores
 	item({
 		id = "turkey",
@@ -308,6 +393,25 @@ Items.Stores = {
 		color = Color3.fromRGB(60, 120, 60),
 		factor = 1.15,
 		items = { "schokoriegel", "chips", "kola", "energy", "wasser", "kaffee", "sandwich" },
+	},
+	-- Weihnachtsmarkt huts (Advent, only built in December)
+	XmasPunsch = {
+		title = "Punschhütte",
+		color = Color3.fromRGB(170, 30, 40),
+		factor = 1.0,
+		items = { "kinderpunsch", "kakao" },
+	},
+	XmasGrill = {
+		title = "Grillhütte",
+		color = Color3.fromRGB(120, 70, 35),
+		factor = 1.0,
+		items = { "bratwurst", "reibekuchen", "kinderpunsch" },
+	},
+	XmasSweets = {
+		title = "Süßes",
+		color = Color3.fromRGB(200, 120, 160),
+		factor = 1.0,
+		items = { "gebrannte_mandeln", "lebkuchenherz", "schmalzkuchen", "crepe", "kakao" },
 	},
 	Arol = {
 		title = "AROL Shop",

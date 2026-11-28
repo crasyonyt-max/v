@@ -70,6 +70,9 @@ Config.TaxiNumber = "22456" -- "TAXI" on a phone keypad: call a taxi
 -- "test" = testing server only.
 Config.Applications = true
 Config.FlashyEvents = true
+-- 🎄 Advent: Adventskalender app (24 doors), Weihnachtsmarkt behind the Parlament,
+-- Christmas lights in the city, snow on most December days (Shared/Advent)
+Config.Advent = "test"
 -- crime
 Config.CriminalSeconds = 300 -- wanted time; every new crime starts it again
 Config.JailSeconds = 120

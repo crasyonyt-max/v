@@ -316,6 +316,23 @@ local S: { [string]: { de: string, en: string } } = {
 	apply_decline = { de = "Ablehnen", en = "Decline" },
 	apply_decline_reason = { de = "Ablehnen + Grund", en = "Decline + reason" },
 	event_start_big = { de = "EVENT GESTARTET!", en = "EVENT STARTED!" },
+	-- Advent
+	app_advent = { de = "Advent", en = "Advent" },
+	advent_title = { de = "🎄 Adventskalender", en = "🎄 Advent calendar" },
+	advent_info = {
+		de = "Jeden Tag vom 1. bis 24. Dezember ein Türchen. Verpasste Türchen kannst du bis Silvester nachholen.",
+		en = "One door every day from 1 to 24 December. Missed doors can be opened until New Year's Eve.",
+	},
+	advent_before = { de = "Das erste Türchen öffnet am 1. Dezember!", en = "The first door opens on 1 December!" },
+	advent_test = { de = "🧪 Testserver: alle Türchen offen", en = "🧪 Testing server: all doors open" },
+	advent_locked = { de = "🔒 Dieses Türchen ist noch zu.", en = "🔒 This door is still closed." },
+	advent_opened = { de = "Dieses Türchen hast du schon geöffnet.", en = "You already opened this door." },
+	advent_got = { de = "🎁 Türchen %d: %s", en = "🎁 Door %d: %s" },
+	advent_market = {
+		de = "🎅 Weihnachtsmarkt hinter dem Parlament: Punsch, Bratwurst, Mandeln und der große Baum!",
+		en = "🎅 Christmas market behind the Parlament: punch, bratwurst, almonds and the big tree!",
+	},
+	advent_market_go = { de = "📍 Zum Weihnachtsmarkt", en = "📍 To the Christmas market" },
 	-- Update 2
 	app_contacts = { de = "Kontakte", en = "Contacts" },
 	app_daily = { de = "Aufgaben", en = "Tasks" },

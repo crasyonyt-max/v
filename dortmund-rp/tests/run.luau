@@ -912,6 +912,100 @@ test("real city + map", function()
 		)
 	end)
 
+	test("Advent: calendar doors, rewards, once per door, Christmas market", function()
+		local Config = requirePath(RS.Shared.Config)
+		eq(Config.Advent, "test", "Advent only on the testing server")
+		local Advent = requirePath(RS.Shared.Advent)
+		local Items = requirePath(RS.Shared.Items)
+		-- German time: 30 Nov 23:30 UTC is already 1 Dec in Germany
+		local function utc(y, mo, d, h, mi)
+			return os.time({ year = y, month = mo, day = d, hour = h, min = mi or 0, sec = 0 })
+				- (os.time() - os.time(os.date("!*t") :: any))
+		end
+		eq(Advent.Unlocked(utc(2026, 11, 30, 22, 0)), 0, "November: closed")
+		eq(Advent.Unlocked(utc(2026, 11, 30, 23, 30)), 1, "1 December German time")
+		eq(Advent.Unlocked(utc(2026, 12, 13, 12)), 13, "13 December: 13 doors")
+		eq(Advent.Unlocked(utc(2026, 12, 27, 12)), 24, "after Christmas: catch up")
+		eq(Advent.Unlocked(utc(2027, 1, 2, 12)), 0, "January: closed")
+		eq(Advent.Unlocked(utc(2026, 11, 1, 12), true), 24, "testing server: all doors")
+		eq(Advent.Season(utc(2026, 12, 5, 12)), true, "December is the season")
+		eq(Advent.Season(utc(2026, 11, 5, 12)), false, "not in November")
+		-- 24 doors, each in the grid once, every reward real
+		local seen = {}
+		for _, d in Advent.Layout do
+			assert(not seen[d], "door twice in the grid: " .. d)
+			seen[d] = true
+		end
+		eq(#Advent.Layout, 24, "24 doors")
+		for d = 1, 24 do
+			local r = Advent.Rewards[d]
+			assert(r and ((r.cash or 0) + (r.xp or 0) > 0 or #(r.items or {}) > 0), "door " .. d .. " has a reward")
+			for _, id in r.items or {} do
+				assert(Items.ById[id], "door " .. d .. " item " .. id)
+			end
+		end
+		assert(Advent.Rewards[24].cash >= 10000, "Heiligabend is the big one")
+		-- the market huts sell only market items, and those can't be ordered online
+		for _, kind in { "XmasPunsch", "XmasGrill", "XmasSweets" } do
+			for _, id in Items.Stores[kind].items do
+				assert(Items.ById[id] and Items.ById[id].event, kind .. " sells " .. id)
+				assert(Items.Price(kind, id), "price " .. id)
+			end
+		end
+		-- each door once (no DataStore here: memory)
+		local stub = setmetatable({}, {
+			__index = function()
+				return function() end
+			end,
+		})
+		local stubbed = { "DataService", "EconomyService", "Remotes", "State", "StoreService", "XPService", "GameLog" }
+		for _, name in stubbed do
+			overrides["ServerScriptService/Server/" .. name] = stub
+		end
+		local Svc = requirePath(Server.AdventService)
+		for _, name in stubbed do
+			overrides["ServerScriptService/Server/" .. name] = nil
+		end
+		eq(Svc.Claim(77, 3), "new", "first time")
+		eq(Svc.Claim(77, 3), "opened", "never twice")
+		eq(Svc.Claim(77, 4), "new", "the next door")
+		local src = fs.readFile("src/ServerScriptService/Server/AdventService.lua")
+		assert(string.find(src, "UpdateAsync", 1, true), "claimed atomically in the store")
+		-- the market behind the Parlament
+		Config.Parliament = true
+		local parl = requirePath(Server.ParliamentBuilder).Build()
+		local market = Svc.BuildMarket()
+		assert(market and market.Parent == env.workspace, "market built")
+		local stores, huts = {}, 0
+		for _, d in market:GetDescendants() do
+			if d.Name == "Marker_Store" then
+				stores[d:GetAttribute("Store")] = (stores[d:GetAttribute("Store")] or 0) + 1
+			elseif d:IsA("Model") and string.find(d.Name, "^Hütte ") ~= nil then
+				huts += 1
+			end
+		end
+		eq(huts, 16, "16 huts")
+		assert(stores.XmasPunsch == 3 and stores.XmasGrill == 3 and stores.XmasSweets == 3, "9 stalls that sell")
+		assert(market:FindFirstChild("Weihnachtsbaum"), "the big tree")
+		-- nothing of the market reaches into the Parlament building
+		local site = requirePath(Server.ParliamentBuilder).Site
+		for _, d in market:GetDescendants() do
+			if d:IsA("BasePart") then
+				local z = d.CFrame.Position.Z - site.z
+				local x = d.CFrame.Position.X - site.x
+				assert(z > 160, d.Name .. " is behind the building")
+				assert(math.abs(x) < site.halfX and z < site.halfZ, d.Name .. " stays on the lawn")
+			end
+		end
+		market:Destroy()
+		if parl then
+			parl:Destroy()
+		end
+		Config.Parliament = true
+		local fx = fs.readFile("src/ServerScriptService/Server/WorldService.lua")
+		assert(string.find(fx, 'GetAttribute("AdventSeason")', 1, true), "more snow in December")
+	end)
+
 	print(string.format("  stores: %d walk-in shops", built))
 end)
 
